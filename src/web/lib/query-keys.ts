@@ -22,6 +22,18 @@ export const queryKeys = {
     sendPreview: (id: string, revise: boolean) =>
       ["documents", "send-preview", id, { revise }] as const,
   },
+  /**
+   * The overview aggregate. It sits under "documents", so every document mutation that
+   * invalidates `documents.all` also refreshes the dashboard.
+   */
+  dashboard: {
+    all: ["documents", "dashboard"] as const,
+    view: (recent: string) => ["documents", "dashboard", { recent }] as const,
+  },
+  notifications: {
+    all: ["notifications"] as const,
+    list: (state: string, page: number) => ["notifications", "list", { state, page }] as const,
+  },
   recurring: {
     all: ["recurring"] as const,
     list: ["recurring", "list"] as const,

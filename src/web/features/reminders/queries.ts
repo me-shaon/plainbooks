@@ -6,8 +6,9 @@ import { api } from "../../lib/api";
 import { queryKeys } from "../../lib/query-keys";
 
 /** The dashboard "needs reminder" list. */
-export function useReminderSuggestions() {
+export function useReminderSuggestions(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: queryKeys.reminders.suggestions,
     queryFn: () =>
       api<{ items: ReminderSuggestion[] }>("/reminders/suggestions").then((r) => r.items),
@@ -26,6 +27,7 @@ function useRefresh() {
   const queryClient = useQueryClient();
   return (documentId: string) => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.reminders.all });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
     void queryClient.invalidateQueries({ queryKey: queryKeys.documents.activity(documentId) });
   };
 }

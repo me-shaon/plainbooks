@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { clientRoutes } from "./clients";
 import { customFieldRoutes } from "./custom-fields";
+import { dashboardRoutes, jobRoutes, notificationRoutes } from "./dashboard";
 import { documentRoutes } from "./documents";
 import { fxRoutes } from "./fx";
 import { meRoutes } from "./me";
@@ -20,6 +21,9 @@ import { webhookRoutes } from "./webhooks";
 export const api = new Hono<AppEnv>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/me", meRoutes)
+  .route("/dashboard", dashboardRoutes)
+  .route("/notifications", notificationRoutes)
+  .route("/jobs", jobRoutes)
   .route("/clients", clientRoutes)
   .route("/documents", documentRoutes)
   .route("/documents", reminderDocumentRoutes)

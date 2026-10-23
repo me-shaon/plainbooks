@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { BellRing, Send } from "lucide-react";
-import { reminderOffsetText } from "../../../shared/schemas/reminder";
+import { type ReminderSuggestion, reminderOffsetText } from "../../../shared/schemas/reminder";
 import { Button } from "../../components/ui/button";
 import { Pill } from "../../components/ui/pill";
 import { Section } from "../../components/ui/section";
@@ -13,10 +13,18 @@ import { useReminderSuggestions, useSendReminder } from "./queries";
  * The "needs reminder" list for the dashboard (U18): open invoices in suggest mode whose
  * reminder step is due. Each row sends its reminder with one click (R21).
  */
-export function NeedsReminderList({ className }: { className?: string }) {
-  const suggestions = useReminderSuggestions();
+export function NeedsReminderList({
+  className,
+  items: given,
+}: {
+  className?: string;
+  /** Suggestions loaded by the caller, for example the dashboard aggregate. */
+  items?: ReminderSuggestion[];
+}) {
+  const suggestions = useReminderSuggestions(given === undefined);
   const send = useSendReminder();
-  const items = suggestions.data ?? [];
+  const items = given ?? suggestions.data ?? [];
+  const isPending = given === undefined && suggestions.isPending;
 
   return (
     <Section
@@ -25,7 +33,7 @@ export function NeedsReminderList({ className }: { className?: string }) {
       flush
       className={className}
     >
-      {suggestions.isPending ? (
+      {isPending ? (
         <div className="flex flex-col gap-2 p-5" aria-busy="true">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />

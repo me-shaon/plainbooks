@@ -266,6 +266,21 @@ export async function listSchedules(db: Db): Promise<RecurringSummary[]> {
     .sort((a, b) => order[a.status] - order[b.status]);
 }
 
+/** The active schedule with the earliest next issue date, for the dashboard. */
+export async function nextActiveSchedule(db: Db): Promise<RecurringSummary | null> {
+  const [row] = await db
+    .select({ schedule: recurringSchedules, client: clients })
+    .from(recurringSchedules)
+    .innerJoin(clients, eq(clients.id, recurringSchedules.clientId))
+    .where(eq(recurringSchedules.status, "active"))
+    .orderBy(asc(recurringSchedules.nextIssueDate), asc(clients.name))
+    .limit(1);
+  if (!row) return null;
+  const ws = await loadWorkspace(db);
+  const totals = await totalsOf(db, [row.schedule], await scheduleLines(db, [row.schedule.id]));
+  return summaryOf(row.schedule, row.client, ws, totals.get(row.schedule.id) ?? 0);
+}
+
 export async function getScheduleDetail(
   db: Db,
   id: string,

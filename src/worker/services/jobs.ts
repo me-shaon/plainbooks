@@ -8,6 +8,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { createDb, type Db, schema } from "../db/client";
 import type { Workspace } from "../db/schema";
 import type { Bindings } from "../env";
+import { AppError } from "../errors";
 
 const { jobs, notifications } = schema;
 
@@ -342,4 +343,28 @@ export function runJobSoon(
       (err: unknown) => console.error(`runJobSoon(${jobId}) failed`, err),
     ),
   );
+}
+
+/**
+ * Puts a failed job back in the queue with a fresh attempt count. It runs on the next
+ * tick, or sooner when the caller uses runJobSoon. 404 if missing, 409 if not failed.
+ */
+export async function retryFailedJob(db: Db, jobId: string, now: number): Promise<ClaimedJob> {
+  const [job] = await db
+    .update(jobs)
+    .set({
+      status: "pending",
+      attempts: 0,
+      runAfter: now,
+      finishedAt: null,
+      leaseOwner: null,
+      leaseUntil: null,
+      updatedAt: now,
+    })
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, "failed")))
+    .returning();
+  if (job) return job;
+  const [existing] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, jobId));
+  if (!existing) throw new AppError(404, "job_not_found", "This job does not exist");
+  throw new AppError(409, "job_not_failed", "Only a failed job can be retried");
 }

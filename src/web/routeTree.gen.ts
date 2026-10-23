@@ -17,6 +17,7 @@ import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsClientIdRouteImport } from './routes/clients/$clientId'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesNewRouteImport } from './routes/invoices/new'
+import { Route as NotificationsIndexRouteImport } from './routes/notifications/index'
 import { Route as QuotesIndexRouteImport } from './routes/quotes/index'
 import { Route as QuotesNewRouteImport } from './routes/quotes/new'
 import { Route as RecurringIndexRouteImport } from './routes/recurring/index'
@@ -71,6 +72,11 @@ const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
 const InvoicesNewRoute = InvoicesNewRouteImport.update({
   id: '/invoices/new',
   path: '/invoices/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsIndexRoute = NotificationsIndexRouteImport.update({
+  id: '/notifications/',
+  path: '/notifications/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const QuotesIndexRoute = QuotesIndexRouteImport.update({
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/brand-kit/': typeof BrandKitIndexRoute
   '/clients/': typeof ClientsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/notifications/': typeof NotificationsIndexRoute
   '/quotes/': typeof QuotesIndexRoute
   '/recurring/': typeof RecurringIndexRoute
   '/reports/': typeof ReportsIndexRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/brand-kit': typeof BrandKitIndexRoute
   '/clients': typeof ClientsIndexRoute
   '/invoices': typeof InvoicesIndexRoute
+  '/notifications': typeof NotificationsIndexRoute
   '/quotes': typeof QuotesIndexRoute
   '/recurring': typeof RecurringIndexRoute
   '/reports': typeof ReportsIndexRoute
@@ -214,6 +222,7 @@ export interface FileRoutesById {
   '/brand-kit/': typeof BrandKitIndexRoute
   '/clients/': typeof ClientsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
+  '/notifications/': typeof NotificationsIndexRoute
   '/quotes/': typeof QuotesIndexRoute
   '/recurring/': typeof RecurringIndexRoute
   '/reports/': typeof ReportsIndexRoute
@@ -241,6 +250,7 @@ export interface FileRouteTypes {
     | '/brand-kit/'
     | '/clients/'
     | '/invoices/'
+    | '/notifications/'
     | '/quotes/'
     | '/recurring/'
     | '/reports/'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/brand-kit'
     | '/clients'
     | '/invoices'
+    | '/notifications'
     | '/quotes'
     | '/recurring'
     | '/reports'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/brand-kit/'
     | '/clients/'
     | '/invoices/'
+    | '/notifications/'
     | '/quotes/'
     | '/recurring/'
     | '/reports/'
@@ -313,6 +325,7 @@ export interface RootRouteChildren {
   BrandKitIndexRoute: typeof BrandKitIndexRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
+  NotificationsIndexRoute: typeof NotificationsIndexRoute
   QuotesIndexRoute: typeof QuotesIndexRoute
   RecurringIndexRoute: typeof RecurringIndexRoute
   ReportsIndexRoute: typeof ReportsIndexRoute
@@ -379,6 +392,13 @@ declare module '@tanstack/react-router' {
       path: '/invoices/new'
       fullPath: '/invoices/new'
       preLoaderRoute: typeof InvoicesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications/': {
+      id: '/notifications/'
+      path: '/notifications'
+      fullPath: '/notifications/'
+      preLoaderRoute: typeof NotificationsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/quotes/': {
@@ -519,6 +539,7 @@ const rootRouteChildren: RootRouteChildren = {
   BrandKitIndexRoute: BrandKitIndexRoute,
   ClientsIndexRoute: ClientsIndexRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
+  NotificationsIndexRoute: NotificationsIndexRoute,
   QuotesIndexRoute: QuotesIndexRoute,
   RecurringIndexRoute: RecurringIndexRoute,
   ReportsIndexRoute: ReportsIndexRoute,
