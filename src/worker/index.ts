@@ -1,8 +1,13 @@
 import { app } from "./app";
+import { runTick } from "./services/scheduler";
+
+// Feature services register job handlers and enqueue hooks at module scope.
+// Import each one here (U13 email, U15 recurring, U16 reminders).
 
 export default {
   fetch: app.fetch,
-  async scheduled(_controller, _env, _ctx) {
-    // U17 drains the job outbox here.
+  async scheduled(controller, env, _ctx) {
+    const summary = await runTick(env, controller.scheduledTime);
+    console.log("scheduler tick", JSON.stringify(summary));
   },
 } satisfies ExportedHandler<Env>;
