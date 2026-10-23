@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { clientRoutes } from "./clients";
+import { documentRoutes } from "./documents";
 import { meRoutes } from "./me";
 import { settingsRoutes } from "./settings";
 import { taxRateRoutes } from "./tax-rates";
@@ -15,6 +16,7 @@ export const api = new Hono<AppEnv>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/me", meRoutes)
   .route("/clients", clientRoutes)
+  .route("/documents", documentRoutes)
   .route("/tax-rates", taxRateRoutes)
   .route("/templates", templateRoutes)
   .route("/settings", settingsRoutes)

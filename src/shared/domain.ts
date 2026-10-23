@@ -125,3 +125,10 @@ export const DEFAULT_REMINDER_SCHEDULE: ReminderStep[] = [
 ];
 
 export const OVERDUE_REMINDER_CAP = 3;
+
+/** The template config used when no template is set on the document, client, or workspace. */
+export const DEFAULT_TEMPLATE_CONFIG: TemplateConfig = {
+  layout: "classic",
+  sections: TEMPLATE_SECTIONS.map((id) => ({ id, visible: true })),
+  customFields: [],
+};
