@@ -62,7 +62,11 @@ const state = {
 
 // Wall-clock timing is unreliable under machine load, so the benchmark only runs
 // when asked for: `pnpm test:perf`.
-describe.runIf(process.env.RUN_PERF === "1")("render CPU benchmark", () => {
+const runPerf =
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env
+    .RUN_PERF === "1";
+
+describe.runIf(runPerf)("render CPU benchmark", () => {
   for (const layout of TEMPLATE_LAYOUTS) {
     it(`renders a 30-line ${layout} invoice in under 10 ms`, () => {
       const snapshot = thirtyLineSnapshot(layout);
