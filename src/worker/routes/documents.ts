@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   documentCreateInput,
@@ -6,8 +7,9 @@ import {
   paymentInput,
   writeOffInput,
 } from "../../shared/schemas/document";
+import { schema } from "../db/client";
 import type { AppEnv } from "../env";
-import { parseJson } from "../errors";
+import { AppError, parseJson } from "../errors";
 import { listActivity } from "../services/activity";
 import {
   convertQuote,
@@ -24,6 +26,7 @@ import {
   voidDocument,
 } from "../services/documents";
 import { deletePayment, recordPayment, writeOffRemainder } from "../services/payments";
+import { getPdf, pdfResponse } from "../services/pdf";
 
 /**
  * Quotes and invoices, mounted at /api/documents. Owners and Members can do everything
@@ -115,4 +118,31 @@ export const documentRoutes = new Hono<AppEnv>()
   })
   .get("/:id/revisions", async (c) =>
     c.json({ items: await listRevisions(c.var.db, c.req.param("id")) }),
-  );
+  )
+  .get("/:id/pdf", async (c) => {
+    const db = c.var.db;
+    const doc = await loadDocument(db, c.req.param("id"));
+    const requested = c.req.query("revision");
+    let revisionId = doc.currentRevisionId;
+    if (requested !== undefined) {
+      const revisionNumber = Number(requested);
+      if (!Number.isInteger(revisionNumber) || revisionNumber < 1) {
+        throw new AppError(400, "invalid_revision", "Use a revision number of 1 or more");
+      }
+      const [row] = await db
+        .select({ id: schema.documentRevisions.id })
+        .from(schema.documentRevisions)
+        .where(
+          and(
+            eq(schema.documentRevisions.documentId, doc.id),
+            eq(schema.documentRevisions.revisionNumber, revisionNumber),
+          ),
+        );
+      if (!row) throw new AppError(404, "revision_not_found", "This revision does not exist");
+      revisionId = row.id;
+    }
+    if (!revisionId) {
+      throw new AppError(409, "not_finalized", "Finalize the document before you download a PDF");
+    }
+    return pdfResponse(await getPdf(c.env, db, revisionId, { wait: true }), "json");
+  });

@@ -237,14 +237,6 @@ describe("GET /p/:token", () => {
     html = await (await visit(`/p/${await tokenOf(other)}`)).text();
     expect(html).toContain("<strong>Void</strong>");
   });
-
-  it("serves a placeholder for the PDF until U12", async () => {
-    const token = await tokenOf(await sentInvoice({ clientId }));
-    const res = await visit(`/p/${token}/pdf`);
-    expect(res.status).toBe(503);
-    expect(await res.text()).toBe("PDF not available yet");
-    expect((await visit("/p/nope/pdf")).status).toBe(404);
-  });
 });
 
 describe("POST /p/:token/decision", () => {

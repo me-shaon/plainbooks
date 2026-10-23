@@ -14,6 +14,7 @@ import { DOCUMENT_CSS_PATH } from "../render/styles";
 import { guardedActivity } from "../services/activity";
 import { decideQuote, getDocumentByToken, getRevision, loadWorkspace } from "../services/documents";
 import { enqueue } from "../services/jobs";
+import { getPdf, pdfResponse } from "../services/pdf";
 
 /** The job U13 handles: emails the sender and every Owner about a quote decision. */
 export const QUOTE_DECISION_JOB = "notify_quote_decision";
@@ -204,17 +205,10 @@ export const publicRoutes = new Hono<AppEnv>()
   .get("/:token/pdf", async (c) => {
     const doc = await getDocumentByToken(c.var.db, c.req.param("token"));
     if (!doc?.currentRevisionId) return notFoundPage();
-    // U12 replaces this with the cached PDF.
-    return new Response("PDF not available yet", {
-      status: 503,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Robots-Tag": "noindex, nofollow",
-        "Referrer-Policy": "no-referrer",
-        "Retry-After": "60",
-      },
-    });
+    return pdfResponse(
+      await getPdf(c.env, c.var.db, doc.currentRevisionId, { wait: true }),
+      "html",
+    );
   })
   .post("/:token/decision", async (c) => {
     const db = c.var.db;
