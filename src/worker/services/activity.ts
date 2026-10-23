@@ -26,6 +26,9 @@ export const ACTIVITY_TYPES = [
   "viewed",
   "invoice_overdue",
   "quote_expired",
+  "send_failed",
+  "email_bounced",
+  "email_complained",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

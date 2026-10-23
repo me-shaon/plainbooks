@@ -13,7 +13,7 @@ import { cspNonce, documentHeaders } from "../render/http";
 import { DOCUMENT_CSS_PATH } from "../render/styles";
 import { guardedActivity } from "../services/activity";
 import { decideQuote, getDocumentByToken, getRevision, loadWorkspace } from "../services/documents";
-import { enqueue } from "../services/jobs";
+import { enqueue, runJobSoon } from "../services/jobs";
 import { getPdf, pdfResponse } from "../services/pdf";
 
 /** The job U13 handles: emails the sender and every Owner about a quote decision. */
@@ -247,11 +247,18 @@ export const publicRoutes = new Hono<AppEnv>()
       decision,
       recipientUserIds: await decisionRecipients(db, decided),
     };
-    await enqueue(
+    const job = await enqueue(
       db,
       { type: QUOTE_DECISION_JOB, payload, idempotencyKey: `${QUOTE_DECISION_JOB}:${decided.id}` },
       now,
     );
+    if (job.created) {
+      try {
+        runJobSoon(c.executionCtx, c.env, job.id);
+      } catch {
+        // No execution context (tests). The cron tick runs the job.
+      }
+    }
     return documentPage(db, decided, token, now, {
       notice: (
         <Notice tone="success">

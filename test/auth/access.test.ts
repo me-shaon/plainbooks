@@ -142,6 +142,7 @@ describe("Access JWT verification", () => {
     }
     const exempt = await apiFetch("/api/webhooks/resend", { method: "POST" });
     expect(exempt.status).not.toBe(401);
+    expect(await exempt.json()).toMatchObject({ code: "invalid_signature" });
   });
 
   it("does not run on /p/* public links", async () => {

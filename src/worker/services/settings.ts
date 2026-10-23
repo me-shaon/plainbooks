@@ -49,6 +49,7 @@ export async function getWorkspaceSettings(db: Db): Promise<WorkspaceSettings> {
     reminderSchedule: row.reminderSchedule,
     overdueReminderCap: row.overdueReminderCap,
     emailFromName: row.emailFromName,
+    emailFromAddress: row.emailFromAddress,
     replyToEmail: row.replyToEmail,
   };
 }

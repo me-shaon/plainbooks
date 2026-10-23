@@ -8,6 +8,7 @@ import { settingsRoutes } from "./settings";
 import { taxRateRoutes } from "./tax-rates";
 import { teamRoutes } from "./team";
 import { templateRoutes } from "./templates";
+import { webhookRoutes } from "./webhooks";
 
 /**
  * The authenticated API, mounted at /api. Add each feature's routes here with
@@ -22,6 +23,7 @@ export const api = new Hono<AppEnv>()
   .route("/templates", templateRoutes)
   .route("/custom-fields", customFieldRoutes)
   .route("/settings", settingsRoutes)
-  .route("/team", teamRoutes);
+  .route("/team", teamRoutes)
+  .route("/webhooks", webhookRoutes);
 
 export type Api = typeof api;

@@ -58,6 +58,7 @@ type Values = Pick<
   | "defaultTemplateId"
   | "defaultTaxRateId"
   | "emailFromName"
+  | "emailFromAddress"
   | "replyToEmail"
 >;
 
@@ -80,6 +81,7 @@ export function WorkspaceSettingsForm({
     defaultTemplateId: settings.defaultTemplateId,
     defaultTaxRateId: settings.defaultTaxRateId,
     emailFromName: settings.emailFromName,
+    emailFromAddress: settings.emailFromAddress,
     replyToEmail: settings.replyToEmail,
   }));
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -256,6 +258,15 @@ export function WorkspaceSettingsForm({
             value={values.emailFromName ?? ""}
             onChange={(text) => set("emailFromName", text)}
             {...fieldError(errors, "emailFromName")}
+          />
+          <TextField
+            label="Sender email"
+            type="email"
+            description="Use an address on a domain you verified in Resend."
+            isDisabled={disabled}
+            value={values.emailFromAddress ?? ""}
+            onChange={(text) => set("emailFromAddress", text)}
+            {...fieldError(errors, "emailFromAddress")}
           />
           <TextField
             label="Reply-to email"

@@ -45,3 +45,45 @@ export function addDays(isoDate: string, days: number): string {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
+
+const offsetFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** The offset of `timeZone` from UTC at `instant`, in ms (Asia/Dhaka is +6 h). */
+function zoneOffsetMs(timeZone: string, instant: number): number {
+  let formatter = offsetFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    offsetFormatters.set(timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(instant);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const asUtc = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return asUtc - Math.floor(instant / 1000) * 1000;
+}
+
+/** The UTC instant (ms) of a wall-clock time on `isoDate` in `timeZone`. */
+export function zonedTime(timeZone: string, isoDate: string, hour = 0, minute = 0): number {
+  if (!isIsoDate(isoDate)) throw new RangeError(`Invalid date: ${isoDate}`);
+  const [y, m, d] = isoDate.split("-").map(Number) as [number, number, number];
+  const guess = Date.UTC(y, m - 1, d, hour, minute);
+  const first = guess - zoneOffsetMs(timeZone, guess);
+  const offset = zoneOffsetMs(timeZone, first);
+  return guess - offset;
+}

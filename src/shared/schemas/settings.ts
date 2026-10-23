@@ -69,6 +69,13 @@ export const workspaceSettingsInput = z
     recurringSendMode: z.enum(SEND_MODES),
     reminderSchedule,
     emailFromName: optionalText(80),
+    emailFromAddress: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .pipe(z.union([z.literal(""), z.email("Enter a valid email address")]))
+      .nullish()
+      .transform((value) => (value ? value : null)),
     replyToEmail: z
       .string()
       .trim()
@@ -162,6 +169,8 @@ export interface WorkspaceSettings {
   reminderSchedule: ReminderStep[];
   overdueReminderCap: number;
   emailFromName: string | null;
+  /** The sender address. It must be on a domain verified in Resend. */
+  emailFromAddress: string | null;
   replyToEmail: string | null;
 }
 

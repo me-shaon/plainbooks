@@ -100,6 +100,8 @@ export const workspace = sqliteTable(
     bankDetails: text("bank_details"),
     footerText: text("footer_text"),
     emailFromName: text("email_from_name"),
+    /** The verified Resend sender address, for example "billing@studio.example". */
+    emailFromAddress: text("email_from_address"),
     replyToEmail: text("reply_to_email"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

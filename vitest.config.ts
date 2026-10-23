@@ -16,7 +16,12 @@ export default defineConfig(async () => {
             cloudflareTest({
               wrangler: { configPath: "./wrangler.jsonc" },
               miniflare: {
-                bindings: { TEST_MIGRATIONS: migrations },
+                bindings: {
+                  TEST_MIGRATIONS: migrations,
+                  RESEND_API_KEY: "re_test_key",
+                  // base64 of "test-webhook-secret-0123456789ab"
+                  RESEND_WEBHOOK_SECRET: "whsec_dGVzdC13ZWJob29rLXNlY3JldC0wMTIzNDU2Nzg5YWI=",
+                },
                 assets: {
                   directory: fileURLToPath(new URL("./test/fixtures/assets", import.meta.url)),
                   binding: "ASSETS",

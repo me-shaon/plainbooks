@@ -7,6 +7,7 @@ import {
   paymentInput,
   writeOffInput,
 } from "../../shared/schemas/document";
+import { sendDocumentInput } from "../../shared/schemas/email";
 import { schema } from "../db/client";
 import type { AppEnv } from "../env";
 import { AppError, parseJson } from "../errors";
@@ -25,6 +26,7 @@ import {
   updateDraft,
   voidDocument,
 } from "../services/documents";
+import { markSentManually, sendDocument } from "../services/email";
 import { deletePayment, recordPayment, writeOffRemainder } from "../services/payments";
 import { getPdf, pdfResponse } from "../services/pdf";
 
@@ -65,6 +67,31 @@ export const documentRoutes = new Hono<AppEnv>()
       document: await getDocumentDetail(c.var.db, result.document.id, { now }),
       revisionId: result.revision.id,
       allocated: result.allocated,
+    });
+  })
+  .post("/:id/send", async (c) => {
+    const input = await parseJson(c, sendDocumentInput);
+    const now = Date.now();
+    const result = await sendDocument(c.env, c.var.db, c.req.param("id"), {
+      actor: c.var.user,
+      now,
+      recipients: input.recipients,
+      subject: input.subject,
+      message: input.message,
+    });
+    return c.json({
+      document: await getDocumentDetail(c.var.db, result.document.id, { now }),
+      revisionId: result.revisionId,
+      emailId: result.emailId,
+      recipients: result.recipients,
+    });
+  })
+  .post("/:id/mark-sent", async (c) => {
+    const now = Date.now();
+    const result = await markSentManually(c.var.db, c.req.param("id"), { actor: c.var.user, now });
+    return c.json({
+      document: await getDocumentDetail(c.var.db, result.document.id, { now }),
+      revisionId: result.revisionId,
     });
   })
   .post("/:id/revise", async (c) => {

@@ -331,7 +331,11 @@ export async function runJobById(
  * Runs a job right after the response, so interactive actions do not wait for the next
  * cron tick. The cron tick stays the backstop if this run fails or the isolate stops.
  */
-export function runJobSoon(ctx: ExecutionContext, env: Bindings, jobId: string): void {
+export function runJobSoon(
+  ctx: Pick<ExecutionContext, "waitUntil">,
+  env: Bindings,
+  jobId: string,
+): void {
   ctx.waitUntil(
     runJobById(env, jobId).then(
       () => undefined,

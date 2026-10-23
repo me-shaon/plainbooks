@@ -30,6 +30,8 @@
     "ACCESS_TEAM_DOMAIN": "your-team.cloudflareaccess.com",
     "ACCESS_AUD": "replace-with-access-application-aud",
     "OWNER_EMAIL": "owner@example.com",
+    // The public origin for links in emails, for example "https://invoices.example.com".
+    "APP_URL": "https://invoices.example.com",
     "APP_ENV": "production"
   }
 }
