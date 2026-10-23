@@ -356,6 +356,8 @@ export async function createDraft(
   db: Db,
   data: DocumentCreateData,
   ctx: ActionContext,
+  /** Set by the recurring scheduler (U15). The pair is unique, so a period runs once. */
+  origin?: { recurringScheduleId: string; recurringPeriodId: string },
 ): Promise<string> {
   assertReminderModeAllowed(ctx.actor, "inherit", data.reminderMode);
   const client = await assertClient(db, data.clientId);
@@ -387,6 +389,8 @@ export async function createDraft(
     discountTotal: totals.discount,
     taxTotal: totals.taxTotal,
     total: totals.total,
+    recurringScheduleId: origin?.recurringScheduleId ?? null,
+    recurringPeriodId: origin?.recurringPeriodId ?? null,
     createdBy: ctx.actor?.id ?? null,
     createdAt: ctx.now,
     updatedAt: ctx.now,
@@ -397,7 +401,7 @@ export async function createDraft(
     ...replaceCustomFields(d1, id, data.customFields),
     guardedActivity(
       d1,
-      activityOf(id, data.clientId, "created", ctx, { kind: data.kind }),
+      activityOf(id, data.clientId, "created", ctx, { kind: data.kind, ...origin }),
       "1",
       [],
     ),

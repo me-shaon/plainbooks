@@ -20,6 +20,7 @@ import { Route as InvoicesNewRouteImport } from './routes/invoices/new'
 import { Route as QuotesIndexRouteImport } from './routes/quotes/index'
 import { Route as QuotesNewRouteImport } from './routes/quotes/new'
 import { Route as RecurringIndexRouteImport } from './routes/recurring/index'
+import { Route as RecurringScheduleIdRouteImport } from './routes/recurring/$scheduleId'
 import { Route as ReportsIndexRouteImport } from './routes/reports/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsRemindersRouteImport } from './routes/settings/reminders'
@@ -87,6 +88,11 @@ const RecurringIndexRoute = RecurringIndexRouteImport.update({
   path: '/recurring/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RecurringScheduleIdRoute = RecurringScheduleIdRouteImport.update({
+  id: '/recurring/$scheduleId',
+  path: '/recurring/$scheduleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsIndexRoute = ReportsIndexRouteImport.update({
   id: '/reports/',
   path: '/reports/',
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/clients/$clientId': typeof ClientsClientIdRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
+  '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/clients/$clientId': typeof ClientsClientIdRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
+  '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   '/clients/$clientId': typeof ClientsClientIdRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
+  '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/invoices/new'
     | '/quotes/new'
+    | '/recurring/$scheduleId'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/invoices/new'
     | '/quotes/new'
+    | '/recurring/$scheduleId'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/invoices/new'
     | '/quotes/new'
+    | '/recurring/$scheduleId'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -296,6 +308,7 @@ export interface RootRouteChildren {
   ClientsClientIdRoute: typeof ClientsClientIdRoute
   InvoicesNewRoute: typeof InvoicesNewRoute
   QuotesNewRoute: typeof QuotesNewRoute
+  RecurringScheduleIdRoute: typeof RecurringScheduleIdRoute
   TemplatesTemplateIdRoute: typeof TemplatesTemplateIdRoute
   BrandKitIndexRoute: typeof BrandKitIndexRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
@@ -387,6 +400,13 @@ declare module '@tanstack/react-router' {
       path: '/recurring'
       fullPath: '/recurring/'
       preLoaderRoute: typeof RecurringIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recurring/$scheduleId': {
+      id: '/recurring/$scheduleId'
+      path: '/recurring/$scheduleId'
+      fullPath: '/recurring/$scheduleId'
+      preLoaderRoute: typeof RecurringScheduleIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports/': {
@@ -494,6 +514,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsClientIdRoute: ClientsClientIdRoute,
   InvoicesNewRoute: InvoicesNewRoute,
   QuotesNewRoute: QuotesNewRoute,
+  RecurringScheduleIdRoute: RecurringScheduleIdRoute,
   TemplatesTemplateIdRoute: TemplatesTemplateIdRoute,
   BrandKitIndexRoute: BrandKitIndexRoute,
   ClientsIndexRoute: ClientsIndexRoute,

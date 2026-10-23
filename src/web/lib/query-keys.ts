@@ -22,6 +22,11 @@ export const queryKeys = {
     sendPreview: (id: string, revise: boolean) =>
       ["documents", "send-preview", id, { revise }] as const,
   },
+  recurring: {
+    all: ["recurring"] as const,
+    list: ["recurring", "list"] as const,
+    detail: (id: string) => ["recurring", "detail", id] as const,
+  },
   fx: {
     rate: (currency: string, date: string) => ["fx", "rate", currency, date] as const,
   },

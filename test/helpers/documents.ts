@@ -27,6 +27,8 @@ export async function resetDocuments(): Promise<void> {
     env.DB.prepare("DELETE FROM custom_field_values"),
     env.DB.prepare("DELETE FROM custom_field_defs"),
     env.DB.prepare("DELETE FROM document_lines"),
+    env.DB.prepare("DELETE FROM recurring_schedule_lines"),
+    env.DB.prepare("DELETE FROM recurring_schedules"),
     env.DB.prepare("DELETE FROM documents"),
     env.DB.prepare("DELETE FROM client_contacts"),
     env.DB.prepare("DELETE FROM clients"),

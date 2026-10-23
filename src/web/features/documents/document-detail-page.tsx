@@ -9,6 +9,7 @@ import {
   FileOutput,
   Link2,
   Pencil,
+  RotateCw,
   Send,
   Trash2,
   Wallet,
@@ -25,6 +26,7 @@ import { DetailItem, Section } from "../../components/ui/section";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toast } from "../../components/ui/toast";
 import { formatDate, formatMoney } from "../../lib/format";
+import { MakeRecurringDialog } from "../recurring/make-recurring-dialog";
 import { ActivityTimeline } from "./activity-timeline";
 import { editPath, FX_PROVIDER_LABELS } from "./labels";
 import { PaymentDialog } from "./payment-dialog";
@@ -110,6 +112,7 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
   const actions = documentActions(doc);
   const [sending, setSending] = useState(openSend && actions.canSend);
   const [paying, setPaying] = useState(false);
+  const [repeating, setRepeating] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
 
@@ -234,6 +237,14 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
     });
   }
   menuItems.push({ id: "duplicate", label: "Duplicate", icon: <Copy />, run: onDuplicate });
+  if (doc.kind === "invoice" && doc.status !== "void" && doc.lines.length > 0) {
+    menuItems.push({
+      id: "recurring",
+      label: "Make recurring",
+      icon: <RotateCw />,
+      run: () => setRepeating(true),
+    });
+  }
   if (actions.canVoid) {
     menuItems.push({
       id: "void",
@@ -494,6 +505,14 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
       </div>
 
       <SendDialog isOpen={sending} onOpenChange={setSending} document={doc} />
+      {doc.kind === "invoice" ? (
+        <MakeRecurringDialog
+          isOpen={repeating}
+          onOpenChange={setRepeating}
+          document={doc}
+          today={today}
+        />
+      ) : null}
       {actions.canPay ? (
         <PaymentDialog isOpen={paying} onOpenChange={setPaying} document={doc} today={today} />
       ) : null}
