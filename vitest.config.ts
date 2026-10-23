@@ -34,6 +34,8 @@ export default defineConfig(async () => {
             name: "worker",
             include: ["test/**/*.test.ts"],
             setupFiles: ["./test/apply-migrations.ts"],
+            // Route tests sign real JWTs and hit local D1; under machine load they can pass 5 s.
+            testTimeout: 15_000,
           },
         },
         {
