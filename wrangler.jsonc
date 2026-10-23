@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "invoicing",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/p/*", "/render/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "invoicing",
+      // Placeholder. Replace with the ID from `wrangler d1 create invoicing`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "invoicing-files" }],
+  "browser": { "binding": "BROWSER" },
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // Secrets (set with `wrangler secret put`): RESEND_API_KEY, RESEND_WEBHOOK_SECRET.
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "your-team.cloudflareaccess.com",
+    "ACCESS_AUD": "replace-with-access-application-aud",
+    "OWNER_EMAIL": "owner@example.com",
+    "APP_ENV": "production"
+  }
+}
