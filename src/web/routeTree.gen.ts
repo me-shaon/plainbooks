@@ -24,6 +24,7 @@ import { Route as SettingsRemindersRouteImport } from './routes/settings/reminde
 import { Route as SettingsTaxRatesRouteImport } from './routes/settings/tax-rates'
 import { Route as SettingsTeamRouteImport } from './routes/settings/team'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
+import { Route as TemplatesTemplateIdRouteImport } from './routes/templates/$templateId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -100,6 +101,11 @@ const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
   path: '/templates/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TemplatesTemplateIdRoute = TemplatesTemplateIdRouteImport.update({
+  id: '/templates/$templateId',
+  path: '/templates/$templateId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
+  '/templates/$templateId': typeof TemplatesTemplateIdRoute
   '/brand-kit/': typeof BrandKitIndexRoute
   '/clients/': typeof ClientsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
+  '/templates/$templateId': typeof TemplatesTemplateIdRoute
   '/brand-kit': typeof BrandKitIndexRoute
   '/clients': typeof ClientsIndexRoute
   '/invoices': typeof InvoicesIndexRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
+  '/templates/$templateId': typeof TemplatesTemplateIdRoute
   '/brand-kit/': typeof BrandKitIndexRoute
   '/clients/': typeof ClientsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
+    | '/templates/$templateId'
     | '/brand-kit/'
     | '/clients/'
     | '/invoices/'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
+    | '/templates/$templateId'
     | '/brand-kit'
     | '/clients'
     | '/invoices'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
+    | '/templates/$templateId'
     | '/brand-kit/'
     | '/clients/'
     | '/invoices/'
@@ -210,6 +222,7 @@ export interface RootRouteChildren {
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   DesignRoute: typeof DesignRoute
   ClientsClientIdRoute: typeof ClientsClientIdRoute
+  TemplatesTemplateIdRoute: typeof TemplatesTemplateIdRoute
   BrandKitIndexRoute: typeof BrandKitIndexRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
@@ -326,6 +339,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TemplatesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/templates/$templateId': {
+      id: '/templates/$templateId'
+      path: '/templates/$templateId'
+      fullPath: '/templates/$templateId'
+      preLoaderRoute: typeof TemplatesTemplateIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -352,6 +372,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
   DesignRoute: DesignRoute,
   ClientsClientIdRoute: ClientsClientIdRoute,
+  TemplatesTemplateIdRoute: TemplatesTemplateIdRoute,
   BrandKitIndexRoute: BrandKitIndexRoute,
   ClientsIndexRoute: ClientsIndexRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,

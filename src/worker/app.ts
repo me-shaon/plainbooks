@@ -3,6 +3,7 @@ import { accessAuth } from "./auth/middleware";
 import type { AppEnv } from "./env";
 import { handleError } from "./errors";
 import { api } from "./routes";
+import { renderRoutes } from "./routes/render";
 import { publicAssetRoutes } from "./routes/uploads";
 
 /** The HTTP app. Every /api/* and /render/* request passes `accessAuth` first. */
@@ -14,6 +15,7 @@ app.use("/api/*", accessAuth);
 app.use("/render/*", accessAuth);
 
 app.route("/api", api);
+app.route("/render", renderRoutes);
 // Public: no Access check. Public pages (U11) mount here too.
 app.route("/p/assets", publicAssetRoutes);
 

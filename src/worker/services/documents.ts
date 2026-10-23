@@ -3,11 +3,7 @@
 // D1 has no interactive transactions, so each change is one batch of conditional
 // statements, and the code checks the affected rows of the guarded UPDATE.
 import { and, asc, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
-import {
-  DEFAULT_TEMPLATE_CONFIG,
-  type ReminderModeSetting,
-  type TemplateConfig,
-} from "../../shared/domain";
+import { DEFAULT_TEMPLATE_CONFIG, type ReminderModeSetting } from "../../shared/domain";
 import {
   calculateTotals,
   convertTotals,
@@ -31,6 +27,7 @@ import {
   type RevisionSummary,
   type SnapshotCustomField,
 } from "../../shared/schemas/document";
+import { normalizeTemplateConfig } from "../../shared/schemas/template";
 import { addDays, todayIn } from "../../shared/time";
 import { type Db, schema } from "../db/client";
 import type { Document, DocumentRevision, Workspace } from "../db/schema";
@@ -572,7 +569,11 @@ export async function duplicateDocument(db: Db, id: string, ctx: ActionContext):
 // Snapshots
 // ---------------------------------------------------------------------------
 
-async function resolveTemplate(
+/**
+ * The template for a document: the document override, then the client default, then the
+ * workspace default, then the built-in classic config.
+ */
+export async function resolveTemplate(
   db: Db,
   ws: Workspace,
   documentTemplateId: string | null,
@@ -584,7 +585,7 @@ async function resolveTemplate(
       .select({ id: templates.id, name: templates.name, config: templates.config })
       .from(templates)
       .where(eq(templates.id, templateId));
-    if (row) return { id: row.id, name: row.name, config: row.config as TemplateConfig };
+    if (row) return { id: row.id, name: row.name, config: normalizeTemplateConfig(row.config) };
   }
   return { id: null, name: "Default", config: DEFAULT_TEMPLATE_CONFIG };
 }

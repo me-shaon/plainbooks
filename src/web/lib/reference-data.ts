@@ -18,7 +18,7 @@ export function useTaxRates({ includeArchived = false } = {}) {
 /** Active templates for pickers. */
 export function useTemplates() {
   return useQuery({
-    queryKey: queryKeys.templates.all,
+    queryKey: queryKeys.templates.list,
     queryFn: () => api<{ items: TemplateSummary[] }>("/templates").then((r) => r.items),
   });
 }

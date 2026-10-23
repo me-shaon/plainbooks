@@ -21,6 +21,7 @@ import { Cell, Column, Row, Table, TableBody, TableHeader } from "../../componen
 import { toast } from "../../components/ui/toast";
 import { formatDate, formatMoney } from "../../lib/format";
 import { useTaxRates, useTemplates } from "../../lib/reference-data";
+import { ClientCustomFields } from "../templates/client-custom-fields";
 import { ClientFormDialog } from "./client-form";
 import { useArchiveClient, useClient } from "./queries";
 
@@ -131,6 +132,7 @@ export function ClientDetailPage({ clientId }: { clientId: string }) {
         <div className="flex min-w-0 flex-col gap-5">
           <ContactsSection detail={detail} />
           <DefaultsSection detail={detail} />
+          <ClientCustomFields clientId={detail.client.id} />
         </div>
       </div>
 

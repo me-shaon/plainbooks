@@ -18,6 +18,14 @@ export const queryKeys = {
   },
   templates: {
     all: ["templates"] as const,
+    list: ["templates", "list"] as const,
+    detail: (id: string) => ["templates", "detail", id] as const,
+  },
+  customFields: {
+    all: ["custom-fields"] as const,
+    list: (includeArchived: boolean) => ["custom-fields", "list", { includeArchived }] as const,
+    values: (scope: "workspace" | "client", entityId: string) =>
+      ["custom-fields", "values", scope, entityId] as const,
   },
   settings: {
     all: ["settings"] as const,
