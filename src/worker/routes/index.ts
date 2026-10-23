@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { clientRoutes } from "./clients";
 import { meRoutes } from "./me";
+import { settingsRoutes } from "./settings";
 import { taxRateRoutes } from "./tax-rates";
+import { teamRoutes } from "./team";
 import { templateRoutes } from "./templates";
 
 /**
@@ -14,6 +16,8 @@ export const api = new Hono<AppEnv>()
   .route("/me", meRoutes)
   .route("/clients", clientRoutes)
   .route("/tax-rates", taxRateRoutes)
-  .route("/templates", templateRoutes);
+  .route("/templates", templateRoutes)
+  .route("/settings", settingsRoutes)
+  .route("/team", teamRoutes);
 
 export type Api = typeof api;

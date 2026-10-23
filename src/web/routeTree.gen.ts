@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DesignRouteImport } from './routes/[_]design'
+import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as BrandKitIndexRouteImport } from './routes/brand-kit/index'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsClientIdRouteImport } from './routes/clients/$clientId'
@@ -19,6 +20,9 @@ import { Route as QuotesIndexRouteImport } from './routes/quotes/index'
 import { Route as RecurringIndexRouteImport } from './routes/recurring/index'
 import { Route as ReportsIndexRouteImport } from './routes/reports/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsRemindersRouteImport } from './routes/settings/reminders'
+import { Route as SettingsTaxRatesRouteImport } from './routes/settings/tax-rates'
+import { Route as SettingsTeamRouteImport } from './routes/settings/team'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 
 const IndexRoute = IndexRouteImport.update({
@@ -29,6 +33,11 @@ const IndexRoute = IndexRouteImport.update({
 const DesignRoute = DesignRouteImport.update({
   id: '/_design',
   path: '/_design',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRouteRoute = SettingsRouteRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrandKitIndexRoute = BrandKitIndexRouteImport.update({
@@ -67,9 +76,24 @@ const ReportsIndexRoute = ReportsIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/settings/',
-  path: '/settings/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsRemindersRoute = SettingsRemindersRouteImport.update({
+  id: '/reminders',
+  path: '/reminders',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsTaxRatesRoute = SettingsTaxRatesRouteImport.update({
+  id: '/tax-rates',
+  path: '/tax-rates',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsTeamRoute = SettingsTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => SettingsRouteRoute,
 } as any)
 const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
   id: '/templates/',
@@ -79,8 +103,12 @@ const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/_design': typeof DesignRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/settings/reminders': typeof SettingsRemindersRoute
+  '/settings/tax-rates': typeof SettingsTaxRatesRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/brand-kit/': typeof BrandKitIndexRoute
   '/clients/': typeof ClientsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
@@ -94,6 +122,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/_design': typeof DesignRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/settings/reminders': typeof SettingsRemindersRoute
+  '/settings/tax-rates': typeof SettingsTaxRatesRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/brand-kit': typeof BrandKitIndexRoute
   '/clients': typeof ClientsIndexRoute
   '/invoices': typeof InvoicesIndexRoute
@@ -106,8 +137,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/_design': typeof DesignRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/settings/reminders': typeof SettingsRemindersRoute
+  '/settings/tax-rates': typeof SettingsTaxRatesRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/brand-kit/': typeof BrandKitIndexRoute
   '/clients/': typeof ClientsIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
@@ -121,8 +156,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/settings'
     | '/_design'
     | '/clients/$clientId'
+    | '/settings/reminders'
+    | '/settings/tax-rates'
+    | '/settings/team'
     | '/brand-kit/'
     | '/clients/'
     | '/invoices/'
@@ -136,6 +175,9 @@ export interface FileRouteTypes {
     | '/'
     | '/_design'
     | '/clients/$clientId'
+    | '/settings/reminders'
+    | '/settings/tax-rates'
+    | '/settings/team'
     | '/brand-kit'
     | '/clients'
     | '/invoices'
@@ -147,8 +189,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/settings'
     | '/_design'
     | '/clients/$clientId'
+    | '/settings/reminders'
+    | '/settings/tax-rates'
+    | '/settings/team'
     | '/brand-kit/'
     | '/clients/'
     | '/invoices/'
@@ -161,6 +207,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   DesignRoute: typeof DesignRoute
   ClientsClientIdRoute: typeof ClientsClientIdRoute
   BrandKitIndexRoute: typeof BrandKitIndexRoute
@@ -169,7 +216,6 @@ export interface RootRouteChildren {
   QuotesIndexRoute: typeof QuotesIndexRoute
   RecurringIndexRoute: typeof RecurringIndexRoute
   ReportsIndexRoute: typeof ReportsIndexRoute
-  SettingsIndexRoute: typeof SettingsIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
 }
 
@@ -187,6 +233,13 @@ declare module '@tanstack/react-router' {
       path: '/_design'
       fullPath: '/_design'
       preLoaderRoute: typeof DesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/brand-kit/': {
@@ -240,10 +293,31 @@ declare module '@tanstack/react-router' {
     }
     '/settings/': {
       id: '/settings/'
-      path: '/settings'
+      path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/reminders': {
+      id: '/settings/reminders'
+      path: '/reminders'
+      fullPath: '/settings/reminders'
+      preLoaderRoute: typeof SettingsRemindersRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/tax-rates': {
+      id: '/settings/tax-rates'
+      path: '/tax-rates'
+      fullPath: '/settings/tax-rates'
+      preLoaderRoute: typeof SettingsTaxRatesRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/team': {
+      id: '/settings/team'
+      path: '/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof SettingsTeamRouteImport
+      parentRoute: typeof SettingsRouteRoute
     }
     '/templates/': {
       id: '/templates/'
@@ -255,8 +329,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface SettingsRouteRouteChildren {
+  SettingsRemindersRoute: typeof SettingsRemindersRoute
+  SettingsTaxRatesRoute: typeof SettingsTaxRatesRoute
+  SettingsTeamRoute: typeof SettingsTeamRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
+  SettingsRemindersRoute: SettingsRemindersRoute,
+  SettingsTaxRatesRoute: SettingsTaxRatesRoute,
+  SettingsTeamRoute: SettingsTeamRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(
+  SettingsRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SettingsRouteRoute: SettingsRouteRouteWithChildren,
   DesignRoute: DesignRoute,
   ClientsClientIdRoute: ClientsClientIdRoute,
   BrandKitIndexRoute: BrandKitIndexRoute,
@@ -265,7 +358,6 @@ const rootRouteChildren: RootRouteChildren = {
   QuotesIndexRoute: QuotesIndexRoute,
   RecurringIndexRoute: RecurringIndexRoute,
   ReportsIndexRoute: ReportsIndexRoute,
-  SettingsIndexRoute: SettingsIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
 }
 export const routeTree = rootRouteImport
