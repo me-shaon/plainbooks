@@ -1,5 +1,6 @@
 import type { DocumentKind, FxProvider } from "../../../shared/domain";
 import type { ActivityEntry, DocumentListQuery } from "../../../shared/schemas/document";
+import { reminderOffsetText } from "../../../shared/schemas/reminder";
 import { formatDate, formatMoney } from "../../lib/format";
 
 export const FX_PROVIDER_LABELS: Record<FxProvider, string> = {
@@ -68,6 +69,8 @@ export function activityText(
     detail = `Revision ${data.revisionNumber}`;
   } else if (entry.type === "sent" && data.trigger === "auto") {
     detail = "Sent automatically";
+  } else if (entry.type === "reminder_sent" && typeof data.offsetDays === "number") {
+    detail = `${reminderOffsetText(data.offsetDays)}${data.trigger === "auto" ? " · Sent automatically" : ""}`;
   } else if (entry.type === "send_failed" && typeof data.message === "string") {
     detail = data.message;
   } else if (typeof data.comment === "string" && data.comment) {

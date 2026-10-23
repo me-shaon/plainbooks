@@ -27,6 +27,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { toast } from "../../components/ui/toast";
 import { formatDate, formatMoney } from "../../lib/format";
 import { MakeRecurringDialog } from "../recurring/make-recurring-dialog";
+import { ReminderPanel } from "../reminders/reminder-panel";
 import { ActivityTimeline } from "./activity-timeline";
 import { editPath, FX_PROVIDER_LABELS } from "./labels";
 import { PaymentDialog } from "./payment-dialog";
@@ -458,6 +459,8 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
               )}
             </Section>
           ) : null}
+
+          {doc.kind === "invoice" && doc.number !== null ? <ReminderPanel document={doc} /> : null}
 
           <Section title="Activity">
             <ActivityTimeline

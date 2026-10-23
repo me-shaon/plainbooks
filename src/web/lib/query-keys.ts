@@ -27,6 +27,11 @@ export const queryKeys = {
     list: ["recurring", "list"] as const,
     detail: (id: string) => ["recurring", "detail", id] as const,
   },
+  reminders: {
+    all: ["reminders"] as const,
+    suggestions: ["reminders", "suggestions"] as const,
+    status: (documentId: string) => ["reminders", "status", documentId] as const,
+  },
   fx: {
     rate: (currency: string, date: string) => ["fx", "rate", currency, date] as const,
   },

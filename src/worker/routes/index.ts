@@ -6,6 +6,7 @@ import { documentRoutes } from "./documents";
 import { fxRoutes } from "./fx";
 import { meRoutes } from "./me";
 import { recurringRoutes } from "./recurring";
+import { reminderDocumentRoutes, reminderRoutes } from "./reminders";
 import { settingsRoutes } from "./settings";
 import { taxRateRoutes } from "./tax-rates";
 import { teamRoutes } from "./team";
@@ -21,6 +22,8 @@ export const api = new Hono<AppEnv>()
   .route("/me", meRoutes)
   .route("/clients", clientRoutes)
   .route("/documents", documentRoutes)
+  .route("/documents", reminderDocumentRoutes)
+  .route("/reminders", reminderRoutes)
   .route("/fx", fxRoutes)
   .route("/recurring", recurringRoutes)
   .route("/tax-rates", taxRateRoutes)

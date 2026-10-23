@@ -1,6 +1,7 @@
 import { app } from "./app";
 import "./services/email";
 import "./services/recurring";
+import "./services/reminders";
 import { runTick } from "./services/scheduler";
 
 // Feature services register job handlers and enqueue hooks at module scope.
