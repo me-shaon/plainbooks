@@ -2,3 +2,5 @@ APP_ENV=development
 DEV_USER_EMAIL=owner@example.com
 RESEND_API_KEY=re_replace_me
 RESEND_WEBHOOK_SECRET=whsec_replace_me
+# Local only. "1" swaps Resend, Frankfurter, and Browser Run for fakes.
+# FAKE_EXTERNALS=1

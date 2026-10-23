@@ -6,6 +6,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
+  // The Worker runs only on its custom domain. Access needs a custom domain (docs/setup.md).
+  // Replace the placeholder with your host. It must match APP_URL.
+  "routes": [{ "pattern": "invoices.example.com", "custom_domain": true }],
   "observability": { "enabled": true },
   "assets": {
     "directory": "./dist/client",
