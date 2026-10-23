@@ -3,6 +3,7 @@ import { accessAuth } from "./auth/middleware";
 import type { AppEnv } from "./env";
 import { handleError } from "./errors";
 import { api } from "./routes";
+import { publicRoutes } from "./routes/public";
 import { renderRoutes } from "./routes/render";
 import { publicAssetRoutes } from "./routes/uploads";
 
@@ -16,8 +17,9 @@ app.use("/render/*", accessAuth);
 
 app.route("/api", api);
 app.route("/render", renderRoutes);
-// Public: no Access check. Public pages (U11) mount here too.
+// Public: no Access check. Assets first, so /p/assets/* never reaches the token routes.
 app.route("/p/assets", publicAssetRoutes);
+app.route("/p", publicRoutes);
 
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 app.all("/render/*", (c) => c.text("Not found", 404));
