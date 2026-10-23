@@ -8,6 +8,7 @@ import { fxRoutes } from "./fx";
 import { meRoutes } from "./me";
 import { recurringRoutes } from "./recurring";
 import { reminderDocumentRoutes, reminderRoutes } from "./reminders";
+import { reportRoutes } from "./reports";
 import { settingsRoutes } from "./settings";
 import { taxRateRoutes } from "./tax-rates";
 import { teamRoutes } from "./team";
@@ -30,6 +31,7 @@ export const api = new Hono<AppEnv>()
   .route("/reminders", reminderRoutes)
   .route("/fx", fxRoutes)
   .route("/recurring", recurringRoutes)
+  .route("/reports", reportRoutes)
   .route("/tax-rates", taxRateRoutes)
   .route("/templates", templateRoutes)
   .route("/custom-fields", customFieldRoutes)

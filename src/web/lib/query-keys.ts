@@ -30,6 +30,12 @@ export const queryKeys = {
     all: ["documents", "dashboard"] as const,
     view: (recent: string) => ["documents", "dashboard", { recent }] as const,
   },
+  /** Reports. Under "documents" so document mutations refresh them too. */
+  reports: {
+    all: ["documents", "reports"] as const,
+    view: (report: string, query: Record<string, string | undefined>) =>
+      ["documents", "reports", report, query] as const,
+  },
   notifications: {
     all: ["notifications"] as const,
     list: (state: string, page: number) => ["notifications", "list", { state, page }] as const,
