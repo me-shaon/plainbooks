@@ -292,6 +292,8 @@ export interface DocumentSummary {
   balance: number;
   isOverdue: boolean;
   updatedAt: number;
+  /** The first line's description. Only list rows have it. */
+  summary?: string | null;
 }
 
 export interface DocumentLineView {
@@ -411,4 +413,33 @@ export function displayStatus(doc: StatusFields, today: string): DisplayStatus {
   if (isQuoteExpired(doc, today)) return "expired";
   if (doc.kind === "quote" && doc.status === "draft" && doc.number !== null) return "finalized";
   return doc.status;
+}
+
+/** GET /api/fx/rate and the send preview: a rate to the home currency, or why there is none. */
+export type FxQuote =
+  | {
+      status: "ok";
+      /** One document unit = `rate` home units. */
+      rate: string;
+      /** The provider's effective date. */
+      rateDate: string;
+      provider: FxProvider;
+    }
+  | { status: "manual_required"; message: string };
+
+/** GET /api/documents/:id/send-preview: what the send dialog shows before it sends. */
+export interface SendPreview {
+  /** The client's primary and billing contacts, primary first. */
+  recipients: string[];
+  /** The default subject. The number is the next free number for an unnumbered draft. */
+  subject: string;
+  /** True when the workspace has a sender address. */
+  emailConfigured: boolean;
+  emailsSentToday: number;
+  dailyLimit: number;
+  /** The issue date the send will use. */
+  issueDate: string;
+  homeCurrency: string;
+  /** Null when the document is in the home currency. */
+  fx: FxQuote | null;
 }

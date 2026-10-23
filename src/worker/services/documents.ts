@@ -1557,6 +1557,9 @@ export async function listDocuments(
         amountPaid: documents.amountPaid,
         isOverdue: documents.isOverdue,
         updatedAt: documents.updatedAt,
+        summary: sql<
+          string | null
+        >`(SELECT description FROM document_lines WHERE document_id = ${documents.id} ORDER BY position LIMIT 1)`,
       })
       .from(documents)
       .innerJoin(clients, eq(documents.clientId, clients.id))
@@ -1571,7 +1574,10 @@ export async function listDocuments(
       .where(where),
   ]);
   return {
-    items: rows.map((row) => summaryOf(row, row.clientName, today)),
+    items: rows.map((row) => ({
+      ...summaryOf(row, row.clientName, today),
+      summary: row.summary || null,
+    })),
     total: Number(count?.count ?? 0),
     page: query.page,
     pageSize: query.pageSize,

@@ -2,7 +2,7 @@
 // generic email job, and owner notifications.
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { EmailKind, Trigger } from "../../shared/domain";
-import type { DocumentSnapshot } from "../../shared/schemas/document";
+import type { DocumentSnapshot, FxQuote, SendPreview } from "../../shared/schemas/document";
 import { DAILY_EMAIL_LIMIT } from "../../shared/schemas/email";
 import { addDays, todayIn, zonedTime } from "../../shared/time";
 import { type Db, schema } from "../db/client";
@@ -12,9 +12,17 @@ import type { AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
 import { QUOTE_DECISION_JOB, type QuoteDecisionJobPayload } from "../routes/public";
 import { activityInsert } from "./activity";
-import { finalize, getRevision, loadDocument, loadWorkspace, markSent } from "./documents";
-import type { Fetcher } from "./fx";
+import {
+  finalize,
+  getRevision,
+  loadDocument,
+  loadWorkspace,
+  markSent,
+  workspaceToday,
+} from "./documents";
+import { type Fetcher, getRate } from "./fx";
 import { registerJobHandler } from "./jobs";
+import { counterName, formatDocumentNumber } from "./numbering";
 import { getPdf } from "./pdf";
 
 const { emailLog, clientContacts, users, notifications } = schema;
@@ -381,6 +389,80 @@ export async function sendDocument(
     trigger: opts.trigger ?? "manual",
   });
   return { document, revisionId, emailId: outcome.providerId, recipients };
+}
+
+/**
+ * What the send dialog shows: default recipients and subject, the daily email count, the
+ * issue date, and the exchange rate the send would use. `revise` previews the subject of
+ * the next revision ("Updated invoice"). It never allocates a number.
+ */
+export async function sendPreview(
+  db: Db,
+  documentId: string,
+  opts: { now: number; revise?: boolean; fetcher?: Fetcher },
+): Promise<SendPreview> {
+  const doc = await loadDocument(db, documentId);
+  const ws = await loadWorkspace(db);
+  const [recipients, sentToday, counter] = await Promise.all([
+    defaultRecipients(db, doc.clientId),
+    emailsSentToday(db, ws, opts.now),
+    doc.number
+      ? Promise.resolve(null)
+      : db
+          .select({ value: schema.counters.value })
+          .from(schema.counters)
+          .where(eq(schema.counters.name, counterName(doc.kind))),
+  ]);
+  const prefix = doc.kind === "invoice" ? ws.invoicePrefix : ws.quotePrefix;
+  const number =
+    doc.number ?? formatDocumentNumber(prefix, ws.numberPadding, (counter?.[0]?.value ?? 0) + 1);
+  const issueDate = doc.issueDate ?? workspaceToday(ws, opts.now);
+
+  let fx: FxQuote | null = null;
+  if (doc.currency !== ws.homeCurrency) {
+    const locked = doc.number !== null || doc.status !== "draft";
+    if ((doc.fxOverridden || locked) && doc.fxRate && doc.fxRateDate && doc.fxProvider) {
+      fx = { status: "ok", rate: doc.fxRate, rateDate: doc.fxRateDate, provider: doc.fxProvider };
+    } else {
+      const result = await getRate(db, opts.fetcher ?? ((input, init) => fetch(input, init)), {
+        from: doc.currency,
+        to: ws.homeCurrency,
+        date: issueDate,
+        now: opts.now,
+      });
+      fx =
+        result.status === "ok"
+          ? {
+              status: "ok",
+              rate: result.rate,
+              rateDate: result.rateDate,
+              provider: result.provider,
+            }
+          : { status: "manual_required", message: result.message };
+    }
+  }
+
+  const from = ws.businessName || ws.name;
+  const content = documentEmail({
+    kind: doc.kind,
+    number,
+    from,
+    clientName: "",
+    currency: doc.currency,
+    total: doc.total,
+    publicUrl: "",
+    revised: doc.kind === "invoice" && (opts.revise === true || doc.revisionCount > 1),
+  });
+  return {
+    recipients,
+    subject: content.subject,
+    emailConfigured: Boolean(ws.emailFromAddress?.trim()),
+    emailsSentToday: sentToday,
+    dailyLimit: DAILY_EMAIL_LIMIT,
+    issueDate,
+    homeCurrency: ws.homeCurrency,
+    fx,
+  };
 }
 
 /**

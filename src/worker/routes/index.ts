@@ -3,6 +3,7 @@ import type { AppEnv } from "../env";
 import { clientRoutes } from "./clients";
 import { customFieldRoutes } from "./custom-fields";
 import { documentRoutes } from "./documents";
+import { fxRoutes } from "./fx";
 import { meRoutes } from "./me";
 import { settingsRoutes } from "./settings";
 import { taxRateRoutes } from "./tax-rates";
@@ -19,6 +20,7 @@ export const api = new Hono<AppEnv>()
   .route("/me", meRoutes)
   .route("/clients", clientRoutes)
   .route("/documents", documentRoutes)
+  .route("/fx", fxRoutes)
   .route("/tax-rates", taxRateRoutes)
   .route("/templates", templateRoutes)
   .route("/custom-fields", customFieldRoutes)

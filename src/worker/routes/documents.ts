@@ -26,7 +26,7 @@ import {
   updateDraft,
   voidDocument,
 } from "../services/documents";
-import { markSentManually, sendDocument } from "../services/email";
+import { markSentManually, sendDocument, sendPreview } from "../services/email";
 import { deletePayment, recordPayment, writeOffRemainder } from "../services/payments";
 import { getPdf, pdfResponse } from "../services/pdf";
 
@@ -86,6 +86,14 @@ export const documentRoutes = new Hono<AppEnv>()
       recipients: result.recipients,
     });
   })
+  .get("/:id/send-preview", async (c) =>
+    c.json(
+      await sendPreview(c.var.db, c.req.param("id"), {
+        now: Date.now(),
+        revise: c.req.query("revise") === "1",
+      }),
+    ),
+  )
   .post("/:id/mark-sent", async (c) => {
     const now = Date.now();
     const result = await markSentManually(c.var.db, c.req.param("id"), { actor: c.var.user, now });
