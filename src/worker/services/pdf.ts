@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import type { DocumentSnapshot } from "../../shared/schemas/document";
 import { todayIn } from "../../shared/time";
 import { type Db, schema } from "../db/client";
+import type { Bindings } from "../env";
+import { fakeExternals } from "../externals";
 import type { RenderState } from "../render";
 import { renderDocument } from "../render";
 import { getRevision, loadWorkspace } from "./documents";
@@ -87,7 +89,7 @@ export function setPdfRendererForTesting(renderer: PdfRenderer | null): void {
 }
 
 function rendererFor(env: PdfEnv): PdfRenderer {
-  return testRenderer ?? browserRunRenderer(env.BROWSER);
+  return testRenderer ?? fakeExternals(env)?.pdfRenderer ?? browserRunRenderer(env.BROWSER);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +135,10 @@ async function extendBrowserLease(d1: D1Database, until: number): Promise<void> 
 // getPdf
 // ---------------------------------------------------------------------------
 
-export type PdfEnv = { BROWSER: BrowserRun; BUCKET: R2Bucket };
+export type PdfEnv = Pick<Bindings, "APP_ENV" | "FAKE_EXTERNALS"> & {
+  BROWSER: BrowserRun;
+  BUCKET: R2Bucket;
+};
 
 export interface GetPdfOptions {
   /** Wait for the lease (interactive downloads and sends). False returns pending at once. */

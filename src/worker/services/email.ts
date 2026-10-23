@@ -10,6 +10,7 @@ import type { Document, Workspace } from "../db/schema";
 import { documentEmail, quoteDecisionEmail } from "../email/templates";
 import type { AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
+import { fxFetcher, resendFetcher } from "../externals";
 import { QUOTE_DECISION_JOB, type QuoteDecisionJobPayload } from "../routes/public";
 import { activityInsert } from "./activity";
 import {
@@ -45,8 +46,8 @@ export function setResendFetchForTesting(fetcher: ResendFetch | null): void {
   testFetch = fetcher;
 }
 
-function resendFetch(): ResendFetch {
-  return testFetch ?? ((url, init) => fetch(url, init));
+function resendFetch(env: Bindings): ResendFetch {
+  return testFetch ?? resendFetcher(env);
 }
 
 /** The public origin for links in emails, without a trailing slash. */
@@ -141,7 +142,7 @@ export async function deliverEmail(
   let providerId: string | null = null;
   let message = "";
   try {
-    const res = await resendFetch()(RESEND_ENDPOINT, {
+    const res = await resendFetch(env)(RESEND_ENDPOINT, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -325,7 +326,7 @@ export async function sendDocument(
   const finalized = await finalize(db, documentId, {
     now: opts.now,
     actor: opts.actor,
-    fetcher: opts.fetcher,
+    fetcher: opts.fetcher ?? fxFetcher(env),
   });
   const current = finalized.document;
   const revisionId = current.currentRevisionId ?? finalized.revision.id;

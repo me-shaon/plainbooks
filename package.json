@@ -13,6 +13,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:perf": "RUN_PERF=1 vitest run src/worker/render/render.perf.test.ts",
+    "e2e": "playwright test",
+    "e2e:db": "rm -rf .wrangler/e2e && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e",
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "format": "biome check --write .",
@@ -40,9 +42,11 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@biomejs/biome": "2.6.2",
     "@cloudflare/vite-plugin": "1.64.0",
     "@cloudflare/vitest-plugin": "1.4.7",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/router-plugin": "1.168.47",
     "@testing-library/dom": "10.4.2",

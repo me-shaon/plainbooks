@@ -53,7 +53,8 @@ function plural(n: number, one: string, many = `${one}s`): string {
 function HomeValue({ minor, currency }: { minor: number; currency: string }) {
   return (
     <>
-      <span className="text-base font-normal opacity-80">{currency}</span>{" "}
+      {/* Full opacity: 80% white on the accent hero card fails the 4.5:1 contrast check. */}
+      <span className="text-base font-normal">{currency}</span>{" "}
       {groupDigits(formatMinor(minor, currency))}
     </>
   );

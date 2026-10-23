@@ -11,6 +11,7 @@ import { sendDocumentInput } from "../../shared/schemas/email";
 import { schema } from "../db/client";
 import type { AppEnv } from "../env";
 import { AppError, parseJson } from "../errors";
+import { fxFetcher } from "../externals";
 import { listActivity } from "../services/activity";
 import {
   convertQuote,
@@ -62,6 +63,7 @@ export const documentRoutes = new Hono<AppEnv>()
       actor: c.var.user,
       now,
       issueDate: input.issueDate,
+      fetcher: fxFetcher(c.env),
     });
     return c.json({
       document: await getDocumentDetail(c.var.db, result.document.id, { now }),
@@ -91,12 +93,17 @@ export const documentRoutes = new Hono<AppEnv>()
       await sendPreview(c.var.db, c.req.param("id"), {
         now: Date.now(),
         revise: c.req.query("revise") === "1",
+        fetcher: fxFetcher(c.env),
       }),
     ),
   )
   .post("/:id/mark-sent", async (c) => {
     const now = Date.now();
-    const result = await markSentManually(c.var.db, c.req.param("id"), { actor: c.var.user, now });
+    const result = await markSentManually(c.var.db, c.req.param("id"), {
+      actor: c.var.user,
+      now,
+      fetcher: fxFetcher(c.env),
+    });
     return c.json({
       document: await getDocumentDetail(c.var.db, result.document.id, { now }),
       revisionId: result.revisionId,
@@ -105,7 +112,11 @@ export const documentRoutes = new Hono<AppEnv>()
   .post("/:id/revise", async (c) => {
     const data = await parseJson(c, documentUpdateInput);
     const now = Date.now();
-    const result = await revise(c.var.db, c.req.param("id"), data, { actor: c.var.user, now });
+    const result = await revise(c.var.db, c.req.param("id"), data, {
+      actor: c.var.user,
+      now,
+      fetcher: fxFetcher(c.env),
+    });
     return c.json({
       document: await getDocumentDetail(c.var.db, result.document.id, { now }),
       revisionId: result.revision.id,

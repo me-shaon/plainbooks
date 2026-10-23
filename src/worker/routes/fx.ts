@@ -5,6 +5,7 @@ import type { FxQuote } from "../../shared/schemas/document";
 import { isoDate } from "../../shared/schemas/document";
 import type { AppEnv } from "../env";
 import { AppError } from "../errors";
+import { fxFetcher } from "../externals";
 import { loadWorkspace } from "../services/documents";
 import { getRate } from "../services/fx";
 
@@ -20,7 +21,7 @@ export const fxRoutes = new Hono<AppEnv>().get("/rate", async (c) => {
     throw new AppError(400, "invalid_query", "Use a supported currency and a YYYY-MM-DD date");
   }
   const ws = await loadWorkspace(c.var.db);
-  const result = await getRate(c.var.db, (input, init) => fetch(input, init), {
+  const result = await getRate(c.var.db, fxFetcher(c.env), {
     from: parsed.data.currency,
     to: ws.homeCurrency,
     date: parsed.data.date,

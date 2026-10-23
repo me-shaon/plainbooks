@@ -31,8 +31,9 @@ import { recurringCreateInput } from "../../shared/schemas/recurring";
 import { type Db, schema } from "../db/client";
 import type { Client, RecurringSchedule, Workspace } from "../db/schema";
 import { fxRateNeededEmail, recurringDraftReadyEmail } from "../email/templates";
-import type { AuthUser } from "../env";
+import type { AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
+import { fxFetcher } from "../externals";
 import { createDraft, loadWorkspace, workspaceToday } from "./documents";
 import {
   appDocumentUrl,
@@ -81,8 +82,8 @@ export function setRecurringFetcherForTesting(fetcher: Fetcher | null): void {
   testFetcher = fetcher;
 }
 
-function fxFetcher(): Fetcher {
-  return testFetcher ?? ((input, init) => fetch(input, init));
+function autoSendFetcher(env: Bindings): Fetcher {
+  return testFetcher ?? fxFetcher(env);
 }
 
 // ---------------------------------------------------------------------------
@@ -755,7 +756,7 @@ export function registerRecurringJobs(): void {
         now,
         trigger: "auto",
         idempotencyKey: `job:${job.id}`,
-        fetcher: fxFetcher(),
+        fetcher: autoSendFetcher(env),
       });
     } catch (err) {
       if (!(err instanceof AppError)) throw err;

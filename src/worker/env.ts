@@ -12,6 +12,8 @@ export type Bindings = Env & {
   RESEND_API_KEY?: string;
   /** Secret. The Resend webhook signing secret ("whsec_..."). */
   RESEND_WEBHOOK_SECRET?: string;
+  /** Local development only. "1" swaps Resend, Frankfurter, and Browser Run for fakes. */
+  FAKE_EXTERNALS?: string;
 };
 
 /** The signed-in team member, set by the auth middleware. */

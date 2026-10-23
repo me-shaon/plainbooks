@@ -2,7 +2,15 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
-    "types": ["node"]
+    "types": ["node"],
+    // DOM types for the code that Playwright runs in the page (page.evaluate).
+    "lib": ["es2023", "dom"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "drizzle.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "drizzle.config.ts",
+    "playwright.config.ts",
+    "e2e/**/*.ts"
+  ]
 }
