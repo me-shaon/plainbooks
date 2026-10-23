@@ -1,1 +1,299 @@
 @import "tailwindcss";
+@plugin "tailwindcss-react-aria-components";
+
+/* Design tokens for the "Final" Ledger design (mint palette, paper sidebar, hero KPI card,
+   ink primary button, Instrument Sans, IBM Plex Mono, 12 px radius, comfortable density).
+   The values come from the "Design Tokens" table in the requirements. Light theme only. */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces and text */
+  --background: #ffffff;
+  --ink: #171a18;
+  --ink-foreground: #ffffff;
+  --muted-foreground: #5f6661;
+  --border: #e6e9e6;
+  --row-border: #f1f3f1;
+  --input: #d5dad6;
+  --segmented: #f0f2f0;
+
+  /* Accent and chart colors */
+  --accent: #2f7f6f;
+  --accent-strong: #276b5d;
+  --accent-foreground: #ffffff;
+  --accent-mid: #86bdb1;
+  --accent-light: #cfe3dd;
+  --tint: #e3f1ee;
+  --tint-foreground: #1f5a4e;
+
+  /* Paper sidebar */
+  --sidebar: #f6f7f5;
+  --sidebar-foreground: #171a18;
+  --sidebar-muted: #4f5751;
+  --sidebar-border: #e6e9e6;
+  --sidebar-active: #ffffff;
+
+  /* Cards: the hero card uses the accent. Other cards use the paper fill. */
+  --card: #f6f7f5;
+
+  /* Danger */
+  --danger: #a63d22;
+  --danger-strong: #8f3219;
+  --danger-foreground: #ffffff;
+  --danger-tint: #fbe5de;
+  --danger-tint-foreground: #8a3b26;
+
+  --ring: #2f7f6f;
+
+  /* Status pills. Each pair has a contrast of 4.5:1 or more (see components/ui/ui.test.tsx). */
+  --pill-draft: #f1efea;
+  --pill-draft-foreground: #57534c;
+  --pill-finalized: #efeaf7;
+  --pill-finalized-foreground: #4f3b78;
+  --pill-sent: #e8eef6;
+  --pill-sent-foreground: #2c4a6e;
+  --pill-paid: #e3f1ee;
+  --pill-paid-foreground: #1f5a4e;
+  --pill-partially-paid: #f8eedb;
+  --pill-partially-paid-foreground: #6b4a12;
+  --pill-overdue: #fbe5de;
+  --pill-overdue-foreground: #8a3b26;
+  --pill-void: #eeefee;
+  --pill-void-foreground: #4f5751;
+  --pill-accepted: #e4f1e6;
+  --pill-accepted-foreground: #25562f;
+  --pill-declined: #f7e4e8;
+  --pill-declined-foreground: #7a2e3d;
+  --pill-expired: #f0f2f0;
+  --pill-expired-foreground: #5f6661;
+  --pill-converted: #e6eff3;
+  --pill-converted-foreground: #24506a;
+
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.06), 0 0 0 1px rgb(0 0 0 / 0.05);
+  --shadow-segment: 0 1px 2px rgb(0 0 0 / 0.08);
+  --shadow-popover: 0 8px 24px rgb(23 26 24 / 0.08), 0 0 0 1px rgb(23 26 24 / 0.06);
+
+  --skeleton: #eceeec;
+
+  /* Motion: short and ease-out. Exits are faster than entrances. */
+  --ease-calm: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-calm-in: cubic-bezier(0.4, 0, 1, 1);
+  --duration-press: 120ms;
+  --duration-enter: 180ms;
+  --duration-exit: 120ms;
+  --duration-reveal: 240ms;
+}
+
+@theme inline {
+  --font-sans: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* 12 px cards, 9 px buttons, 8 px small items, full pills */
+  --radius-card: 12px;
+  --radius-button: 9px;
+  --radius-small: 8px;
+  --radius-pill: 9999px;
+
+  --color-background: var(--background);
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-row-border: var(--row-border);
+  --color-input: var(--input);
+  --color-segmented: var(--segmented);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-mid: var(--accent-mid);
+  --color-accent-light: var(--accent-light);
+  --color-tint: var(--tint);
+  --color-tint-foreground: var(--tint-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-card: var(--card);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-tint: var(--danger-tint);
+  --color-danger-tint-foreground: var(--danger-tint-foreground);
+  --color-ring: var(--ring);
+  --color-skeleton: var(--skeleton);
+
+  --color-pill-draft: var(--pill-draft);
+  --color-pill-draft-foreground: var(--pill-draft-foreground);
+  --color-pill-finalized: var(--pill-finalized);
+  --color-pill-finalized-foreground: var(--pill-finalized-foreground);
+  --color-pill-sent: var(--pill-sent);
+  --color-pill-sent-foreground: var(--pill-sent-foreground);
+  --color-pill-paid: var(--pill-paid);
+  --color-pill-paid-foreground: var(--pill-paid-foreground);
+  --color-pill-partially-paid: var(--pill-partially-paid);
+  --color-pill-partially-paid-foreground: var(--pill-partially-paid-foreground);
+  --color-pill-overdue: var(--pill-overdue);
+  --color-pill-overdue-foreground: var(--pill-overdue-foreground);
+  --color-pill-void: var(--pill-void);
+  --color-pill-void-foreground: var(--pill-void-foreground);
+  --color-pill-accepted: var(--pill-accepted);
+  --color-pill-accepted-foreground: var(--pill-accepted-foreground);
+  --color-pill-declined: var(--pill-declined);
+  --color-pill-declined-foreground: var(--pill-declined-foreground);
+  --color-pill-expired: var(--pill-expired);
+  --color-pill-expired-foreground: var(--pill-expired-foreground);
+  --color-pill-converted: var(--pill-converted);
+  --color-pill-converted-foreground: var(--pill-converted-foreground);
+
+  --shadow-raised: var(--shadow-raised);
+  --shadow-segment: var(--shadow-segment);
+  --shadow-popover: var(--shadow-popover);
+
+  --ease-calm: var(--ease-calm);
+  --ease-calm-in: var(--ease-calm-in);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body {
+    background: var(--background);
+    color: var(--ink);
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]),
+  [role="switch"]:not([data-disabled]),
+  [role="checkbox"]:not([data-disabled]),
+  [role="radio"]:not([data-disabled]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [data-disabled] {
+    cursor: not-allowed;
+  }
+
+  :focus-visible,
+  [data-focus-visible] {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-light);
+    color: var(--ink);
+  }
+}
+
+@layer utilities {
+  /* Numbers use IBM Plex Mono with even digit widths. */
+  .figure {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Motion. Each effect explains a state change: an overlay opens or closes, or data loads.
+   React Aria sets data-entering and data-exiting and waits for the exit animation. */
+@keyframes enter-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes exit-pop {
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
+}
+
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes exit-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes enter-drawer {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes exit-drawer {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes enter-toast {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes pulse-skeleton {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* With reduced motion, overlays appear without animation. */
+@layer components {
+  @media (prefers-reduced-motion: no-preference) {
+    .motion-pop[data-entering] {
+      animation: enter-pop var(--duration-enter) var(--ease-calm);
+    }
+    .motion-pop[data-exiting] {
+      animation: exit-pop var(--duration-exit) var(--ease-calm-in) forwards;
+    }
+    .motion-fade[data-entering] {
+      animation: enter-fade var(--duration-enter) var(--ease-calm);
+    }
+    .motion-fade[data-exiting] {
+      animation: exit-fade var(--duration-exit) var(--ease-calm-in) forwards;
+    }
+    .motion-drawer[data-entering] {
+      animation: enter-drawer var(--duration-reveal) var(--ease-calm);
+    }
+    .motion-drawer[data-exiting] {
+      animation: exit-drawer var(--duration-exit) var(--ease-calm-in) forwards;
+    }
+    .motion-toast {
+      animation: enter-toast var(--duration-enter) var(--ease-calm);
+    }
+    .motion-skeleton {
+      animation: pulse-skeleton 1.6s ease-in-out infinite;
+    }
+  }
+}

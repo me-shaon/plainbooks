@@ -10,33 +10,154 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DesignRouteImport } from './routes/[_]design'
+import { Route as BrandKitIndexRouteImport } from './routes/brand-kit/index'
+import { Route as ClientsIndexRouteImport } from './routes/clients/index'
+import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
+import { Route as QuotesIndexRouteImport } from './routes/quotes/index'
+import { Route as RecurringIndexRouteImport } from './routes/recurring/index'
+import { Route as ReportsIndexRouteImport } from './routes/reports/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DesignRoute = DesignRouteImport.update({
+  id: '/_design',
+  path: '/_design',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrandKitIndexRoute = BrandKitIndexRouteImport.update({
+  id: '/brand-kit/',
+  path: '/brand-kit/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsIndexRoute = ClientsIndexRouteImport.update({
+  id: '/clients/',
+  path: '/clients/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
+  id: '/invoices/',
+  path: '/invoices/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuotesIndexRoute = QuotesIndexRouteImport.update({
+  id: '/quotes/',
+  path: '/quotes/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecurringIndexRoute = RecurringIndexRouteImport.update({
+  id: '/recurring/',
+  path: '/recurring/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsIndexRoute = ReportsIndexRouteImport.update({
+  id: '/reports/',
+  path: '/reports/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
+  id: '/templates/',
+  path: '/templates/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/_design': typeof DesignRoute
+  '/brand-kit/': typeof BrandKitIndexRoute
+  '/clients/': typeof ClientsIndexRoute
+  '/invoices/': typeof InvoicesIndexRoute
+  '/quotes/': typeof QuotesIndexRoute
+  '/recurring/': typeof RecurringIndexRoute
+  '/reports/': typeof ReportsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/templates/': typeof TemplatesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/_design': typeof DesignRoute
+  '/brand-kit': typeof BrandKitIndexRoute
+  '/clients': typeof ClientsIndexRoute
+  '/invoices': typeof InvoicesIndexRoute
+  '/quotes': typeof QuotesIndexRoute
+  '/recurring': typeof RecurringIndexRoute
+  '/reports': typeof ReportsIndexRoute
+  '/settings': typeof SettingsIndexRoute
+  '/templates': typeof TemplatesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_design': typeof DesignRoute
+  '/brand-kit/': typeof BrandKitIndexRoute
+  '/clients/': typeof ClientsIndexRoute
+  '/invoices/': typeof InvoicesIndexRoute
+  '/quotes/': typeof QuotesIndexRoute
+  '/recurring/': typeof RecurringIndexRoute
+  '/reports/': typeof ReportsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/templates/': typeof TemplatesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/_design'
+    | '/brand-kit/'
+    | '/clients/'
+    | '/invoices/'
+    | '/quotes/'
+    | '/recurring/'
+    | '/reports/'
+    | '/settings/'
+    | '/templates/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/_design'
+    | '/brand-kit'
+    | '/clients'
+    | '/invoices'
+    | '/quotes'
+    | '/recurring'
+    | '/reports'
+    | '/settings'
+    | '/templates'
+  id:
+    | '__root__'
+    | '/'
+    | '/_design'
+    | '/brand-kit/'
+    | '/clients/'
+    | '/invoices/'
+    | '/quotes/'
+    | '/recurring/'
+    | '/reports/'
+    | '/settings/'
+    | '/templates/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DesignRoute: typeof DesignRoute
+  BrandKitIndexRoute: typeof BrandKitIndexRoute
+  ClientsIndexRoute: typeof ClientsIndexRoute
+  InvoicesIndexRoute: typeof InvoicesIndexRoute
+  QuotesIndexRoute: typeof QuotesIndexRoute
+  RecurringIndexRoute: typeof RecurringIndexRoute
+  ReportsIndexRoute: typeof ReportsIndexRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+  TemplatesIndexRoute: typeof TemplatesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +169,83 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_design': {
+      id: '/_design'
+      path: '/_design'
+      fullPath: '/_design'
+      preLoaderRoute: typeof DesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/brand-kit/': {
+      id: '/brand-kit/'
+      path: '/brand-kit'
+      fullPath: '/brand-kit/'
+      preLoaderRoute: typeof BrandKitIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients/': {
+      id: '/clients/'
+      path: '/clients'
+      fullPath: '/clients/'
+      preLoaderRoute: typeof ClientsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoices/': {
+      id: '/invoices/'
+      path: '/invoices'
+      fullPath: '/invoices/'
+      preLoaderRoute: typeof InvoicesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quotes/': {
+      id: '/quotes/'
+      path: '/quotes'
+      fullPath: '/quotes/'
+      preLoaderRoute: typeof QuotesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recurring/': {
+      id: '/recurring/'
+      path: '/recurring'
+      fullPath: '/recurring/'
+      preLoaderRoute: typeof RecurringIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports/': {
+      id: '/reports/'
+      path: '/reports'
+      fullPath: '/reports/'
+      preLoaderRoute: typeof ReportsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/templates/': {
+      id: '/templates/'
+      path: '/templates'
+      fullPath: '/templates/'
+      preLoaderRoute: typeof TemplatesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DesignRoute: DesignRoute,
+  BrandKitIndexRoute: BrandKitIndexRoute,
+  ClientsIndexRoute: ClientsIndexRoute,
+  InvoicesIndexRoute: InvoicesIndexRoute,
+  QuotesIndexRoute: QuotesIndexRoute,
+  RecurringIndexRoute: RecurringIndexRoute,
+  ReportsIndexRoute: ReportsIndexRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+  TemplatesIndexRoute: TemplatesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

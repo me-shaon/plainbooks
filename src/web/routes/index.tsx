@@ -1,13 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { House } from "lucide-react";
+import { PageHeader } from "../components/page-header";
+import { EmptyState } from "../components/ui/empty-state";
 
 export const Route = createFileRoute("/")({
-  component: Home,
+  component: Overview,
 });
 
-function Home() {
+function Overview() {
+  const today = new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date());
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold">Invoicing</h1>
-    </main>
+    <>
+      <PageHeader eyebrow={today} title="Overview" />
+      <EmptyState
+        icon={House}
+        title="Overview is not built yet"
+        description="Totals, recent invoices, and reminders come in a later release."
+      />
+    </>
   );
 }
