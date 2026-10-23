@@ -1,13 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FileText } from "lucide-react";
-import { PlaceholderPage } from "../../components/placeholder-page";
+import { DocumentsPage, validateDocumentsSearch } from "../../features/documents/documents-page";
 
 export const Route = createFileRoute("/invoices/")({
-  component: () => (
-    <PlaceholderPage
-      title="Invoices"
-      subtitle="Every invoice, its status, and its balance."
-      icon={FileText}
-    />
-  ),
+  validateSearch: (search: Record<string, unknown>) => validateDocumentsSearch("invoice", search),
+  component: function DocumentsRoute() {
+    return <DocumentsPage kind="invoice" search={Route.useSearch()} />;
+  },
 });

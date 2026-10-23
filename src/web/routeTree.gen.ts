@@ -16,7 +16,9 @@ import { Route as BrandKitIndexRouteImport } from './routes/brand-kit/index'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsClientIdRouteImport } from './routes/clients/$clientId'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
+import { Route as InvoicesNewRouteImport } from './routes/invoices/new'
 import { Route as QuotesIndexRouteImport } from './routes/quotes/index'
+import { Route as QuotesNewRouteImport } from './routes/quotes/new'
 import { Route as RecurringIndexRouteImport } from './routes/recurring/index'
 import { Route as ReportsIndexRouteImport } from './routes/reports/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
@@ -25,6 +27,10 @@ import { Route as SettingsTaxRatesRouteImport } from './routes/settings/tax-rate
 import { Route as SettingsTeamRouteImport } from './routes/settings/team'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 import { Route as TemplatesTemplateIdRouteImport } from './routes/templates/$templateId'
+import { Route as InvoicesDocumentIdIndexRouteImport } from './routes/invoices/$documentId/index'
+import { Route as InvoicesDocumentIdEditRouteImport } from './routes/invoices/$documentId/edit'
+import { Route as QuotesDocumentIdIndexRouteImport } from './routes/quotes/$documentId/index'
+import { Route as QuotesDocumentIdEditRouteImport } from './routes/quotes/$documentId/edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -61,9 +67,19 @@ const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
   path: '/invoices/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InvoicesNewRoute = InvoicesNewRouteImport.update({
+  id: '/invoices/new',
+  path: '/invoices/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QuotesIndexRoute = QuotesIndexRouteImport.update({
   id: '/quotes/',
   path: '/quotes/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuotesNewRoute = QuotesNewRouteImport.update({
+  id: '/quotes/new',
+  path: '/quotes/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecurringIndexRoute = RecurringIndexRouteImport.update({
@@ -106,12 +122,34 @@ const TemplatesTemplateIdRoute = TemplatesTemplateIdRouteImport.update({
   path: '/templates/$templateId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InvoicesDocumentIdIndexRoute = InvoicesDocumentIdIndexRouteImport.update({
+  id: '/invoices/$documentId/',
+  path: '/invoices/$documentId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesDocumentIdEditRoute = InvoicesDocumentIdEditRouteImport.update({
+  id: '/invoices/$documentId/edit',
+  path: '/invoices/$documentId/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuotesDocumentIdIndexRoute = QuotesDocumentIdIndexRouteImport.update({
+  id: '/quotes/$documentId/',
+  path: '/quotes/$documentId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuotesDocumentIdEditRoute = QuotesDocumentIdEditRouteImport.update({
+  id: '/quotes/$documentId/edit',
+  path: '/quotes/$documentId/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRouteRouteWithChildren
   '/_design': typeof DesignRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/invoices/new': typeof InvoicesNewRoute
+  '/quotes/new': typeof QuotesNewRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -124,11 +162,17 @@ export interface FileRoutesByFullPath {
   '/reports/': typeof ReportsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
+  '/invoices/$documentId/edit': typeof InvoicesDocumentIdEditRoute
+  '/quotes/$documentId/edit': typeof QuotesDocumentIdEditRoute
+  '/invoices/$documentId/': typeof InvoicesDocumentIdIndexRoute
+  '/quotes/$documentId/': typeof QuotesDocumentIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/_design': typeof DesignRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/invoices/new': typeof InvoicesNewRoute
+  '/quotes/new': typeof QuotesNewRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -141,6 +185,10 @@ export interface FileRoutesByTo {
   '/reports': typeof ReportsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/templates': typeof TemplatesIndexRoute
+  '/invoices/$documentId/edit': typeof InvoicesDocumentIdEditRoute
+  '/quotes/$documentId/edit': typeof QuotesDocumentIdEditRoute
+  '/invoices/$documentId': typeof InvoicesDocumentIdIndexRoute
+  '/quotes/$documentId': typeof QuotesDocumentIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -148,6 +196,8 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteRouteWithChildren
   '/_design': typeof DesignRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/invoices/new': typeof InvoicesNewRoute
+  '/quotes/new': typeof QuotesNewRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -160,6 +210,10 @@ export interface FileRoutesById {
   '/reports/': typeof ReportsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/templates/': typeof TemplatesIndexRoute
+  '/invoices/$documentId/edit': typeof InvoicesDocumentIdEditRoute
+  '/quotes/$documentId/edit': typeof QuotesDocumentIdEditRoute
+  '/invoices/$documentId/': typeof InvoicesDocumentIdIndexRoute
+  '/quotes/$documentId/': typeof QuotesDocumentIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -168,6 +222,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/_design'
     | '/clients/$clientId'
+    | '/invoices/new'
+    | '/quotes/new'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -180,11 +236,17 @@ export interface FileRouteTypes {
     | '/reports/'
     | '/settings/'
     | '/templates/'
+    | '/invoices/$documentId/edit'
+    | '/quotes/$documentId/edit'
+    | '/invoices/$documentId/'
+    | '/quotes/$documentId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/_design'
     | '/clients/$clientId'
+    | '/invoices/new'
+    | '/quotes/new'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -197,12 +259,18 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/templates'
+    | '/invoices/$documentId/edit'
+    | '/quotes/$documentId/edit'
+    | '/invoices/$documentId'
+    | '/quotes/$documentId'
   id:
     | '__root__'
     | '/'
     | '/settings'
     | '/_design'
     | '/clients/$clientId'
+    | '/invoices/new'
+    | '/quotes/new'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -215,6 +283,10 @@ export interface FileRouteTypes {
     | '/reports/'
     | '/settings/'
     | '/templates/'
+    | '/invoices/$documentId/edit'
+    | '/quotes/$documentId/edit'
+    | '/invoices/$documentId/'
+    | '/quotes/$documentId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -222,6 +294,8 @@ export interface RootRouteChildren {
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   DesignRoute: typeof DesignRoute
   ClientsClientIdRoute: typeof ClientsClientIdRoute
+  InvoicesNewRoute: typeof InvoicesNewRoute
+  QuotesNewRoute: typeof QuotesNewRoute
   TemplatesTemplateIdRoute: typeof TemplatesTemplateIdRoute
   BrandKitIndexRoute: typeof BrandKitIndexRoute
   ClientsIndexRoute: typeof ClientsIndexRoute
@@ -230,6 +304,10 @@ export interface RootRouteChildren {
   RecurringIndexRoute: typeof RecurringIndexRoute
   ReportsIndexRoute: typeof ReportsIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
+  InvoicesDocumentIdEditRoute: typeof InvoicesDocumentIdEditRoute
+  QuotesDocumentIdEditRoute: typeof QuotesDocumentIdEditRoute
+  InvoicesDocumentIdIndexRoute: typeof InvoicesDocumentIdIndexRoute
+  QuotesDocumentIdIndexRoute: typeof QuotesDocumentIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -283,11 +361,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invoices/new': {
+      id: '/invoices/new'
+      path: '/invoices/new'
+      fullPath: '/invoices/new'
+      preLoaderRoute: typeof InvoicesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/quotes/': {
       id: '/quotes/'
       path: '/quotes'
       fullPath: '/quotes/'
       preLoaderRoute: typeof QuotesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quotes/new': {
+      id: '/quotes/new'
+      path: '/quotes/new'
+      fullPath: '/quotes/new'
+      preLoaderRoute: typeof QuotesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/recurring/': {
@@ -346,6 +438,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TemplatesTemplateIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invoices/$documentId/': {
+      id: '/invoices/$documentId/'
+      path: '/invoices/$documentId'
+      fullPath: '/invoices/$documentId/'
+      preLoaderRoute: typeof InvoicesDocumentIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoices/$documentId/edit': {
+      id: '/invoices/$documentId/edit'
+      path: '/invoices/$documentId/edit'
+      fullPath: '/invoices/$documentId/edit'
+      preLoaderRoute: typeof InvoicesDocumentIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quotes/$documentId/': {
+      id: '/quotes/$documentId/'
+      path: '/quotes/$documentId'
+      fullPath: '/quotes/$documentId/'
+      preLoaderRoute: typeof QuotesDocumentIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quotes/$documentId/edit': {
+      id: '/quotes/$documentId/edit'
+      path: '/quotes/$documentId/edit'
+      fullPath: '/quotes/$documentId/edit'
+      preLoaderRoute: typeof QuotesDocumentIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -372,6 +492,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
   DesignRoute: DesignRoute,
   ClientsClientIdRoute: ClientsClientIdRoute,
+  InvoicesNewRoute: InvoicesNewRoute,
+  QuotesNewRoute: QuotesNewRoute,
   TemplatesTemplateIdRoute: TemplatesTemplateIdRoute,
   BrandKitIndexRoute: BrandKitIndexRoute,
   ClientsIndexRoute: ClientsIndexRoute,
@@ -380,6 +502,10 @@ const rootRouteChildren: RootRouteChildren = {
   RecurringIndexRoute: RecurringIndexRoute,
   ReportsIndexRoute: ReportsIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
+  InvoicesDocumentIdEditRoute: InvoicesDocumentIdEditRoute,
+  QuotesDocumentIdEditRoute: QuotesDocumentIdEditRoute,
+  InvoicesDocumentIdIndexRoute: InvoicesDocumentIdIndexRoute,
+  QuotesDocumentIdIndexRoute: QuotesDocumentIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

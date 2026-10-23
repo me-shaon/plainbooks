@@ -1,3 +1,4 @@
+import { type CalendarDate, parseDate } from "@internationalized/date";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   CalendarCell,
@@ -107,5 +108,32 @@ export function DatePicker<T extends DateValue>({
         </Dialog>
       </Popover>
     </RACDatePicker>
+  );
+}
+
+export interface IsoDatePickerProps
+  extends Omit<DatePickerProps<CalendarDate>, "value" | "onChange" | "defaultValue"> {
+  /** An ISO date (YYYY-MM-DD), or null for an empty field. */
+  value: string | null;
+  onChange: (value: string | null) => void;
+}
+
+function toCalendarDate(value: string | null): CalendarDate | null {
+  if (!value) return null;
+  try {
+    return parseDate(value);
+  } catch {
+    return null;
+  }
+}
+
+/** A DatePicker that reads and writes ISO date strings. */
+export function IsoDatePicker({ value, onChange, ...props }: IsoDatePickerProps) {
+  return (
+    <DatePicker<CalendarDate>
+      {...props}
+      value={toCalendarDate(value)}
+      onChange={(date) => onChange(date ? date.toString() : null)}
+    />
   );
 }
