@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
+import { clientRoutes } from "./clients";
 import { meRoutes } from "./me";
+import { taxRateRoutes } from "./tax-rates";
+import { templateRoutes } from "./templates";
 
 /**
  * The authenticated API, mounted at /api. Add each feature's routes here with
@@ -8,6 +11,9 @@ import { meRoutes } from "./me";
  */
 export const api = new Hono<AppEnv>()
   .get("/health", (c) => c.json({ ok: true }))
-  .route("/me", meRoutes);
+  .route("/me", meRoutes)
+  .route("/clients", clientRoutes)
+  .route("/tax-rates", taxRateRoutes)
+  .route("/templates", templateRoutes);
 
 export type Api = typeof api;
