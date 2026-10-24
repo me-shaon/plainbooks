@@ -1,25 +1,13 @@
 // Text formatting for documents. Plain string work, no Intl, to keep renders cheap.
-import { formatMinor } from "../../shared/money";
+import { formatGrouped } from "../../shared/money";
 import { HEX_COLOR } from "../../shared/schemas/settings";
 import { todayIn } from "../../shared/time";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "1,234.50". */
-export function amount(minor: number, currency: string): string {
-  const text = formatMinor(minor, currency);
-  const negative = text.startsWith("-");
-  const body = negative ? text.slice(1) : text;
-  const dot = body.indexOf(".");
-  const whole = dot === -1 ? body : body.slice(0, dot);
-  const fraction = dot === -1 ? "" : body.slice(dot);
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${negative ? "-" : ""}${grouped}${fraction}`;
-}
-
 /** "USD 1,234.50". */
 export function money(minor: number, currency: string): string {
-  return `${currency} ${amount(minor, currency)}`;
+  return `${currency} ${formatGrouped(minor, currency)}`;
 }
 
 /** "28 Sep 2026" from "2026-09-28". Returns the input when it is not an ISO date. */

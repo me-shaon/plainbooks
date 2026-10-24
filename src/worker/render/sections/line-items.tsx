@@ -1,5 +1,5 @@
 /** @jsxImportSource hono/jsx */
-import { amount } from "../format";
+import { formatGrouped } from "../../../shared/money";
 import type { DocumentView } from "../model";
 import { Fields } from "./fields";
 
@@ -36,14 +36,14 @@ export function LineItemsSection({ view }: { view: DocumentView }) {
                 {line.quantity}
               </td>
               <td class="num" data-label="Unit price">
-                {amount(line.unitPrice, doc.currency)}
+                {formatGrouped(line.unitPrice, doc.currency)}
               </td>
               {hasTax ? (
                 <td class="num" data-label="Tax">
                   {line.tax ? `${line.tax.rate}%` : "-"}
                 </td>
               ) : null}
-              <td class="num amount">{amount(line.amount, doc.currency)}</td>
+              <td class="num amount">{formatGrouped(line.amount, doc.currency)}</td>
             </tr>
           ))}
         </tbody>

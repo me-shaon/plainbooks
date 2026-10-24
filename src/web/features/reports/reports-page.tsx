@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChartColumn, Download } from "lucide-react";
 import type { ReactNode } from "react";
-import { formatMinor } from "../../../shared/money";
+import { formatGrouped } from "../../../shared/money";
 import {
   AGING_BUCKET_LABELS,
   AGING_BUCKETS,
@@ -33,7 +33,7 @@ import {
   TableHeader,
 } from "../../components/ui/table";
 import { Tab, TabList, TabPanel, Tabs } from "../../components/ui/tabs";
-import { formatDate, groupDigits } from "../../lib/format";
+import { formatDate } from "../../lib/format";
 import {
   exportUrl,
   type ReportFilters,
@@ -75,7 +75,7 @@ const EXPORTS: { id: ExportType; label: string; note: string }[] = [
 
 /** A home currency figure without the code. The column header names the currency. */
 function Figure({ minor, currency }: { minor: number; currency: string }) {
-  return <span className="figure">{groupDigits(formatMinor(minor, currency))}</span>;
+  return <span className="figure">{formatGrouped(minor, currency)}</span>;
 }
 
 function download(url: string) {
@@ -110,14 +110,14 @@ function TaxPanel({ data }: { data: TaxSummary }) {
         <KpiCard
           variant="hero"
           label="Tax in range"
-          value={`${cur} ${groupDigits(formatMinor(data.total.tax, cur))}`}
-          note={`On ${cur} ${groupDigits(formatMinor(data.total.taxable, cur))} taxable`}
+          value={`${cur} ${formatGrouped(data.total.tax, cur)}`}
+          note={`On ${cur} ${formatGrouped(data.total.taxable, cur)} taxable`}
         />
         {data.totals.map((t) => (
           <KpiCard
             key={`${t.taxRateId}:${t.rate}`}
             label={t.name}
-            value={`${cur} ${groupDigits(formatMinor(t.tax, cur))}`}
+            value={`${cur} ${formatGrouped(t.tax, cur)}`}
             note={`${t.invoiceCount} ${t.invoiceCount === 1 ? "invoice" : "invoices"}`}
           />
         ))}
@@ -159,7 +159,7 @@ function TaxPanel({ data }: { data: TaxSummary }) {
           <StackedRow
             key={`${row.period}:${row.taxRateId}:${row.rate}`}
             title={`${periodLabel(row.period)} · ${row.name}`}
-            meta={`Taxable ${cur} ${groupDigits(formatMinor(row.taxable, cur))}`}
+            meta={`Taxable ${cur} ${formatGrouped(row.taxable, cur)}`}
             value={<Figure minor={row.tax} currency={cur} />}
           />
         ))}
@@ -171,7 +171,7 @@ function TaxPanel({ data }: { data: TaxSummary }) {
 function IncomePanel({ data }: { data: IncomeReport }) {
   const cur = data.homeCurrency;
   if (data.rows.length === 0) return <NoRows>No sent invoices were issued in this range.</NoRows>;
-  const money = (minor: number) => `${cur} ${groupDigits(formatMinor(minor, cur))}`;
+  const money = (minor: number) => `${cur} ${formatGrouped(minor, cur)}`;
   return (
     <>
       <KpiGrid>
@@ -224,7 +224,7 @@ function IncomePanel({ data }: { data: IncomeReport }) {
           <StackedRow
             key={`${row.period}:${row.clientId}`}
             title={row.clientName}
-            meta={`${periodLabel(row.period)} · paid ${cur} ${groupDigits(formatMinor(row.paid, cur))}`}
+            meta={`${periodLabel(row.period)} · paid ${cur} ${formatGrouped(row.paid, cur)}`}
             value={<Figure minor={row.invoiced} currency={cur} />}
           />
         ))}
@@ -246,7 +246,7 @@ function AgingPanel({ data }: { data: AgingReport }) {
             key={bucket}
             variant={i === 0 ? "hero" : "default"}
             label={AGING_BUCKET_LABELS[bucket]}
-            value={`${cur} ${groupDigits(formatMinor(data.totals[bucket], cur))}`}
+            value={`${cur} ${formatGrouped(data.totals[bucket], cur)}`}
           />
         ))}
       </KpiGrid>
@@ -293,11 +293,7 @@ function AgingPanel({ data }: { data: AgingReport }) {
                 <StackedRow
                   key={row.clientId}
                   title={row.clientName}
-                  meta={
-                    late > 0
-                      ? `${cur} ${groupDigits(formatMinor(late, cur))} overdue`
-                      : "Nothing overdue"
-                  }
+                  meta={late > 0 ? `${cur} ${formatGrouped(late, cur)} overdue` : "Nothing overdue"}
                   value={<Figure minor={row.total} currency={cur} />}
                 />
               );

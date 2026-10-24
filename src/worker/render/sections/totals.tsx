@@ -1,5 +1,6 @@
 /** @jsxImportSource hono/jsx */
-import { amount, longDate } from "../format";
+import { formatGrouped } from "../../../shared/money";
+import { longDate } from "../format";
 import type { DocumentView } from "../model";
 import { Fields } from "./fields";
 
@@ -55,7 +56,7 @@ export function TotalsSection({ view }: { view: DocumentView }) {
       ) : null}
       {showFx ? (
         <p class="fx-note">
-          {`About ${homeTotals.currency} ${amount(homeTotals.total, homeTotals.currency)} at ${fx.rate} ${fx.homeCurrency} per ${doc.currency} (${longDate(fx.rateDate)})`}
+          {`About ${homeTotals.currency} ${formatGrouped(homeTotals.total, homeTotals.currency)} at ${fx.rate} ${fx.homeCurrency} per ${doc.currency} (${longDate(fx.rateDate)})`}
         </p>
       ) : null}
       <Fields items={view.fields("totals")} />

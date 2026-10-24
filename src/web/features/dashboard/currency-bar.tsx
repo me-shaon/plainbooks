@@ -1,7 +1,7 @@
-import { formatMinor } from "../../../shared/money";
+import { formatGrouped } from "../../../shared/money";
 import type { CurrencyOutstanding } from "../../../shared/schemas/dashboard";
 import { cn } from "../../components/ui/utils";
-import { formatMoney, groupDigits } from "../../lib/format";
+import { formatMoney } from "../../lib/format";
 
 /** Segment colors, from the accent outward. More currencies reuse them in order. */
 const SWATCHES = [
@@ -60,7 +60,7 @@ export function CurrencyBar({
                   className={cn("size-2 rounded-[2px]", SWATCHES[i % SWATCHES.length])}
                 />
                 {row.currency}{" "}
-                <span className="figure">{groupDigits(formatMinor(row.amount, row.currency))}</span>
+                <span className="figure">{formatGrouped(row.amount, row.currency)}</span>
                 <span className="text-xs text-muted-foreground">
                   ({row.invoiceCount} {row.invoiceCount === 1 ? "invoice" : "invoices"})
                 </span>

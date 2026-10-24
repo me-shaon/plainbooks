@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { FileText, Plus, Send } from "lucide-react";
 import { useState } from "react";
-import { formatMinor } from "../../../shared/money";
+import { formatGrouped } from "../../../shared/money";
 import type { DashboardData } from "../../../shared/schemas/dashboard";
 import type { ListFilter } from "../../../shared/schemas/document";
 import { KpiCard, KpiGrid } from "../../components/kpi-card";
@@ -10,40 +10,20 @@ import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Segment, SegmentedControl } from "../../components/ui/segmented-control";
 import { Skeleton } from "../../components/ui/skeleton";
-import { formatMoney, groupDigits } from "../../lib/format";
+import { formatIsoDate, formatMoney } from "../../lib/format";
 import { DocumentTable } from "../documents/document-table";
 import { documentPath, LIST_FILTER_OPTIONS } from "../documents/labels";
+import { useWorkspaceToday } from "../documents/queries";
 import { NeedsReminderList } from "../reminders/needs-reminder";
 import { CurrencyBar } from "./currency-bar";
 import { FailedJobsPanel, NotificationsPanel } from "./notifications";
 import { useDashboard } from "./queries";
 
-function isoParts(iso: string): number {
-  const [y = 1970, m = 1, d = 1] = iso.split("-").map(Number);
-  return Date.UTC(y, m - 1, d);
-}
-
 /** "Friday 23 October" for the header. */
-function longDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  }).format(isoParts(iso));
-}
-
-function monthName(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(isoParts(iso));
-}
-
-function shortDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(isoParts(iso));
-}
+const longDate = (iso: string) =>
+  formatIsoDate(iso, { weekday: "long", day: "numeric", month: "long" });
+const monthName = (iso: string) => formatIsoDate(iso, { month: "long" });
+const shortDate = (iso: string) => formatIsoDate(iso, { day: "numeric", month: "short" });
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -54,8 +34,7 @@ function HomeValue({ minor, currency }: { minor: number; currency: string }) {
   return (
     <>
       {/* Full opacity: 80% white on the accent hero card fails the 4.5:1 contrast check. */}
-      <span className="text-base font-normal">{currency}</span>{" "}
-      {groupDigits(formatMinor(minor, currency))}
+      <span className="text-base font-normal">{currency}</span> {formatGrouped(minor, currency)}
     </>
   );
 }
@@ -214,7 +193,8 @@ export function DashboardPage() {
   const [filter, setFilter] = useState<ListFilter>("all");
   const dashboard = useDashboard(filter);
   const data = dashboard.data;
-  const today = data?.today ?? new Date().toISOString().slice(0, 10);
+  const workspaceToday = useWorkspaceToday();
+  const today = data?.today ?? workspaceToday;
 
   const actions = (
     <>

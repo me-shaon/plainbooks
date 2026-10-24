@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { formatMinor } from "../../../shared/money";
+import { formatGrouped } from "../../../shared/money";
 import type { DocumentSummary } from "../../../shared/schemas/document";
 import { Pill } from "../../components/ui/pill";
 import { StackedList, StackedRow } from "../../components/ui/stacked-list";
@@ -12,7 +12,7 @@ import {
   TableContainer,
   TableHeader,
 } from "../../components/ui/table";
-import { formatDate, groupDigits } from "../../lib/format";
+import { formatDate } from "../../lib/format";
 import { documentPath } from "./labels";
 
 /** The amount as "USD 1,250.00" with a muted code, like the Ledger table. */
@@ -20,7 +20,7 @@ export function Amount({ minor, currency }: { minor: number; currency: string })
   return (
     <span className="figure font-medium whitespace-nowrap">
       <span className="font-normal text-muted-foreground">{currency}</span>{" "}
-      {groupDigits(formatMinor(minor, currency))}
+      {formatGrouped(minor, currency)}
     </span>
   );
 }

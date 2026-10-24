@@ -84,3 +84,14 @@ export function formatMinor(minor: number, currency: string): string {
   if (!Number.isSafeInteger(minor)) throw new MoneyError("Amount must be an integer");
   return formatScaled(BigInt(minor), getExponent(currency));
 }
+
+/** Formats minor units as a major-unit decimal with thousands separators ("2,147.95"). */
+export function formatGrouped(minor: number, currency: string): string {
+  const text = formatMinor(minor, currency);
+  const sign = text.startsWith("-") ? "-" : "";
+  const body = sign ? text.slice(1) : text;
+  const dot = body.indexOf(".");
+  const whole = dot === -1 ? body : body.slice(0, dot);
+  const fraction = dot === -1 ? "" : body.slice(dot);
+  return `${sign}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction}`;
+}
