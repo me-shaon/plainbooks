@@ -11,7 +11,7 @@
 //   moves the due date starts the schedule again.
 // Email choice: the reminder links to the public page, and attaches the PDF only when the
 // current revision's PDF is already in R2. A reminder never waits for a browser render.
-import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne, type SQL, sql } from "drizzle-orm";
 import type { ReminderMode, ReminderModeSetting } from "../../shared/domain";
 import { displayStatus, OPEN_STATUSES } from "../../shared/schemas/document";
 import type { ReminderStatus, ReminderSuggestion } from "../../shared/schemas/reminder";
@@ -133,14 +133,21 @@ function isOpen(doc: Pick<Document, "kind" | "status" | "dueDate" | "total" | "a
 
 /**
  * Reminder counts per document, from accepted reminder emails sent for a revision with the
- * document's current due date. Reads the IDs in chunks to stay under the parameter limit.
+ * document's current due date. `scope` is either a list of IDs, read in chunks to stay
+ * under the parameter limit, or a subquery of document IDs, read in one statement.
  */
-async function reminderStats(db: Db, ids: string[]) {
+async function reminderStats(db: Db, scope: string[] | SQL) {
   const stats = new Map<string, { last: number | null; lastAt: number | null; overdue: number }>();
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += IDS_PER_QUERY) chunks.push(ids.slice(i, i + IDS_PER_QUERY));
+  const filters: SQL[] = [];
+  if (Array.isArray(scope)) {
+    for (let i = 0; i < scope.length; i += IDS_PER_QUERY) {
+      filters.push(inArray(emailLog.documentId, scope.slice(i, i + IDS_PER_QUERY)));
+    }
+  } else {
+    filters.push(sql`${emailLog.documentId} IN ${scope}`);
+  }
   const results = await Promise.all(
-    chunks.map((chunk) =>
+    filters.map((filter) =>
       db
         .select({
           documentId: emailLog.documentId,
@@ -155,7 +162,7 @@ async function reminderStats(db: Db, ids: string[]) {
           and(
             eq(emailLog.kind, "reminder"),
             ne(emailLog.status, "failed"),
-            inArray(emailLog.documentId, chunk),
+            filter,
             eq(documentRevisions.dueDate, documents.dueDate),
           ),
         )
@@ -177,25 +184,25 @@ async function loadCandidates(
   documentIds?: string[],
 ): Promise<Candidate[]> {
   const today = workspaceToday(ws, now);
-  const rows = await db
-    .select({ doc: documents, clientName: clients.name, clientMode: clients.reminderMode })
-    .from(documents)
-    .innerJoin(clients, eq(clients.id, documents.clientId))
-    .where(
-      and(
-        eq(documents.kind, "invoice"),
-        inArray(documents.status, [...OPEN_STATUSES]),
-        sql`${documents.dueDate} IS NOT NULL`,
-        gt(sql`${documents.total} - ${documents.amountPaid}`, 0),
-        documentIds ? inArray(documents.id, documentIds) : undefined,
-      ),
-    )
-    .orderBy(documents.dueDate)
-    .limit(CANDIDATE_LIMIT);
-  const stats = await reminderStats(
-    db,
-    rows.map((r) => r.doc.id),
+  const open = and(
+    eq(documents.kind, "invoice"),
+    inArray(documents.status, [...OPEN_STATUSES]),
+    sql`${documents.dueDate} IS NOT NULL`,
+    gt(sql`${documents.total} - ${documents.amountPaid}`, 0),
+    documentIds ? inArray(documents.id, documentIds) : undefined,
   );
+  // The stats run next to the candidate read. For the full list they filter by the same
+  // predicate as a subquery, so up to 500 candidates cost one statement and bind no IDs.
+  const [rows, stats] = await Promise.all([
+    db
+      .select({ doc: documents, clientName: clients.name, clientMode: clients.reminderMode })
+      .from(documents)
+      .innerJoin(clients, eq(clients.id, documents.clientId))
+      .where(open)
+      .orderBy(documents.dueDate)
+      .limit(CANDIDATE_LIMIT),
+    reminderStats(db, documentIds ?? sql`(SELECT ${documents.id} FROM ${documents} WHERE ${open})`),
+  ]);
   const steps = ws.reminderSchedule.map((s) => s.offsetDays);
   return rows.map(({ doc, clientName, clientMode }) => {
     const dueDate = doc.dueDate as string;

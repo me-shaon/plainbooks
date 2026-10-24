@@ -31,6 +31,11 @@ const REPORTED = sql.raw(
   `d.kind = 'invoice' AND d.status IN (${sqlInList([...OPEN_STATUSES, "paid"])})`,
 );
 
+// Date-range reports start from the date index (revision or tax-total issue date, payment
+// date) and find each document by its primary key, so they read only the rows in the range
+// instead of every invoice ever billed. In SQLite, CROSS JOIN keeps the left table as the
+// outer loop. Without table statistics, the planner would otherwise start from documents.
+
 /** The period key of an ISO date column, for example "2026-10", "2026-Q3", or "2026". */
 function periodSql(column: string, period: ReportPeriod): SQL {
   if (period === "month") return sql.raw(`substr(${column}, 1, 7)`);
@@ -95,7 +100,7 @@ export async function taxSummary(
       SUM(t.home_taxable) AS taxable, SUM(t.home_tax) AS tax,
       COUNT(DISTINCT t.document_id) AS invoices
     FROM revision_tax_totals t
-    JOIN documents d ON d.current_revision_id = t.revision_id
+    CROSS JOIN documents d ON d.id = t.document_id AND d.current_revision_id = t.revision_id
     WHERE ${REPORTED} AND t.issue_date >= ${range.from} AND t.issue_date <= ${range.to}
     GROUP BY period, t.tax_rate_id, t.rate
     ORDER BY period, CAST(t.rate AS REAL) DESC, name`);
@@ -169,8 +174,8 @@ export async function incomeReport(
         WHERE p.document_id = d.id AND p.kind = 'payment'), 0)) AS paid,
       SUM(COALESCE((SELECT SUM(p.home_amount) FROM payments p
         WHERE p.document_id = d.id AND p.kind = 'write_off'), 0)) AS written_off
-    FROM documents d
-    JOIN document_revisions r ON r.id = d.current_revision_id
+    FROM document_revisions r
+    CROSS JOIN documents d ON d.id = r.document_id AND d.current_revision_id = r.id
     JOIN clients c ON c.id = d.client_id
     WHERE ${REPORTED} AND r.issue_date >= ${range.from} AND r.issue_date <= ${range.to}
     GROUP BY period, d.client_id
@@ -377,8 +382,8 @@ function exportSpec(db: Db, type: ExportType, range: ResolvedRange): ExportSpec 
             c.name AS client_name, r.currency, r.issue_date, r.due_date, r.subtotal,
             r.discount_total, r.tax_total, r.total, d.amount_paid, r.fx_rate,
             r.home_currency, r.home_total, r.revision_number
-          FROM documents d
-          JOIN document_revisions r ON r.id = d.current_revision_id
+          FROM document_revisions r
+          CROSS JOIN documents d ON d.id = r.document_id AND d.current_revision_id = r.id
           JOIN clients c ON c.id = d.client_id
           WHERE ${REPORTED} AND r.issue_date >= ${range.from} AND r.issue_date <= ${range.to}
           ORDER BY r.issue_date, d.number
@@ -420,7 +425,7 @@ function exportSpec(db: Db, type: ExportType, range: ResolvedRange): ExportSpec 
         const rows = await db.all<PaymentExportRow>(sql`SELECT p.paid_on, d.number,
             c.name AS client_name, p.kind, d.currency, p.amount, d.fx_rate, p.home_amount, p.note
           FROM payments p
-          JOIN documents d ON d.id = p.document_id
+          CROSS JOIN documents d ON d.id = p.document_id
           JOIN clients c ON c.id = d.client_id
           WHERE ${REPORTED} AND p.paid_on >= ${range.from} AND p.paid_on <= ${range.to}
           ORDER BY p.paid_on, d.number, p.created_at

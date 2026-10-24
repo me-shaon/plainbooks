@@ -169,7 +169,8 @@ export async function getDashboard(
     db.all<CountRow>(sql`SELECT COUNT(*) AS n FROM documents d
       WHERE (d.kind = 'invoice' AND d.status = 'finalized')
         OR (d.kind = 'quote' AND d.status = 'draft' AND d.number IS NOT NULL)`),
-    db.all<CountRow>(sql`SELECT COUNT(*) AS n FROM documents`),
+    // Reads at most one row. COUNT(*) would read every document on each load.
+    db.all<CountRow>(sql`SELECT EXISTS (SELECT 1 FROM documents) AS n`),
     db.all<NotificationRow>(
       sql`${NOTIFICATION_SELECT} WHERE n.read_at IS NULL
         ORDER BY n.created_at DESC, n.rowid DESC LIMIT ${NOTIFICATION_LIMIT}`,

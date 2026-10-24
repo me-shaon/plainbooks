@@ -183,20 +183,26 @@ const OVERDUE = overdueCondition("?1");
 const EXPIRED = `(kind = 'quote' AND status = 'sent' AND expiry_date IS NOT NULL AND expiry_date < ?1)`;
 
 /**
- * Persists derived statuses for list filters, in one D1 batch (4 statements):
+ * Persists derived statuses for list filters, in one D1 batch (5 statements):
  * - invoices are overdue when sent or partially paid, past due in the workspace timezone,
  *   and with a balance above zero. The flag also clears when that stops being true.
  * - sent quotes past their expiry date become expired.
  * Each change writes one activity row.
+ *
+ * Every statement reads only candidate rows through an index, because the tick runs 96
+ * times a day and D1 bills rows read. Setting the flag searches open invoices by due date
+ * (documents_kind_status_due_idx). Clearing it searches only flagged invoices
+ * (documents_overdue_idx). Rows whose flag is already right are not written.
  */
 export async function updateDerivedStatuses(db: Db, today: string, now: number): Promise<void> {
   const d1 = db.$client;
   const statements = [
     `INSERT INTO activity (id, document_id, client_id, type, data, created_at)
      SELECT ${SQL_UUID}, id, client_id, 'invoice_overdue', json_object('dueDate', due_date), ?2
-     FROM documents WHERE kind = 'invoice' AND is_overdue = 0 AND ${OVERDUE}`,
-    `UPDATE documents SET is_overdue = (CASE WHEN ${OVERDUE} THEN 1 ELSE 0 END), updated_at = ?2
-     WHERE kind = 'invoice' AND is_overdue <> (CASE WHEN ${OVERDUE} THEN 1 ELSE 0 END)`,
+     FROM documents WHERE is_overdue = 0 AND ${OVERDUE}`,
+    `UPDATE documents SET is_overdue = 1, updated_at = ?2 WHERE is_overdue = 0 AND ${OVERDUE}`,
+    `UPDATE documents SET is_overdue = 0, updated_at = ?2
+     WHERE kind = 'invoice' AND is_overdue = 1 AND NOT ${OVERDUE}`,
     `INSERT INTO activity (id, document_id, client_id, type, data, created_at)
      SELECT ${SQL_UUID}, id, client_id, 'quote_expired', json_object('expiryDate', expiry_date), ?2
      FROM documents WHERE ${EXPIRED}`,
