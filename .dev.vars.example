@@ -1,6 +1,7 @@
-APP_ENV=development
-DEV_USER_EMAIL=owner@example.com
+# Secrets. The Deploy to Cloudflare button asks for each value in this file.
 RESEND_API_KEY=re_replace_me
 RESEND_WEBHOOK_SECRET=whsec_replace_me
-# Local only. "1" swaps Resend, Frankfurter, and Browser Run for fakes.
+# Local only. `pnpm dev` sets APP_ENV=development and DEV_USER_EMAIL=owner@example.com.
+# Add either line here to change it.
+# "1" swaps Resend, Frankfurter, and Browser Run for fakes.
 # FAKE_EXTERNALS=1

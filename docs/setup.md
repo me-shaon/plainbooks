@@ -29,81 +29,72 @@ pnpm wrangler login
 
 Cloudflare Access and the custom domain both need the domain to be active on Cloudflare.
 
-## 2. Create the D1 database
+## 2. Deploy the Worker
 
-1. Create the database:
+You can deploy from your computer with the deploy script, or from the Cloudflare dashboard with the Deploy button. Do one of the two.
 
-   ```sh
-   pnpm wrangler d1 create plainbooks
-   ```
+### Option A: the deploy script
 
-2. Copy the `database_id` from the output.
-3. In `wrangler.jsonc`, replace the placeholder `database_id` with that value.
-
-Do not change the binding name `DB` or the `migrations_dir`.
-
-## 3. Create the R2 bucket
-
-1. Create the bucket:
+1. Run the script:
 
    ```sh
-   pnpm wrangler r2 bucket create plainbooks-files
+   pnpm run ship
    ```
 
-2. If you use another bucket name, put it in `bucket_name` in `wrangler.jsonc`.
+2. Answer the questions:
 
-The bucket stores logos and cached PDFs. It stays private. The Worker serves the files.
+   | Question | Answer |
+   | --- | --- |
+   | Host for the app | `invoices.example.com`. |
+   | Email of the first Owner | Your email. The script changes it to lowercase. |
+   | Zero Trust team domain | Leave it empty. You get it in step 3. |
+   | Access application AUD tag | Leave it empty. You get it in step 4. |
 
-## 4. Set the custom domain
+3. When the script asks for `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET`, type a placeholder value. You get the real values in step 6 of this guide.
 
-1. In `wrangler.jsonc`, find the `routes` entry.
-2. Replace `invoices.example.com` with your host.
-3. Keep `"workers_dev": false` and `"preview_urls": false`.
+The script does these steps:
 
-The Worker runs only on the custom domain. A `workers.dev` URL would skip Cloudflare Access, so the config turns it off. The first `pnpm deploy` creates the DNS record and the certificate for the host.
+1. It signs you in to Cloudflare if necessary.
+2. It finds or creates the D1 database `plainbooks` and the R2 bucket `plainbooks-files`.
+3. It saves your answers and the database ID in `.deploy.env`.
+4. It writes `wrangler.production.jsonc` from `wrangler.jsonc` and `.deploy.env`.
+5. It builds the app, applies the D1 migrations to the remote database, and deploys the Worker.
+6. It asks for each Resend secret that is not set.
 
-## 5. Set the variables
+Git ignores `.deploy.env` and `wrangler.production.jsonc`. The tracked `wrangler.jsonc` keeps its placeholder values. Do not edit `wrangler.production.jsonc`. To change a value, edit `.deploy.env` and run `pnpm run ship` again.
 
-Edit `vars` in `wrangler.jsonc`:
+The Worker runs only on the custom domain. A `workers.dev` URL would skip Cloudflare Access, so the config turns it off. The first deploy creates the DNS record and the certificate for the host.
 
-| Variable | Value |
-| --- | --- |
-| `ACCESS_TEAM_DOMAIN` | Your Zero Trust team domain, for example `your-team.cloudflareaccess.com`. You get it in step 7. |
-| `ACCESS_AUD` | The Application Audience (AUD) tag of Access application 1. You get it in step 8. |
-| `OWNER_EMAIL` | The email of the first Owner. Use lowercase. |
-| `APP_URL` | `https://invoices.example.com`, with no trailing slash. Email links use it. The API refuses writes from a browser page on any other origin. |
-| `APP_ENV` | `production`. Do not change it. |
+### Option B: the Deploy to Cloudflare button
 
-Do not put `DEV_USER_EMAIL` or `FAKE_EXTERNALS` in the production config. The Worker ignores both when `APP_ENV` is `production`.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/me-shaon/plainbooks)
 
-## 6. Deploy the Worker
+1. Select the button.
+2. Connect your GitHub or GitLab account. Cloudflare copies this repository to a new repository in your account.
+3. Keep the new D1 database and the new R2 bucket that Cloudflare suggests.
+4. Set `OWNER_EMAIL` to your email in lowercase.
+5. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash.
+6. Type a placeholder value for `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET`. You get the real values in step 6 of this guide.
+7. Select **Deploy**.
+8. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
 
-1. Run the deploy:
+The Worker has no URL until you add the custom domain. This is intentional: a `workers.dev` URL would skip Cloudflare Access.
 
-   ```sh
-   pnpm deploy
-   ```
+Each push to the new repository deploys again. Change the variables in `wrangler.jsonc` in the new repository, not in the dashboard. A deploy replaces the variables that you set in the dashboard.
 
-   This builds the app, applies the D1 migrations to the remote database, and deploys the Worker.
-
-2. Set the Resend secrets. You get the values in step 10. You can set them now with placeholder values and change them later:
-
-   ```sh
-   pnpm wrangler secret put RESEND_API_KEY
-   pnpm wrangler secret put RESEND_WEBHOOK_SECRET
-   ```
+To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
 
 Do not open the app yet. Until Access is in front of it, every API request gets a 401 error.
 
-## 7. Turn on Cloudflare Zero Trust
+## 3. Turn on Cloudflare Zero Trust
 
 1. In the Cloudflare dashboard, open **Zero Trust**.
 2. Choose a team name and select the Free plan.
 3. Copy the team domain, for example `your-team.cloudflareaccess.com`.
-4. Put it in `ACCESS_TEAM_DOMAIN` in `wrangler.jsonc`.
+4. Keep the value. You use it in "Deploy again" in step 4.
 5. Make sure that a login method is on. The default **One-time PIN** sends a code by email. That is enough.
 
-## 8. Create the Access applications
+## 4. Create the Access applications
 
 You create three self-hosted applications. Access uses the most specific matching application, so applications 2 and 3 override application 1 for their paths.
 
@@ -118,7 +109,7 @@ You create three self-hosted applications. Access uses the most specific matchin
 7. Open **Settings** > **Cookies** and set **SameSite attribute** to **Lax**. Then the browser does not send the Access cookie on cross-site writes.
 8. Save the application.
 9. Open the application again and copy the **Application Audience (AUD) Tag**.
-10. Put the tag in `ACCESS_AUD` in `wrangler.jsonc`.
+10. Keep the tag. You use it in "Deploy again" below.
 
 The Worker checks the Access JWT on every API request. It checks the AUD tag and the team domain, so a token for another application is rejected.
 
@@ -146,13 +137,24 @@ The webhook route checks the Svix signature from Resend instead of an Access JWT
 
 ### Deploy again
 
-Deploy with the new `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` values:
+Deploy with the team domain and the AUD tag.
 
-```sh
-pnpm deploy
-```
+If you used the deploy script:
 
-## 9. Sign in for the first time
+1. In `.deploy.env`, set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`.
+2. Run the script:
+
+   ```sh
+   pnpm run ship
+   ```
+
+If you used the Deploy button:
+
+1. In your new repository, open `wrangler.jsonc`.
+2. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `vars`.
+3. Commit and push. The push deploys the Worker.
+
+## 5. Sign in for the first time
 
 1. Open `https://invoices.example.com`.
 2. Sign in through Access with the `OWNER_EMAIL` address.
@@ -162,7 +164,7 @@ The bootstrap works only once. It runs when the users table is empty and the ema
 
 Then open **Settings** and check the workspace name, home currency, time zone, and number prefixes. The home currency locks after the first invoice is sent.
 
-## 10. Set up Resend
+## 6. Set up Resend
 
 ### Verify the sending domain
 
@@ -212,7 +214,7 @@ The app does not send email until the sender email is set.
 
 Secrets take effect without a new deploy.
 
-## 11. Check Browser Run
+## 7. Check Browser Run
 
 The `BROWSER` binding needs no setup on the Free plan. Check it once after the deploy:
 
@@ -225,7 +227,7 @@ The first PDF can take some seconds. If the app shows that the PDF is being prep
 
 You can also check the binding before real use with `pnpm build` and then `pnpm wrangler dev --remote`. This runs the built Worker on Cloudflare with the real bindings. It uses the production D1 database and R2 bucket, so do not use it after you have real data.
 
-## 12. Add team members
+## 8. Add team members
 
 You must add each member in two places:
 
@@ -296,10 +298,10 @@ The Worker used all 100,000 free requests for the day. Requests work again after
 
 ### Every page shows "Sign in through Cloudflare Access"
 
-The request reached the Worker without an Access JWT. Check that Access application 1 covers the host. Check that `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` match the values in Zero Trust, then run `pnpm deploy` again.
+The request reached the Worker without an Access JWT. Check that Access application 1 covers the host. Check that `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` match the values in Zero Trust. Then deploy again as in step 4.
 
 ### You get a 403 error after sign-in
 
-If the error code is `cross_site_request`, the page origin is not the origin of `APP_URL`. Set `APP_URL` to the host in the address bar, then run `pnpm deploy` again.
+If the error code is `cross_site_request`, the page origin is not the origin of `APP_URL`. Set `APP_URL` to the host in the address bar. Then deploy again as in step 4. The deploy script sets `APP_URL` from `APP_HOST` in `.deploy.env`.
 
 Otherwise, your email is not in the users table. The first Owner must sign in with `OWNER_EMAIL`. Other members must be added on the Team page.

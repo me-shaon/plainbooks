@@ -7,8 +7,7 @@
   "workers_dev": false,
   "preview_urls": false,
   // The Worker runs only on its custom domain. Access needs a custom domain (docs/setup.md).
-  // Replace the placeholder with your host. It must match APP_URL.
-  "routes": [{ "pattern": "invoices.example.com", "custom_domain": true }],
+  // No routes here: `pnpm run ship` adds your host, or you add it in the dashboard.
   "observability": { "enabled": true },
   "assets": {
     "directory": "./dist/client",
@@ -20,7 +19,8 @@
     {
       "binding": "DB",
       "database_name": "plainbooks",
-      // Placeholder. Replace with the ID from `wrangler d1 create plainbooks`.
+      // Placeholder. The Deploy button and `pnpm run ship` use your real database instead.
+      // Local dev keys its D1 data on this value, so keep it.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }

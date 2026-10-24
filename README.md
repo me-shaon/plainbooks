@@ -1,5 +1,7 @@
 # PlainBooks
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/me-shaon/plainbooks)
+
 PlainBooks is a private invoicing app for one agency. It runs as a single Cloudflare Worker on the Workers Free plan. The team signs in through Cloudflare Access. Clients open quotes and invoices through public links and need no account.
 
 ## Features
@@ -35,7 +37,7 @@ You need Node.js 22.12 or later and pnpm.
    pnpm install
    ```
 
-2. Copy the local variables:
+2. Copy the local secrets:
 
    ```sh
    cp .dev.vars.example .dev.vars
@@ -59,11 +61,11 @@ You need Node.js 22.12 or later and pnpm.
 
 Locally there is no Cloudflare Access in front of the app. The Worker signs you in as `DEV_USER_EMAIL` when all of these are true:
 
-- `APP_ENV` is `development` (set in `.dev.vars`).
+- `APP_ENV` is `development`. `pnpm dev` sets it. The build never does.
 - The request host is `localhost` or `127.0.0.1`.
-- `DEV_USER_EMAIL` is set.
+- `DEV_USER_EMAIL` is set. `pnpm dev` sets it to `owner@example.com`.
 
-The first sign-in creates the Owner only when the email is `OWNER_EMAIL`. The example files use `owner@example.com` for both. If you change `DEV_USER_EMAIL` before the first sign-in, also set `OWNER_EMAIL` in `.dev.vars`.
+The first sign-in creates the Owner only when the email is `OWNER_EMAIL`. Both default to `owner@example.com`. To use another email, set `DEV_USER_EMAIL` in `.dev.vars` before the first sign-in. Also set `OWNER_EMAIL` there to the same value.
 
 Local email, exchange rates, and PDFs call the real services. Put a real Resend key in `.dev.vars` to send email. Browser Run Quick Actions do not run locally, so PDF downloads fail in `pnpm dev`. To use fakes for all three, add `FAKE_EXTERNALS=1` to `.dev.vars`. The Worker ignores this flag unless `APP_ENV` is `development`.
 
@@ -84,7 +86,8 @@ Local email, exchange rates, and PDFs call the real services. Put a real Resend 
 | `pnpm db:generate` | Generates a migration from `src/worker/db/schema.ts`. |
 | `pnpm db:migrate` | Applies the migrations to the local D1 database. |
 | `pnpm cf-typegen` | Generates `worker-configuration.d.ts` from `wrangler.jsonc`. |
-| `pnpm deploy` | Builds, applies the remote D1 migrations, and deploys the Worker. |
+| `pnpm run ship` | Deploys from your computer. The first run creates the D1 database and the R2 bucket and asks for your host. |
+| `pnpm run deploy` | Builds, applies the remote D1 migrations, and deploys with `wrangler.jsonc` as it is. The Deploy button uses it. |
 
 ## Testing
 
@@ -123,8 +126,11 @@ docs/            Requirements, plan, and setup guide.
 
 ## Deploy
 
-Read [docs/setup.md](docs/setup.md) for the first deploy on a new Cloudflare account. After that, run:
+You can deploy in two ways:
 
-```sh
-pnpm deploy
-```
+- Select the **Deploy to Cloudflare** button at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. Each push to your copy deploys again.
+- Run `pnpm run ship` on your computer. The first run asks for your host and owner email, creates the D1 database and the R2 bucket, and deploys. Later runs only build, migrate, and deploy.
+
+Both ways need Cloudflare Access and Resend set up by hand. Read [docs/setup.md](docs/setup.md) for each step.
+
+Use `pnpm run deploy` or `pnpm run ship`, not `pnpm deploy`. `pnpm deploy` is a built-in pnpm command and does not run the script.

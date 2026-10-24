@@ -18,6 +18,15 @@ const E2E_VARS: Record<string, string> = {
   RESEND_WEBHOOK_SECRET: "whsec_ZmFrZS1lMmUtd2ViaG9vay1zZWNyZXQ=",
 };
 
+/**
+ * `vite` (dev only) turns on the dev auth bypass. `.dev.vars` can override these values.
+ * The build output never gets them, so a deploy keeps `APP_ENV=production`.
+ */
+const DEV_VARS: Record<string, string> = {
+  APP_ENV: "development",
+  DEV_USER_EMAIL: "owner@example.com",
+};
+
 function e2ePluginConfig(): PluginConfig {
   // Values in .dev.vars win over config vars, so a conflicting .dev.vars would break the run.
   if (existsSync(".dev.vars")) {
@@ -38,7 +47,19 @@ function e2ePluginConfig(): PluginConfig {
   };
 }
 
-export default defineConfig({
+/**
+ * `pnpm run ship` sets WRANGLER_CONFIG to its generated wrangler.production.jsonc.
+ */
+function pluginConfig(command: "build" | "serve", isPreview: boolean): PluginConfig {
+  const configPath = process.env.WRANGLER_CONFIG;
+  if (process.env.E2E === "1") return e2ePluginConfig();
+  if (command === "serve" && !isPreview) {
+    return { configPath, config: (config) => ({ vars: { ...config.vars, ...DEV_VARS } }) };
+  }
+  return { configPath };
+}
+
+export default defineConfig(({ command, isPreview = false }) => ({
   plugins: [
     tanstackRouter({
       target: "react",
@@ -48,6 +69,6 @@ export default defineConfig({
     }),
     react(),
     tailwindcss(),
-    cloudflare(process.env.E2E === "1" ? e2ePluginConfig() : undefined),
+    cloudflare(pluginConfig(command, isPreview)),
   ],
-});
+}));

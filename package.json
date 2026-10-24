@@ -7,6 +7,31 @@
   "engines": {
     "node": ">=22.12.0"
   },
+  "cloudflare": {
+    "bindings": {
+      "RESEND_API_KEY": {
+        "description": "Resend API key with **Sending access**. Use a placeholder now and change it later. See [the setup guide](https://github.com/me-shaon/plainbooks/blob/main/docs/setup.md#10-set-up-resend)."
+      },
+      "RESEND_WEBHOOK_SECRET": {
+        "description": "Signing secret of the Resend webhook. It starts with `whsec_`. Use a placeholder now and change it later."
+      },
+      "ACCESS_TEAM_DOMAIN": {
+        "description": "Your Zero Trust team domain, for example `your-team.cloudflareaccess.com`."
+      },
+      "ACCESS_AUD": {
+        "description": "The **Application Audience (AUD) Tag** of the Access application for the whole app."
+      },
+      "OWNER_EMAIL": {
+        "description": "Email of the first Owner, in lowercase."
+      },
+      "APP_URL": {
+        "description": "Public origin of the app, for example `https://invoices.example.com`. No trailing slash."
+      },
+      "APP_ENV": {
+        "description": "Keep `production`."
+      }
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -21,6 +46,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "deploy": "pnpm run build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "ship": "node scripts/deploy.mjs",
     "cf-typegen": "wrangler types --strict-vars=false"
   },
   "dependencies": {
