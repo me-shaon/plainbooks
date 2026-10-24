@@ -37,6 +37,7 @@ import { fxFetcher } from "../externals";
 import { createDraft, loadWorkspace, workspaceToday } from "./documents";
 import {
   appDocumentUrl,
+  deferForPdf,
   hasEmailCapacity,
   nextEmailWindow,
   ownerEmails,
@@ -129,13 +130,22 @@ async function loadClient(db: Db, id: string): Promise<Client> {
   return row;
 }
 
+/** D1 allows 100 bound parameters per statement. */
+const IDS_PER_QUERY = 90;
+
 async function scheduleLines(db: Db, ids: string[]) {
-  if (ids.length === 0) return [];
-  return db
-    .select()
-    .from(recurringScheduleLines)
-    .where(inArray(recurringScheduleLines.scheduleId, ids))
-    .orderBy(asc(recurringScheduleLines.scheduleId), asc(recurringScheduleLines.position));
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += IDS_PER_QUERY) chunks.push(ids.slice(i, i + IDS_PER_QUERY));
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      db
+        .select()
+        .from(recurringScheduleLines)
+        .where(inArray(recurringScheduleLines.scheduleId, chunk))
+        .orderBy(asc(recurringScheduleLines.scheduleId), asc(recurringScheduleLines.position)),
+    ),
+  );
+  return results.flat();
 }
 
 function discountOf(s: RecurringSchedule): DiscountValue {
@@ -366,7 +376,10 @@ export async function createSchedule(
     startDate: data.startDate,
     anchorDay: anchorDayOf(data.startDate),
   };
-  const nextIssueDate = nextIssueDateFrom(rule, data.startDate, null);
+  // A start date in the past does not create (or email) invoices for the past periods.
+  const ws = await loadWorkspace(db);
+  const today = workspaceToday(ws, ctx.now);
+  const nextIssueDate = nextIssueDateFrom(rule, laterDate(data.startDate, today), null);
   await db.batch([
     db.insert(recurringSchedules).values({
       id,
@@ -638,7 +651,7 @@ async function ownerNotice(
   return statements;
 }
 
-/** Finds the invoice of this period, or creates it as a draft. */
+/** Finds the invoice of this period, or creates it as a draft. Returns its ID and status. */
 async function periodInvoice(
   db: Db,
   s: RecurringSchedule,
@@ -660,7 +673,7 @@ async function periodInvoice(
     return doc;
   };
   const found = await existing();
-  if (found) return found;
+  if (found) return { id: found.id, status: found.status };
 
   const lines = await scheduleLines(db, [s.id]);
   const data = documentCreateInput.parse({
@@ -682,115 +695,124 @@ async function periodInvoice(
     })),
   });
   try {
-    await createDraft(
+    const id = await createDraft(
       db,
       data,
       { actor: null, now },
       {
         recurringScheduleId: s.id,
         recurringPeriodId: payload.periodId,
+        allowTaxRateIds: lines.map((l) => l.taxRateId).filter((v): v is string => !!v),
       },
     );
+    return { id, status: "draft" as const };
   } catch (err) {
     // A concurrent run created it first: the unique index rejects the second insert.
     const again = await existing();
-    if (again) return again;
+    if (again) return { id: again.id, status: again.status };
     throw err;
   }
-  const created = await existing();
-  if (!created) throw new Error("The recurring invoice was not created");
-  return created;
 }
 
 /** Registers the enqueue hook and the job handler. Runs at import; tests call it after a reset. */
 export function registerRecurringJobs(): void {
   registerEnqueueHook("recurring", ({ db, today }) => recurringEnqueue(db, today));
 
-  registerJobHandler<RecurringJobPayload>(RECURRING_JOB, async ({ env, db, now, payload, job }) => {
-    const [s] = await db
-      .select()
-      .from(recurringSchedules)
-      .where(eq(recurringSchedules.id, payload.scheduleId));
-    // Deleted, paused, or ended since the job was queued: nothing to create.
-    if (s?.status !== "active") return undefined;
-    if (s.endDate && payload.issueDate > s.endDate) return undefined;
-    const client = await loadClient(db, s.clientId);
-    if (client.archivedAt !== null) return undefined;
-    const ws = await loadWorkspace(db);
-    const mode = resolveSendMode(s.sendMode, client.recurringSendMode, ws.recurringSendMode);
+  registerJobHandler<RecurringJobPayload>(
+    RECURRING_JOB,
+    async ({ env, db, now, payload, job }) => {
+      const [s] = await db
+        .select()
+        .from(recurringSchedules)
+        .where(eq(recurringSchedules.id, payload.scheduleId));
+      // Deleted, paused, or ended since the job was queued: nothing to create.
+      if (s?.status !== "active") return undefined;
+      if (s.endDate && payload.issueDate > s.endDate) return undefined;
+      const client = await loadClient(db, s.clientId);
+      if (client.archivedAt !== null) return undefined;
+      const ws = await loadWorkspace(db);
+      const mode = resolveSendMode(s.sendMode, client.recurringSendMode, ws.recurringSendMode);
 
-    // Auto-send waits for email capacity before it creates anything (the daily cap).
-    if (mode === "auto_send" && !(await hasEmailCapacity(db, ws, now))) {
-      return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
-    }
-
-    const doc = await periodInvoice(db, s, client, ws, payload, now);
-    const cursor = advanceCursor(db, s, payload, now);
-    const base = {
-      workspace: ws.businessName || ws.name,
-      accent: ws.accentColor,
-      url: appDocumentUrl(env, "invoice", doc.id),
-      clientName: client.name,
-    };
-    const draftReady = async (body: string | null) => ({
-      statements: [
-        cursor,
-        ...(await ownerNotice(
-          db,
-          doc.id,
-          "recurring_draft_ready",
-          recurringDraftReadyEmail({ ...base, issueDate: payload.issueDate, scheduleName: s.name }),
-          body,
-          now,
-        )),
-      ],
-    });
-
-    if (mode === "draft") return draftReady(null);
-
-    // Auto-send. A retry after a send never sends again.
-    if (doc.status !== "draft" && doc.status !== "finalized") return { statements: [cursor] };
-    try {
-      await sendDocument(env, db, doc.id, {
-        actor: null,
-        now,
-        trigger: "auto",
-        idempotencyKey: `job:${job.id}`,
-        fetcher: autoSendFetcher(env),
-      });
-    } catch (err) {
-      if (!(err instanceof AppError)) throw err;
-      if (err.code === "daily_email_limit") {
+      // Auto-send waits for email capacity before it creates anything (the daily cap).
+      if (mode === "auto_send" && !(await hasEmailCapacity(db, ws, now))) {
         return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
       }
-      if (err.code === "fx_rate_required") {
-        // The invoice stays a draft. The owner enters the rate and sends it (R20 edge case).
-        return {
-          statements: [
-            cursor,
-            ...(await ownerNotice(
-              db,
-              doc.id,
-              "fx_rate_needed",
-              fxRateNeededEmail({
-                ...base,
-                currency: s.currency,
-                homeCurrency: ws.homeCurrency,
-                date: payload.issueDate,
-              }),
-              err.message,
-              now,
-            )),
-          ],
-        };
+
+      const doc = await periodInvoice(db, s, client, ws, payload, now);
+      const cursor = advanceCursor(db, s, payload, now);
+      const base = {
+        workspace: ws.businessName || ws.name,
+        accent: ws.accentColor,
+        url: appDocumentUrl(env, "invoice", doc.id),
+        clientName: client.name,
+      };
+      const draftReady = async (body: string | null) => ({
+        statements: [
+          cursor,
+          ...(await ownerNotice(
+            db,
+            doc.id,
+            "recurring_draft_ready",
+            recurringDraftReadyEmail({
+              ...base,
+              issueDate: payload.issueDate,
+              scheduleName: s.name,
+            }),
+            body,
+            now,
+          )),
+        ],
+      });
+
+      if (mode === "draft") return draftReady(null);
+
+      // Auto-send. A retry after a send never sends again.
+      if (doc.status !== "draft" && doc.status !== "finalized") return { statements: [cursor] };
+      try {
+        await sendDocument(env, db, doc.id, {
+          actor: null,
+          now,
+          trigger: "auto",
+          idempotencyKey: `job:${job.id}`,
+          fetcher: autoSendFetcher(env),
+        });
+      } catch (err) {
+        if (!(err instanceof AppError)) throw err;
+        if (err.code === "daily_email_limit") {
+          return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
+        }
+        // The invoice exists and the cursor waits. The next run reuses the invoice.
+        if (err.code === "pdf_pending") return deferForPdf(now);
+        if (err.code === "fx_rate_required") {
+          // The invoice stays a draft. The owner enters the rate and sends it (R20 edge case).
+          return {
+            statements: [
+              cursor,
+              ...(await ownerNotice(
+                db,
+                doc.id,
+                "fx_rate_needed",
+                fxRateNeededEmail({
+                  ...base,
+                  currency: s.currency,
+                  homeCurrency: ws.homeCurrency,
+                  date: payload.issueDate,
+                }),
+                err.message,
+                now,
+              )),
+            ],
+          };
+        }
+        if (err.code === "email_not_configured" || err.code === "no_recipients") {
+          return draftReady(err.message);
+        }
+        throw err;
       }
-      if (err.code === "email_not_configured" || err.code === "no_recipients") {
-        return draftReady(err.message);
-      }
-      throw err;
-    }
-    return { statements: [cursor] };
-  });
+      return { statements: [cursor] };
+    },
+    { heavy: true },
+  );
 }
 
 registerRecurringJobs();

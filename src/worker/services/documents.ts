@@ -356,14 +356,17 @@ export async function createDraft(
   db: Db,
   data: DocumentCreateData,
   ctx: ActionContext,
-  /** Set by the recurring scheduler (U15). The pair is unique, so a period runs once. */
-  origin?: { recurringScheduleId: string; recurringPeriodId: string },
+  /**
+   * Set by the recurring scheduler (U15). The pair is unique, so a period runs once.
+   * `allowTaxRateIds` are the schedule's own rates, which stay valid after they are archived.
+   */
+  origin?: { recurringScheduleId: string; recurringPeriodId: string; allowTaxRateIds?: string[] },
 ): Promise<string> {
   assertReminderModeAllowed(ctx.actor, "inherit", data.reminderMode);
   const client = await assertClient(db, data.clientId);
   await assertTemplate(db, data.templateId);
   await assertCustomFields(db, data.customFields);
-  const rates = await validateLineTaxes(db, data.lines);
+  const rates = await validateLineTaxes(db, data.lines, new Set(origin?.allowTaxRateIds));
   const currency = data.currency ?? client.defaultCurrency;
   const totals = computeTotals(currency, data.lines, data.discount, rates);
 
@@ -401,7 +404,11 @@ export async function createDraft(
     ...replaceCustomFields(d1, id, data.customFields),
     guardedActivity(
       d1,
-      activityOf(id, data.clientId, "created", ctx, { kind: data.kind, ...origin }),
+      activityOf(id, data.clientId, "created", ctx, {
+        kind: data.kind,
+        recurringScheduleId: origin?.recurringScheduleId,
+        recurringPeriodId: origin?.recurringPeriodId,
+      }),
       "1",
       [],
     ),

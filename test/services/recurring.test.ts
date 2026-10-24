@@ -19,6 +19,7 @@ import type { Fetcher } from "../../src/worker/services/fx";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
 import {
   createSchedule,
+  listSchedules,
   registerRecurringJobs,
   resolveSendMode,
   setRecurringFetcherForTesting,
@@ -26,9 +27,10 @@ import {
 } from "../../src/worker/services/recurring";
 import { runTick } from "../../src/worker/services/scheduler";
 import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
-import { db, draft, noFetch, resetDocuments, seedClient } from "../helpers/documents";
+import { db, draft, noFetch, resetDocuments, seedClient, seedTaxRate } from "../helpers/documents";
 import { resetEmailState, stubResend } from "../helpers/email";
 import { resetPdfState, stubRenderer } from "../helpers/pdf";
+import { runHour } from "../helpers/scheduler";
 
 /** 10:00 in Asia/Dhaka on `day`. */
 const at = (day: string) => Date.parse(`${day}T04:00:00Z`);
@@ -170,7 +172,7 @@ describe("recurring_issue", () => {
     const client = await seedClient({ recurringSendMode: "auto_send" });
     const id = await scheduleFor(client.id, { startDate: "2026-10-23" });
 
-    const summary = await runTick(env, at("2026-10-23"));
+    const summary = await runHour(env, at("2026-10-23"));
     expect(summary.done).toBe(1);
 
     const [invoice] = await invoicesOf(id);
@@ -196,16 +198,15 @@ describe("recurring_issue", () => {
     const client = await seedClient();
     const id = await scheduleFor(client.id, { startDate: "2026-10-23" });
 
-    await runTick(env, at("2026-10-23"));
+    await runHour(env, at("2026-10-23"));
     const [invoice] = await invoicesOf(id);
     expect(invoice?.status).toBe("draft");
     expect(invoice?.number).toBeNull();
     expect(invoice?.paymentTermsDays).toBe(14);
     expect(await notificationTypes()).toEqual(["recurring_draft_ready"]);
-    expect(resend.calls).toHaveLength(0);
 
-    // The owner email goes out on the next tick. The client gets nothing.
-    await runTick(env, at("2026-10-23") + 60_000);
+    // The owner email goes out on a later tick of the hour. The client gets nothing.
+    await runTick(env, at("2026-10-23") + 60 * 60_000);
     expect(resend.calls).toHaveLength(1);
     expect(resend.calls[0]?.body.to).toEqual(["owner@studio.test"]);
     expect(resend.calls[0]?.body.subject).toContain("Recurring invoice draft ready");
@@ -213,11 +214,11 @@ describe("recurring_issue", () => {
 
   it("catches up on missed periods, and a repeated tick creates no duplicate", async () => {
     const client = await seedClient();
-    const id = await scheduleFor(client.id, { startDate: "2026-08-23" });
+    // Made in August, then the scheduler did not run until October (an outage).
+    const id = await scheduleFor(client.id, { startDate: "2026-08-23" }, at("2026-08-01"));
 
-    await runTick(env, at("2026-10-23"));
-    await runTick(env, at("2026-10-23") + 15 * 60_000);
-    await runTick(env, at("2026-10-23") + 30 * 60_000);
+    await runHour(env, at("2026-10-23"));
+    await runHour(env, at("2026-10-23") + 60 * 60_000);
 
     const invoices = await invoicesOf(id);
     expect(invoices.map((d) => d.issueDate)).toEqual(["2026-08-23", "2026-09-23", "2026-10-23"]);
@@ -227,15 +228,15 @@ describe("recurring_issue", () => {
   it("an edit to the start date in the same month does not create a second invoice", async () => {
     const client = await seedClient();
     const id = await scheduleFor(client.id, { startDate: "2026-10-01" });
-    await runTick(env, at("2026-10-01"));
+    await runHour(env, at("2026-10-01"));
     await updateSchedule(
       db,
       id,
       { startDate: "2026-10-25" },
       { actor: owner, now: at("2026-10-24") },
     );
-    await runTick(env, at("2026-10-25"));
-    await runTick(env, at("2026-11-25"));
+    await runHour(env, at("2026-10-25"));
+    await runHour(env, at("2026-11-25"));
     const invoices = await invoicesOf(id);
     expect(invoices.map((d) => d.issueDate)).toEqual(["2026-10-01", "2026-11-25"]);
   });
@@ -287,12 +288,13 @@ describe("recurring_issue", () => {
       { actor: owner, now: at("2026-10-01") },
     );
 
-    await runTick(env, at("2026-10-23"));
+    await runHour(env, at("2026-10-23"));
     const [invoice] = await invoicesOf(id);
     expect(invoice?.status).toBe("draft");
     expect(invoice?.number).toBeNull();
     expect(await notificationTypes()).toEqual(["fx_rate_needed"]);
-    expect(resend.calls).toHaveLength(0);
+    // Only the owner notice went out. The client got nothing.
+    expect(resend.calls.map((c) => c.body.to)).toEqual([["owner@studio.test"]]);
     expect(await jobKeys()).toContain(`fx_rate_needed:${invoice?.id}`);
   });
 
@@ -302,7 +304,7 @@ describe("recurring_issue", () => {
     const { fillEmailLog } = await import("../helpers/email");
     await fillEmailLog("2026-10-23", 100);
 
-    const summary = await runTick(env, at("2026-10-23"));
+    const summary = await runHour(env, at("2026-10-23"));
     expect(summary.deferred).toBe(1);
     expect(await invoicesOf(id)).toHaveLength(0);
   });
@@ -311,9 +313,9 @@ describe("recurring_issue", () => {
     const client = await seedClient();
     const id = await scheduleFor(client.id, { startDate: "2027-01-31" }, at("2027-01-01"));
 
-    // A tick every 6 hours from Jan 30 to Apr 2.
+    // An hour of ticks every 6 hours from Jan 30 to Apr 2.
     for (let t = at("2027-01-30"); t <= at("2027-04-02"); t += 6 * 60 * 60 * 1000) {
-      await runTick(env, t);
+      await runHour(env, t);
     }
     const invoices = await invoicesOf(id);
     expect(invoices.map((d) => [d.issueDate, d.status, d.recurringPeriodId])).toEqual([
@@ -326,7 +328,133 @@ describe("recurring_issue", () => {
   });
 });
 
+describe("recurring edge cases", () => {
+  it("a start date in the past creates no invoice for the past periods", async () => {
+    const client = await seedClient({ recurringSendMode: "auto_send" });
+    const id = await scheduleFor(client.id, { startDate: "2026-07-23" }, at("2026-10-01"));
+    const [schedule] = await db
+      .select()
+      .from(schema.recurringSchedules)
+      .where(eq(schema.recurringSchedules.id, id));
+    expect(schedule?.nextIssueDate).toBe("2026-10-23");
+
+    await runHour(env, at("2026-10-23"));
+    const invoices = await invoicesOf(id);
+    expect(invoices.map((d) => [d.issueDate, d.status])).toEqual([["2026-10-23", "sent"]]);
+    expect(resend.calls).toHaveLength(1);
+  });
+
+  it("a tax rate archived after the schedule was made still applies", async () => {
+    const client = await seedClient();
+    const rate = await seedTaxRate("15");
+    const sourceDocumentId = await draft({
+      clientId: client.id,
+      lines: [{ description: "Retainer", quantity: "1", unitPrice: 100000, taxRateId: rate.id }],
+    });
+    const id = await createSchedule(
+      db,
+      { sourceDocumentId, frequency: "monthly", startDate: "2026-10-23" },
+      { actor: owner, now: at("2026-10-01") },
+    );
+    await db
+      .update(schema.taxRates)
+      .set({ archivedAt: at("2026-10-02") })
+      .where(eq(schema.taxRates.id, rate.id));
+
+    const summary = await runHour(env, at("2026-10-23"));
+    expect(summary.retried + summary.failed).toBe(0);
+    const [invoice] = await invoicesOf(id);
+    expect(invoice?.total).toBe(115000);
+  });
+
+  it("an auto-send period waits without using an attempt while the browser is busy", async () => {
+    const client = await seedClient({ recurringSendMode: "auto_send" });
+    const id = await scheduleFor(client.id, { startDate: "2026-10-23" });
+    await env.DB.prepare(
+      "INSERT INTO leases (name, holder, expires_at, last_used_at) VALUES ('browser', 'other', ?, 0)",
+    )
+      // getPdf reads the lease with the real clock.
+      .bind(Date.now() + 60 * 60_000)
+      .run();
+
+    const summary = await runHour(env, at("2026-10-23"));
+    expect(summary.deferred).toBeGreaterThanOrEqual(1);
+    expect(summary.retried + summary.failed).toBe(0);
+    const [job] = await db
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.type, "recurring_issue"));
+    expect(job).toMatchObject({ status: "pending", attempts: 0, lastError: "pdf_pending" });
+    const [invoice] = await invoicesOf(id);
+    expect(invoice?.status).toBe("finalized");
+
+    // The browser is free again: the next run sends the same invoice.
+    await env.DB.prepare("DELETE FROM leases").run();
+    await runHour(env, at("2026-10-23") + 2 * 60 * 60_000);
+    const invoices = await invoicesOf(id);
+    expect(invoices.map((d) => d.status)).toEqual(["sent"]);
+  });
+
+  it("lists 120 schedules (more IDs than D1 binds in one statement)", async () => {
+    const client = await seedClient();
+    const sourceDocumentId = await draft({ clientId: client.id });
+    for (let i = 0; i < 120; i++) {
+      await createSchedule(
+        db,
+        { sourceDocumentId, frequency: "monthly", startDate: "2027-01-01" },
+        { actor: owner, now: at("2026-10-01") },
+      );
+    }
+    const list = await listSchedules(db);
+    expect(list).toHaveLength(120);
+    expect(list.every((s) => s.total === 200000)).toBe(true);
+  });
+});
+
 describe("recurring routes", () => {
+  it("PATCH lines: the next period uses the new lines", async () => {
+    const client = await seedClient();
+    const id = await scheduleFor(client.id, { startDate: "2026-11-23" });
+    const res = await apiFetch(`/api/recurring/${id}`, {
+      as: "owner@studio.test",
+      method: "PATCH",
+      json: { lines: [{ description: "Hosting", quantity: "3", unitPrice: 1500 }] },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { total: number }).total).toBe(4500);
+
+    await runHour(env, at("2026-11-23"));
+    const [invoice] = await invoicesOf(id);
+    expect(invoice?.total).toBe(4500);
+    const lines = await db
+      .select()
+      .from(schema.documentLines)
+      .where(eq(schema.documentLines.documentId, invoice?.id ?? ""));
+    expect(lines.map((l) => [l.description, l.quantity])).toEqual([["Hosting", "3"]]);
+  });
+
+  it("DELETE with a queued period: the job ends cleanly and nothing is created", async () => {
+    const client = await seedClient({ recurringSendMode: "auto_send" });
+    const id = await scheduleFor(client.id, { startDate: "2026-10-23" });
+    // The :00 tick queues the period. The heavy job waits for the :15 tick.
+    await runTick(env, at("2026-10-23"));
+    const [queued] = await db.select().from(schema.jobs);
+    expect(queued?.status).toBe("pending");
+
+    const res = await apiFetch(`/api/recurring/${id}`, {
+      as: "owner@studio.test",
+      method: "DELETE",
+    });
+    expect(res.status).toBeLessThan(300);
+    const after = await runHour(env, at("2026-10-23") + 15 * 60_000);
+    expect(after.failed + after.retried + after.errors).toBe(0);
+    const [job] = await db.select().from(schema.jobs);
+    expect(job?.status).toBe("done");
+    expect(await invoicesOf(id)).toHaveLength(0);
+    expect(await notificationTypes()).toEqual([]);
+    expect(resend.calls).toHaveLength(0);
+  });
+
   it("lets an Owner create a schedule from an invoice and lists it", async () => {
     const client = await seedClient();
     const sourceDocumentId = await draft({ clientId: client.id });
