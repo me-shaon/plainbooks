@@ -23,6 +23,7 @@ import {
   listDocuments,
   listRevisions,
   loadDocument,
+  resetPublicLink,
   revise,
   updateDraft,
   voidDocument,
@@ -126,6 +127,11 @@ export const documentRoutes = new Hono<AppEnv>()
   .post("/:id/void", async (c) => {
     const now = Date.now();
     await voidDocument(c.var.db, c.req.param("id"), { actor: c.var.user, now });
+    return c.json(await getDocumentDetail(c.var.db, c.req.param("id"), { now }));
+  })
+  .post("/:id/reset-link", async (c) => {
+    const now = Date.now();
+    await resetPublicLink(c.var.db, c.req.param("id"), { actor: c.var.user, now });
     return c.json(await getDocumentDetail(c.var.db, c.req.param("id"), { now }));
   })
   .post("/:id/duplicate", async (c) => {

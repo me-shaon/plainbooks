@@ -1371,6 +1371,38 @@ export async function voidDocument(
 }
 
 /**
+ * Replaces the public link token, so every link sent before stops working. Use it when a
+ * link went to the wrong person. Emails sent after this use the new link.
+ */
+export async function resetPublicLink(
+  db: Db,
+  documentId: string,
+  ctx: ActionContext,
+): Promise<Document> {
+  const doc = await loadDocument(db, documentId);
+  if (!doc.publicToken) {
+    throw new AppError(409, "no_public_link", "This document has no public link yet");
+  }
+  const d1 = db.$client;
+  const condition = "id = ? AND public_token = ?";
+  const results = await d1.batch([
+    guardedActivity(
+      d1,
+      activityOf(documentId, doc.clientId, "link_reset", ctx),
+      `EXISTS (SELECT 1 FROM documents WHERE ${condition})`,
+      [documentId, doc.publicToken],
+    ),
+    d1
+      .prepare(`UPDATE documents SET public_token = ?, updated_at = ? WHERE ${condition}`)
+      .bind(newPublicToken(), ctx.now, documentId, doc.publicToken),
+  ]);
+  if (changes(results[1]) === 0) {
+    throw new AppError(409, "link_reset_conflict", "The link changed. Reload and try again");
+  }
+  return loadDocument(db, documentId);
+}
+
+/**
  * Converts an accepted quote into a draft invoice with copied lines, and marks the quote
  * converted, in one batch. A quote converts once (R45, AE6).
  */

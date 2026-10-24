@@ -146,7 +146,7 @@ export function useSendDocument(id: string) {
   });
 }
 
-type ActionName = "mark-sent" | "void" | "write-off" | "duplicate" | "convert";
+type ActionName = "mark-sent" | "void" | "write-off" | "duplicate" | "convert" | "reset-link";
 
 /** POST /documents/:id/<action>. Returns the detail of the affected or new document. */
 export function useDocumentAction(id: string, action: ActionName) {

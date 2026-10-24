@@ -52,6 +52,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   email_bounced: "Email bounced",
   email_complained: "Marked as spam",
   reminder_sent: "Reminder sent",
+  link_reset: "Public link reset",
 };
 
 /** The title and an optional detail line for an activity row. */

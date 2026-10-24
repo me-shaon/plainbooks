@@ -8,6 +8,7 @@ import {
   Ellipsis,
   FileOutput,
   Link2,
+  Link2Off,
   Pencil,
   RotateCw,
   Send,
@@ -46,7 +47,7 @@ import {
 import { SendDialog } from "./send-dialog";
 import { TotalsPanel } from "./totals-panel";
 
-type Confirm = "mark-sent" | "void" | "write-off" | "delete" | null;
+type Confirm = "mark-sent" | "void" | "write-off" | "delete" | "reset-link" | null;
 
 /** What a document allows in its current state. */
 export function documentActions(doc: DocumentDetail) {
@@ -122,6 +123,7 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
   const writeOff = useDocumentAction(doc.id, "write-off");
   const duplicate = useDocumentAction(doc.id, "duplicate");
   const convert = useDocumentAction(doc.id, "convert");
+  const resetLink = useDocumentAction(doc.id, "reset-link");
   const remove = useDeleteDocument(doc.id);
   const deletePayment = useDeletePayment(doc.id);
   const activity = useDocumentActivity(doc.id);
@@ -244,6 +246,15 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
       label: "Make recurring",
       icon: <RotateCw />,
       run: () => setRepeating(true),
+    });
+  }
+  if (actions.hasPublicLink) {
+    menuItems.push({
+      id: "reset-link",
+      label: "Reset public link",
+      icon: <Link2Off />,
+      danger: true,
+      run: () => setConfirm("reset-link"),
     });
   }
   if (actions.canVoid) {
@@ -549,6 +560,21 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
       >
         The invoice keeps its number and its public link shows a Void banner. Reports leave it out.
         You cannot undo this.
+      </AlertDialog>
+      <AlertDialog
+        isOpen={confirm === "reset-link"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title="Reset the public link?"
+        actionLabel="Reset link"
+        variant="danger"
+        onAction={() =>
+          resetLink.mutate(undefined, {
+            onSuccess: () => toast({ title: "Public link reset", tone: "success" }),
+          })
+        }
+      >
+        Every link sent before stops working, including links in emails. Copy the new link and send
+        it again to the right people.
       </AlertDialog>
       <AlertDialog
         isOpen={confirm === "write-off"}

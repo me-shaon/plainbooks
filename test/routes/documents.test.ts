@@ -94,6 +94,42 @@ describe("/api/documents", () => {
     expect(owner.body.reminderMode).toBe("auto_send");
   });
 
+  it("resets the public link, so the old link stops working", async () => {
+    const { body } = await create({});
+    const draftReset = await apiFetch(`/api/documents/${body.id}/reset-link`, {
+      as: MEMBER,
+      method: "POST",
+      json: {},
+    });
+    expect(draftReset.status).toBe(409);
+
+    const fin = await apiFetch(`/api/documents/${body.id}/finalize`, {
+      as: MEMBER,
+      method: "POST",
+      json: {},
+    });
+    const oldToken = ((await fin.json()) as { document: DocumentDetail }).document.publicToken;
+    expect(oldToken).toBeTruthy();
+
+    const reset = await apiFetch(`/api/documents/${body.id}/reset-link`, {
+      as: MEMBER,
+      method: "POST",
+      json: {},
+    });
+    expect(reset.status).toBe(200);
+    const newToken = ((await reset.json()) as DocumentDetail).publicToken;
+    expect(newToken).toBeTruthy();
+    expect(newToken).not.toBe(oldToken);
+
+    expect((await apiFetch(`/p/${oldToken}`)).status).toBe(404);
+    expect((await apiFetch(`/p/${oldToken}/pdf`)).status).toBe(404);
+    expect((await apiFetch(`/p/${newToken}`)).status).toBe(200);
+
+    const activity = await apiFetch(`/api/documents/${body.id}/activity`, { as: MEMBER });
+    const actBody = (await activity.json()) as { items: { type: string }[] };
+    expect(actBody.items[0]?.type).toBe("link_reset");
+  });
+
   it("rejects a payment above the balance with 422", async () => {
     const { body } = await create({});
     await apiFetch(`/api/documents/${body.id}/finalize`, { as: MEMBER, method: "POST", json: {} });
