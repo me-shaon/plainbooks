@@ -13,7 +13,7 @@
 // current revision's PDF is already in R2. A reminder never waits for a browser render.
 import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import type { ReminderMode, ReminderModeSetting } from "../../shared/domain";
-import { displayStatus } from "../../shared/schemas/document";
+import { displayStatus, OPEN_STATUSES } from "../../shared/schemas/document";
 import type { ReminderStatus, ReminderSuggestion } from "../../shared/schemas/reminder";
 import { todayIn } from "../../shared/time";
 import { type Db, schema } from "../db/client";
@@ -45,7 +45,6 @@ const { documents, documentRevisions, clients, emailLog } = schema;
 export const REMINDER_JOB = "send_reminder";
 /** Open invoices the enqueue hook and the suggestions read at most. */
 const CANDIDATE_LIMIT = 500;
-const OPEN = ["sent", "partially_paid"] as const;
 /** D1 allows 100 bound parameters per statement. Keep room for the other values. */
 const IDS_PER_QUERY = 90;
 
@@ -126,7 +125,7 @@ interface Candidate {
 function isOpen(doc: Pick<Document, "kind" | "status" | "dueDate" | "total" | "amountPaid">) {
   return (
     doc.kind === "invoice" &&
-    (OPEN as readonly string[]).includes(doc.status) &&
+    (OPEN_STATUSES as readonly string[]).includes(doc.status) &&
     doc.dueDate !== null &&
     doc.total - doc.amountPaid > 0
   );
@@ -185,7 +184,7 @@ async function loadCandidates(
     .where(
       and(
         eq(documents.kind, "invoice"),
-        inArray(documents.status, [...OPEN]),
+        inArray(documents.status, [...OPEN_STATUSES]),
         sql`${documents.dueDate} IS NOT NULL`,
         gt(sql`${documents.total} - ${documents.amountPaid}`, 0),
         documentIds ? inArray(documents.id, documentIds) : undefined,

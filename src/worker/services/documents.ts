@@ -24,6 +24,7 @@ import {
   isOverdue,
   type LineInputData,
   MAX_DECISION_COMMENT,
+  OPEN_STATUSES,
   type RevisionSummary,
   type SnapshotCustomField,
 } from "../../shared/schemas/document";
@@ -37,6 +38,7 @@ import { type ActivityInput, guardedActivity } from "./activity";
 import { type Fetcher, type FxRate, getRate, manualRate } from "./fx";
 import { counterIncrement, numberExpression, UNNUMBERED_DRAFT } from "./numbering";
 import { getBrandKit } from "./settings";
+import { overdueSql } from "./status-sql";
 
 const {
   workspace,
@@ -1515,13 +1517,6 @@ function likePattern(q: string): string {
   return `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 }
 
-/** The SQL form of `isOverdue`, plus the scheduler's cached flag. */
-function overdueSql(today: string): SQL {
-  return sql`(${documents.kind} = 'invoice' AND ${documents.status} IN ('sent', 'partially_paid')
-    AND ${documents.total} - ${documents.amountPaid} > 0
-    AND (${documents.isOverdue} = 1 OR (${documents.dueDate} IS NOT NULL AND ${documents.dueDate} < ${today})))`;
-}
-
 export async function listDocuments(
   db: Db,
   rawQuery: DocumentListQuery,
@@ -1533,14 +1528,14 @@ export async function listDocuments(
   const conditions: SQL[] = [];
   if (query.kind) conditions.push(eq(documents.kind, query.kind));
   if (query.clientId) conditions.push(eq(documents.clientId, query.clientId));
-  if (query.status === "overdue") conditions.push(overdueSql(today));
+  if (query.status === "overdue") conditions.push(overdueSql(today, "documents."));
   else if (query.status) {
     conditions.push(inArray(documents.status, query.status.split(",") as Document["status"][]));
   }
   if (query.filter === "unpaid") {
-    conditions.push(inArray(documents.status, ["sent", "partially_paid"]));
+    conditions.push(inArray(documents.status, [...OPEN_STATUSES]));
   } else if (query.filter === "overdue") {
-    conditions.push(overdueSql(today));
+    conditions.push(overdueSql(today, "documents."));
   } else if (query.filter === "drafts") {
     conditions.push(eq(documents.status, "draft"));
   }

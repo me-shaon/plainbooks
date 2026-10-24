@@ -24,6 +24,7 @@ import {
   runJob,
   TICK_QUERY_BUDGET,
 } from "./jobs";
+import { overdueCondition } from "./status-sql";
 
 /** The cron interval. */
 export const TICK_INTERVAL_MS = 15 * 60 * 1000;
@@ -178,7 +179,7 @@ async function loadWorkspace(db: Db): Promise<Workspace> {
 const SQL_UUID = `lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))`;
 
 /** ?1 is today (workspace timezone). */
-const OVERDUE = `(status IN ('sent', 'partially_paid') AND due_date IS NOT NULL AND due_date < ?1 AND total - amount_paid > 0)`;
+const OVERDUE = overdueCondition("?1");
 const EXPIRED = `(kind = 'quote' AND status = 'sent' AND expiry_date IS NOT NULL AND expiry_date < ?1)`;
 
 /**

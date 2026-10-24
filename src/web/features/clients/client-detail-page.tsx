@@ -16,7 +16,6 @@ import { Pill } from "../../components/ui/pill";
 import { DetailItem, Section } from "../../components/ui/section";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StackedList, StackedRow } from "../../components/ui/stacked-list";
-import type { Status } from "../../components/ui/status";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "../../components/ui/table";
 import { toast } from "../../components/ui/toast";
 import { formatDate, formatMoney } from "../../lib/format";
@@ -26,13 +25,6 @@ import { ClientFormDialog } from "./client-form";
 import { useArchiveClient, useClient } from "./queries";
 
 type DocumentRow = ClientDetail["documents"][number];
-
-function documentStatus(doc: DocumentRow): Status {
-  if (doc.kind === "invoice" && doc.isOverdue && doc.status !== "paid" && doc.status !== "void") {
-    return "overdue";
-  }
-  return doc.status as Status;
-}
 
 function documentLabel(doc: DocumentRow): string {
   const kind = doc.kind === "invoice" ? "Invoice" : "Quote";
@@ -213,7 +205,7 @@ function DocumentsSection({ detail }: { detail: ClientDetail }) {
                   <Row id={doc.id}>
                     <Cell>{documentLabel(doc)}</Cell>
                     <Cell>
-                      <Pill status={documentStatus(doc)} />
+                      <Pill status={doc.displayStatus} />
                     </Cell>
                     <Cell>{formatDate(doc.issueDate) || "Not sent"}</Cell>
                     <Cell align="end">
@@ -236,7 +228,7 @@ function DocumentsSection({ detail }: { detail: ClientDetail }) {
               <StackedRow
                 key={doc.id}
                 title={documentLabel(doc)}
-                meta={<Pill status={documentStatus(doc)} />}
+                meta={<Pill status={doc.displayStatus} />}
                 value={<span className="figure">{formatMoney(doc.total, doc.currency)}</span>}
               />
             ))}

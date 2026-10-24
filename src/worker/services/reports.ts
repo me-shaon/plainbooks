@@ -9,6 +9,7 @@
  */
 import { type SQL, sql } from "drizzle-orm";
 import { formatMinor } from "../../shared/money";
+import { OPEN_STATUSES } from "../../shared/schemas/document";
 import {
   AGING_BUCKETS,
   type AgingBucket,
@@ -23,9 +24,12 @@ import {
 import { todayIn } from "../../shared/time";
 import type { Db } from "../db/client";
 import { loadWorkspace, workspaceToday } from "./documents";
+import { openInvoiceCondition, sqlInList } from "./status-sql";
 
 /** Invoices that count as billed. `d` is documents. */
-const REPORTED = sql.raw(`d.kind = 'invoice' AND d.status IN ('sent', 'partially_paid', 'paid')`);
+const REPORTED = sql.raw(
+  `d.kind = 'invoice' AND d.status IN (${sqlInList([...OPEN_STATUSES, "paid"])})`,
+);
 
 /** The period key of an ISO date column, for example "2026-10", "2026-Q3", or "2026". */
 function periodSql(column: string, period: ReportPeriod): SQL {
@@ -240,8 +244,7 @@ export async function agingReport(db: Db, now: number): Promise<AgingReport> {
       FROM documents d
       JOIN document_revisions r ON r.id = d.current_revision_id
       JOIN clients c ON c.id = d.client_id
-      WHERE d.kind = 'invoice' AND d.status IN ('sent', 'partially_paid')
-        AND d.total - d.amount_paid > 0
+      WHERE ${sql.raw(openInvoiceCondition("d."))}
     )
     GROUP BY client_id, bucket`);
 

@@ -2,14 +2,17 @@
 // recomputed cached amount_paid, status, and overdue flag on the invoice, in one D1 batch.
 import { and, eq } from "drizzle-orm";
 import { convertMinor } from "../../shared/money";
+import { OPEN_STATUSES } from "../../shared/schemas/document";
 import { type Db, schema } from "../db/client";
 import type { Document } from "../db/schema";
 import { AppError } from "../errors";
 import { guardedActivity } from "./activity";
 import { type ActionContext, loadDocument, loadWorkspace, workspaceToday } from "./documents";
+import { OPEN_STATUS_LIST, sqlInList } from "./status-sql";
 
 const { payments } = schema;
 
+const PAYABLE_OR_PAID = sqlInList([...OPEN_STATUSES, "paid"]);
 const PAID_SUM = "(SELECT coalesce(sum(amount), 0) FROM payments WHERE document_id = ?1)";
 
 /**
@@ -29,7 +32,7 @@ function recomputeStatement(d1: D1Database, documentId: string, today: string, n
          is_overdue = CASE WHEN ${PAID_SUM} < total AND due_date IS NOT NULL AND due_date < ?2
                            THEN 1 ELSE 0 END,
          updated_at = ?3
-       WHERE id = ?1 AND kind = 'invoice' AND status IN ('sent', 'partially_paid', 'paid')`,
+       WHERE id = ?1 AND kind = 'invoice' AND status IN (${PAYABLE_OR_PAID})`,
     )
     .bind(documentId, today, now);
 }
@@ -77,7 +80,7 @@ function assertInvoiceOpen(doc: Document): void {
   if (doc.kind !== "invoice") {
     throw new AppError(409, "invalid_status", "Payments apply to invoices only");
   }
-  if (doc.status !== "sent" && doc.status !== "partially_paid") {
+  if (!(OPEN_STATUSES as readonly string[]).includes(doc.status)) {
     throw new AppError(409, "invalid_status", "Record payments on a sent, unpaid invoice");
   }
 }
@@ -114,7 +117,7 @@ export async function recordPayment(
         now: ctx.now,
       },
       `EXISTS (SELECT 1 FROM documents WHERE id = ? AND kind = 'invoice'
-        AND status IN ('sent', 'partially_paid') AND amount_paid + ? <= total)`,
+        AND status IN (${OPEN_STATUS_LIST}) AND amount_paid + ? <= total)`,
       [documentId, input.amount],
     ),
     guardedActivity(

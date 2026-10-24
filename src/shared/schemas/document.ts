@@ -382,12 +382,13 @@ export const OPEN_STATUSES = ["sent", "partially_paid"] as const;
 
 /**
  * True when an invoice is sent or partially paid, its due date is before `today`
- * (workspace timezone), and it has a balance above zero.
+ * (workspace timezone), and it has a balance above zero. The SQL form is
+ * `overdueCondition` in src/worker/services/status-sql.ts. Keep the two the same.
  */
 export function isOverdue(doc: StatusFields, today: string): boolean {
   return (
     doc.kind === "invoice" &&
-    (doc.status === "sent" || doc.status === "partially_paid") &&
+    (OPEN_STATUSES as readonly string[]).includes(doc.status) &&
     doc.dueDate !== null &&
     doc.dueDate < today &&
     doc.total - doc.amountPaid > 0

@@ -12,6 +12,7 @@ import {
   type SendModeSetting,
 } from "../domain";
 import { isCurrencyCode } from "../money";
+import type { DisplayStatus } from "./document";
 
 /** Trims text. Empty text becomes null, so optional fields clear cleanly. */
 const optionalText = (max: number) =>
@@ -181,6 +182,8 @@ export interface ClientDocumentSummary {
   dueDate: string | null;
   total: number;
   amountPaid: number;
+  /** The stored status plus the derived ones, from `displayStatus`. */
+  displayStatus: DisplayStatus;
   isOverdue: boolean;
 }
 

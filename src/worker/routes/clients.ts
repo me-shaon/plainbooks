@@ -12,15 +12,14 @@ import {
   clientUpdateInput,
   type OutstandingBalance,
 } from "../../shared/schemas/client";
+import { displayStatus, isOverdue, OPEN_STATUSES } from "../../shared/schemas/document";
 import { type Db, schema } from "../db/client";
 import type { AppEnv, AuthUser } from "../env";
 import { AppError, parseJson } from "../errors";
+import { loadWorkspace, workspaceToday } from "../services/documents";
 
 const { clients, clientContacts, documents, payments, recurringSchedules, taxRates, templates } =
   schema;
-
-/** Invoice statuses with an open balance. Drafts, unsent, void, and paid invoices are not open. */
-export const OPEN_INVOICE_STATUSES = ["sent", "partially_paid"] as const;
 
 const clientColumns = {
   id: clients.id,
@@ -120,7 +119,7 @@ async function outstandingByClient(
 ): Promise<Map<string, OutstandingBalance[]>> {
   const conditions: SQL[] = [
     eq(documents.kind, "invoice"),
-    inArray(documents.status, OPEN_INVOICE_STATUSES),
+    inArray(documents.status, [...OPEN_STATUSES]),
   ];
   if (clientIds) conditions.push(inArray(documents.clientId, clientIds));
   const rows = await db
@@ -147,9 +146,10 @@ function likePattern(q: string): string {
   return `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 }
 
-export async function getClientDetail(db: Db, id: string): Promise<ClientDetail> {
+export async function getClientDetail(db: Db, id: string, now = Date.now()): Promise<ClientDetail> {
   const client = await findClient(db, id);
-  const [contacts, docs, paymentRows, schedules, outstanding] = await Promise.all([
+  const [ws, contacts, docRows, paymentRows, schedules, outstanding] = await Promise.all([
+    loadWorkspace(db),
     db
       .select(contactColumns)
       .from(clientContacts)
@@ -164,9 +164,9 @@ export async function getClientDetail(db: Db, id: string): Promise<ClientDetail>
         currency: documents.currency,
         issueDate: documents.issueDate,
         dueDate: documents.dueDate,
+        expiryDate: documents.expiryDate,
         total: documents.total,
         amountPaid: documents.amountPaid,
-        isOverdue: documents.isOverdue,
       })
       .from(documents)
       .where(eq(documents.clientId, id))
@@ -200,6 +200,12 @@ export async function getClientDetail(db: Db, id: string): Promise<ClientDetail>
       .orderBy(asc(recurringSchedules.createdAt)),
     outstandingByClient(db, [id]),
   ]);
+  const today = workspaceToday(ws, now);
+  const docs = docRows.map(({ expiryDate, ...doc }) => ({
+    ...doc,
+    displayStatus: displayStatus({ ...doc, expiryDate }, today),
+    isOverdue: isOverdue({ ...doc, expiryDate }, today),
+  }));
   return {
     client,
     contacts,

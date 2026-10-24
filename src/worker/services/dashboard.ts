@@ -24,6 +24,7 @@ import { AppError } from "../errors";
 import { listDocuments, loadWorkspace, workspaceToday } from "./documents";
 import { nextActiveSchedule } from "./recurring";
 import { listSuggestions } from "./reminders";
+import { openInvoiceCondition, overdueSql } from "./status-sql";
 
 const NOTIFICATION_LIMIT = 5;
 const FAILED_JOB_LIMIT = 10;
@@ -35,8 +36,7 @@ const HOME_BALANCE = sql.raw(`(r.home_total - COALESCE(
   (SELECT SUM(p.home_amount) FROM payments p WHERE p.document_id = d.id), 0))`);
 
 /** Open invoices: sent or partially paid with a balance above zero. */
-const OPEN_INVOICE = sql.raw(`d.kind = 'invoice' AND d.status IN ('sent', 'partially_paid')
-  AND d.total - d.amount_paid > 0`);
+const OPEN_INVOICE = sql.raw(openInvoiceCondition("d."));
 
 interface CurrencyRow {
   currency: string;
@@ -152,7 +152,7 @@ export async function getDashboard(
       FROM documents d
       JOIN document_revisions r ON r.id = d.current_revision_id
       JOIN clients c ON c.id = d.client_id
-      WHERE ${OPEN_INVOICE} AND (d.is_overdue = 1 OR (d.due_date IS NOT NULL AND d.due_date < ${today}))
+      WHERE ${overdueSql(today, "d.")}
       GROUP BY d.client_id
       ORDER BY home DESC, c.name`),
     db.all<PaidRow>(sql`SELECT SUM(p.home_amount) AS home, COUNT(*) AS payments,
