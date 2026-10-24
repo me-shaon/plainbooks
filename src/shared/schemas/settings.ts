@@ -154,7 +154,7 @@ export function logoUrl(logoKey: string | null): string | null {
 export interface WorkspaceSettings {
   name: string;
   homeCurrency: string;
-  /** True after the first invoice was sent. The home currency can no longer change. */
+  /** True after the first invoice or quote was finalized. The home currency can no longer change. */
   homeCurrencyLocked: boolean;
   timezone: string;
   invoicePrefix: string;

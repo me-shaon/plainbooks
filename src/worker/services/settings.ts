@@ -15,15 +15,21 @@ async function workspaceRow(db: Db) {
   return row;
 }
 
-/** True after any invoice was sent. Then the home currency cannot change. */
+/**
+ * True after any document got a revision (a finalized invoice or a numbered quote) or any
+ * invoice was sent. Revisions store home currency totals, so the home currency cannot change.
+ */
 export async function isHomeCurrencyLocked(db: Db): Promise<boolean> {
   const [row] = await db
     .select({ id: documents.id })
     .from(documents)
     .where(
-      and(
-        eq(documents.kind, "invoice"),
-        or(inArray(documents.status, SENT_INVOICE_STATUSES), isNotNull(documents.sentAt)),
+      or(
+        isNotNull(documents.currentRevisionId),
+        and(
+          eq(documents.kind, "invoice"),
+          or(inArray(documents.status, SENT_INVOICE_STATUSES), isNotNull(documents.sentAt)),
+        ),
       ),
     )
     .limit(1);

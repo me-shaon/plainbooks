@@ -137,7 +137,7 @@ export function WorkspaceSettingsForm({
             onChange={(key) => key !== null && set("homeCurrency", String(key))}
             description={
               settings.homeCurrencyLocked
-                ? "The home currency cannot change after the first invoice was sent."
+                ? "The home currency cannot change after the first invoice or quote was finalized."
                 : "Reports convert every amount to this currency."
             }
             {...fieldError(errors, "homeCurrency")}

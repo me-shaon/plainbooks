@@ -42,7 +42,7 @@ export const settingsRoutes = new Hono<AppEnv>()
         throw new AppError(
           409,
           "home_currency_locked",
-          "The home currency cannot change after the first invoice was sent",
+          "The home currency cannot change after the first invoice or quote was finalized",
         );
       }
     }

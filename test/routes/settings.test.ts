@@ -116,6 +116,29 @@ describe("workspace settings", () => {
     expect(((await res.json()) as WorkspaceSettings).homeCurrency).toBe("USD");
   });
 
+  it("blocks a home currency change after a document was finalized but not sent", async () => {
+    await db.insert(schema.clients).values({ id: "c1", name: "Northwind" });
+    await db.insert(schema.documents).values({
+      kind: "quote",
+      clientId: "c1",
+      currency: "USD",
+      status: "draft",
+      number: "QUO-0001",
+      currentRevisionId: "rev-1",
+      revisionCount: 1,
+    });
+
+    const settings = await apiFetch("/api/settings/workspace", { as: OWNER });
+    expect(((await settings.json()) as WorkspaceSettings).homeCurrencyLocked).toBe(true);
+    const res = await apiFetch("/api/settings/workspace", {
+      as: OWNER,
+      method: "PATCH",
+      json: { homeCurrency: "USD" },
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe("home_currency_locked");
+  });
+
   it("blocks a home currency change after an invoice was sent", async () => {
     await db.insert(schema.clients).values({ id: "c1", name: "Northwind" });
     await db.insert(schema.documents).values({
