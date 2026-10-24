@@ -163,6 +163,8 @@ export interface GetPdfOptions {
   wait?: boolean;
   /** The longest wait for the lease. Defaults to 10 s. */
   maxWaitMs?: number;
+  /** The revision row when the caller already read it. Saves one D1 query. */
+  revision?: Awaited<ReturnType<typeof getRevision>>;
   /** Tests only. */
   clock?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -217,7 +219,8 @@ export async function getPdf(
   const clock = opts.clock ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
   const key = pdfKey(revisionId);
-  const revision = await getRevision(db, revisionId);
+  const revision =
+    opts.revision?.id === revisionId ? opts.revision : await getRevision(db, revisionId);
   const filename = pdfFilename(revision.snapshot);
 
   const fromCache = async (): Promise<PdfResult | null> => {

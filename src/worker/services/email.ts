@@ -365,7 +365,16 @@ export async function sendDocument(
     throw new AppError(status, code, message);
   };
 
-  const pdf = await getPdf(env, db, revisionId, { wait: true, maxWaitMs: opts.pdfMaxWaitMs });
+  // Finalize already read the revision row. Reuse it for the PDF and the email body.
+  const known =
+    finalized.revision.id === revisionId
+      ? (finalized.revision as Awaited<ReturnType<typeof getRevision>>)
+      : undefined;
+  const pdf = await getPdf(env, db, revisionId, {
+    wait: true,
+    maxWaitMs: opts.pdfMaxWaitMs,
+    revision: known,
+  });
   if (pdf.status === "pending") {
     return fail(503, "pdf_pending", "The PDF is still being prepared. Try sending again shortly.");
   }
@@ -377,7 +386,7 @@ export async function sendDocument(
     );
   }
 
-  const revision = await getRevision(db, revisionId);
+  const revision = known ?? (await getRevision(db, revisionId));
   const content = documentEmail(emailInput(env, current, revision.snapshot, ws, opts));
   const outcome = await deliverEmail(
     env,
