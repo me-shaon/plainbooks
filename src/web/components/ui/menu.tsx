@@ -52,7 +52,7 @@ export function MenuItem({ variant = "default", className, ...props }: MenuItemS
       textValue={textValue}
       className={composeTailwind(className, (rp) =>
         cn(
-          "flex min-h-11 cursor-default items-center gap-2 rounded-small px-2.5 text-sm outline-none md:min-h-9 [&_svg]:size-4 [&_svg]:shrink-0",
+          "flex min-h-11 cursor-default items-center gap-2 rounded-small px-2.5 py-1.5 text-sm outline-none md:min-h-9 [&_svg]:size-4 [&_svg]:shrink-0",
           variant === "danger" ? "text-danger" : "text-ink",
           rp.isFocused && (variant === "danger" ? "bg-danger-tint" : "bg-segmented"),
           rp.isDisabled && "cursor-not-allowed opacity-50",

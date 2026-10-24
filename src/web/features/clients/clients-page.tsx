@@ -90,6 +90,7 @@ export function ClientsPage({ search }: { search: ClientsSearch }) {
         />
         <SegmentedControl
           aria-label="Show"
+          className="w-full sm:w-auto"
           selectedKey={archived}
           onSelectionChange={(key) =>
             navigate({

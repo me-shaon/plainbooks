@@ -8,13 +8,9 @@ import {
 } from "react-aria-components";
 import { cn, composeTailwind } from "./utils";
 
+/** The popover around a ListBox scrolls, so the list itself never adds a second scroll bar. */
 export function ListBox<T extends object>({ className, ...props }: ListBoxProps<T>) {
-  return (
-    <RACListBox
-      {...props}
-      className={composeTailwind(className, "max-h-72 overflow-auto p-1 outline-none")}
-    />
-  );
+  return <RACListBox {...props} className={composeTailwind(className, "p-1 outline-none")} />;
 }
 
 /** One option in a Select, ComboBox, or ListBox. */
@@ -27,7 +23,7 @@ export function ListBoxItem({ className, ...props }: ListBoxItemProps) {
       textValue={textValue}
       className={composeTailwind(className, (rp) =>
         cn(
-          "flex min-h-11 cursor-default items-center gap-2 rounded-small px-2.5 text-sm text-ink outline-none md:min-h-9",
+          "flex min-h-11 cursor-default items-center gap-2 rounded-small px-2.5 py-1.5 text-sm text-ink outline-none md:min-h-9",
           rp.isFocused && "bg-segmented",
           rp.isDisabled && "cursor-not-allowed text-muted-foreground opacity-60",
         ),

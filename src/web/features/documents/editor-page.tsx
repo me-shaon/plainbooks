@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DocumentKind } from "../../../shared/domain";
 import { HOME_CURRENCY } from "../../../shared/money";
@@ -88,6 +89,7 @@ export function EditDocumentPage({ documentId }: { documentId: string }) {
   if (!isDraft && !canRevise) {
     return (
       <EmptyState
+        icon={Lock}
         title={`${documentTitle(doc)} cannot be edited`}
         description={
           doc.kind === "invoice" && doc.payments.length > 0

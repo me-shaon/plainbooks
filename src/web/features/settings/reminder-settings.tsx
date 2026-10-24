@@ -135,7 +135,7 @@ function ReminderSettingsForm({
           {steps.length === 0 ? (
             <p className="m-0 text-[13px] text-muted-foreground">No reminder steps.</p>
           ) : null}
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          <ul className="m-0 flex list-none flex-col gap-4 p-0">
             {steps.map((step, index) => (
               <li key={step.key} className="flex items-end gap-3">
                 <NumberField

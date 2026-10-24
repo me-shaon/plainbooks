@@ -94,7 +94,7 @@ export function AppShell({ agencyName, logoUrl, userName, userRole, children }: 
         </div>
 
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 outline-none">
-          <div className="flex max-w-[1208px] flex-col gap-7 px-4 pt-6 pb-10 sm:px-6 md:px-10 md:pt-8 md:pb-12">
+          <div className="mx-auto flex max-w-[1208px] flex-col gap-7 px-4 pt-6 pb-10 sm:px-6 md:px-10 md:pt-8 md:pb-12">
             {children}
           </div>
         </main>

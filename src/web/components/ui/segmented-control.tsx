@@ -47,7 +47,7 @@ export function SegmentedControl({
       }}
       className={composeTailwind(
         className,
-        "inline-flex max-w-full gap-1 overflow-x-auto rounded-button bg-segmented p-[3px]",
+        "inline-flex max-w-full gap-1 self-start overflow-x-auto overflow-y-hidden rounded-button bg-segmented p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       )}
     />
   );
@@ -59,12 +59,12 @@ export function Segment({ className, ...props }: ToggleButtonProps) {
       {...props}
       className={composeTailwind(className, (rp) =>
         cn(
-          "inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-small px-3 text-[13px] whitespace-nowrap outline-none md:min-h-[30px]",
+          "inline-flex min-h-10 shrink-0 grow items-center justify-center gap-1.5 rounded-small px-3 text-[13px] whitespace-nowrap outline-none md:min-h-[34px]",
           "transition-[background-color,color,box-shadow] duration-(--duration-press)",
           rp.isSelected
             ? "bg-background font-medium text-ink shadow-segment"
             : "bg-transparent text-muted-foreground hover:text-ink",
-          rp.isFocusVisible && "outline-2 outline-offset-1 outline-ring",
+          rp.isFocusVisible && "outline-2 -outline-offset-2 outline-ring",
           rp.isDisabled && "opacity-50",
         ),
       )}

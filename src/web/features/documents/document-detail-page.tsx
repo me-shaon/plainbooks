@@ -15,7 +15,7 @@ import {
   Trash2,
   Wallet,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { DocumentDetail } from "../../../shared/schemas/document";
 import { PageHeader } from "../../components/page-header";
 import { Button } from "../../components/ui/button";
@@ -365,13 +365,12 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section
           aria-label={`${kind} preview`}
-          className="min-w-0 overflow-hidden rounded-card border border-border bg-sidebar p-3 md:p-5"
+          className="min-w-0 self-start overflow-hidden rounded-card border border-border bg-sidebar p-3 md:p-5"
         >
-          <iframe
+          <PreviewFrame
             key={`${previewSrc}-${doc.updatedAt}`}
             title={`${title} preview`}
             src={previewSrc}
-            className="h-[70vh] min-h-[560px] w-full rounded-small border-0 bg-white shadow-raised"
           />
         </section>
 
@@ -622,5 +621,44 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
         The balance and the status are recalculated.
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * The rendered document. The frame grows to the height of the page inside it, so the page
+ * scrolls once and the preview never adds a second scroll bar. The render is same-origin.
+ */
+function PreviewFrame({ title, src }: { title: string; src: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const frame = ref.current;
+    if (!frame) return;
+    let observer: ResizeObserver | undefined;
+    const fit = () => {
+      const root = frame.contentDocument?.documentElement;
+      if (!root) return;
+      setHeight(root.scrollHeight);
+      observer?.disconnect();
+      observer = new ResizeObserver(() => setHeight(root.scrollHeight));
+      observer.observe(root);
+    };
+    frame.addEventListener("load", fit);
+    return () => {
+      frame.removeEventListener("load", fit);
+      observer?.disconnect();
+    };
+  }, []);
+
+  return (
+    <iframe
+      ref={ref}
+      title={title}
+      src={src}
+      scrolling="no"
+      style={height ? { height } : undefined}
+      className="block min-h-[560px] w-full rounded-small border-0 bg-white shadow-raised"
+    />
   );
 }

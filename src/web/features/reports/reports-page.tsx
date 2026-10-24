@@ -351,6 +351,7 @@ export function ReportsPage({ search }: { search: ReportsSearch }) {
     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <SegmentedControl
         aria-label="Group by"
+        className="w-full lg:w-auto lg:self-end"
         selectedKey={filters.period}
         onSelectionChange={(key) =>
           set({ period: key === "month" ? undefined : (key as ReportPeriod) })

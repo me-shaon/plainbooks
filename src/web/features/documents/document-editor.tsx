@@ -254,12 +254,34 @@ export function DocumentEditor({
               />
               {isInvoice ? (
                 <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span id="due-label" className="text-[13px] font-medium text-ink">
-                      Due
-                    </span>
+                  <span id="due-label" className="w-fit text-[13px] font-medium text-ink">
+                    Due
+                  </span>
+                  <div className="flex items-start gap-2">
+                    {values.dueMode === "terms" ? (
+                      <TextField
+                        aria-label="Payment terms (days)"
+                        className="min-w-0 flex-1"
+                        inputMode="numeric"
+                        placeholder={`${termsDefault} days`}
+                        value={values.paymentTermsDays}
+                        onChange={(days) => /^\d{0,3}$/.test(days) && set("paymentTermsDays", days)}
+                        aria-describedby="due-terms-note"
+                        inputClassName="figure"
+                        {...fieldError(errors, "paymentTermsDays")}
+                      />
+                    ) : (
+                      <IsoDatePicker
+                        aria-label="Due date"
+                        className="min-w-0 flex-1"
+                        value={values.dueDate}
+                        onChange={(date) => set("dueDate", date)}
+                        {...fieldError(errors, "dueDate")}
+                      />
+                    )}
                     <SegmentedControl
                       aria-labelledby="due-label"
+                      className="shrink-0"
                       selectedKey={values.dueMode}
                       onSelectionChange={(key) => set("dueMode", key as EditorValues["dueMode"])}
                     >
@@ -268,24 +290,10 @@ export function DocumentEditor({
                     </SegmentedControl>
                   </div>
                   {values.dueMode === "terms" ? (
-                    <TextField
-                      aria-label="Payment terms (days)"
-                      inputMode="numeric"
-                      placeholder={`${termsDefault} days`}
-                      value={values.paymentTermsDays}
-                      onChange={(days) => /^\d{0,3}$/.test(days) && set("paymentTermsDays", days)}
-                      description={`Days after the issue date. Empty uses ${termsDefault} days${client?.paymentTermsDays != null ? " from the client" : ""}: due ${formatDate(addDays(issueDate, Number(values.paymentTermsDays || termsDefault)))}.`}
-                      inputClassName="figure"
-                      {...fieldError(errors, "paymentTermsDays")}
-                    />
-                  ) : (
-                    <IsoDatePicker
-                      aria-label="Due date"
-                      value={values.dueDate}
-                      onChange={(date) => set("dueDate", date)}
-                      {...fieldError(errors, "dueDate")}
-                    />
-                  )}
+                    <p id="due-terms-note" className="m-0 text-xs text-muted-foreground">
+                      {`Days after the issue date. Empty uses ${termsDefault} days${client?.paymentTermsDays != null ? " from the client" : ""}: due ${formatDate(addDays(issueDate, Number(values.paymentTermsDays || termsDefault)))}.`}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <IsoDatePicker
@@ -360,6 +368,7 @@ export function DocumentEditor({
                 </span>
                 <SegmentedControl
                   aria-labelledby="discount-label"
+                  className="w-full"
                   selectedKey={values.discountType}
                   onSelectionChange={(key) =>
                     set("discountType", key as EditorValues["discountType"])

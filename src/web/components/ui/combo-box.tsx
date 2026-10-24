@@ -38,13 +38,13 @@ export function ComboBox<T extends object>({
           placeholder={placeholder}
           className="min-w-0 flex-1 self-stretch bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
         />
-        <RACButton className="flex size-10 shrink-0 items-center justify-center text-muted-foreground outline-none">
+        <RACButton className="flex w-10 shrink-0 items-center justify-center self-stretch text-muted-foreground outline-none">
           <ChevronDown className="size-4" aria-hidden="true" />
         </RACButton>
       </Group>
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>
-      <Popover>
+      <Popover maxHeight={288}>
         <ListBox<T>>{children}</ListBox>
       </Popover>
     </RACComboBox>

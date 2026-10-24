@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Archive, ArchiveRestore, ArrowLeft, FileText, Pencil, Wallet } from "lucide-react";
 import { useState } from "react";
 import {
@@ -20,6 +20,7 @@ import { Cell, Column, Row, Table, TableBody, TableHeader } from "../../componen
 import { toast } from "../../components/ui/toast";
 import { formatDate, formatMoney } from "../../lib/format";
 import { useTaxRates, useTemplates } from "../../lib/reference-data";
+import { documentPath } from "../documents/labels";
 import { ClientCustomFields } from "../templates/client-custom-fields";
 import { ClientFormDialog } from "./client-form";
 import { useArchiveClient, useClient } from "./queries";
@@ -179,6 +180,7 @@ function OutstandingCards({ detail }: { detail: ClientDetail }) {
 }
 
 function DocumentsSection({ detail }: { detail: ClientDetail }) {
+  const navigate = useNavigate();
   const docs = detail.documents;
   return (
     <Section title="Quotes and invoices" flush>
@@ -192,7 +194,15 @@ function DocumentsSection({ detail }: { detail: ClientDetail }) {
       ) : (
         <>
           <div className="hidden md:block">
-            <Table aria-label="Quotes and invoices" className="min-w-0">
+            <Table
+              aria-label="Quotes and invoices"
+              className="min-w-0"
+              onRowAction={(key) => {
+                const doc = docs.find((d) => d.id === key);
+                if (doc)
+                  void navigate({ to: documentPath(doc.kind), params: { documentId: doc.id } });
+              }}
+            >
               <TableHeader>
                 <Column isRowHeader>Document</Column>
                 <Column>Status</Column>
@@ -202,7 +212,7 @@ function DocumentsSection({ detail }: { detail: ClientDetail }) {
               </TableHeader>
               <TableBody items={docs}>
                 {(doc) => (
-                  <Row id={doc.id}>
+                  <Row id={doc.id} className="cursor-pointer">
                     <Cell>{documentLabel(doc)}</Cell>
                     <Cell>
                       <Pill status={doc.displayStatus} />
@@ -227,6 +237,8 @@ function DocumentsSection({ detail }: { detail: ClientDetail }) {
             {docs.map((doc) => (
               <StackedRow
                 key={doc.id}
+                to={documentPath(doc.kind)}
+                params={{ documentId: doc.id }}
                 title={documentLabel(doc)}
                 meta={<Pill status={doc.displayStatus} />}
                 value={<span className="figure">{formatMoney(doc.total, doc.currency)}</span>}

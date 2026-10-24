@@ -9,7 +9,7 @@ export function Popover({ className, offset = 6, ...props }: PopoverProps) {
       {...props}
       className={composeTailwind(
         className,
-        "motion-pop min-w-(--trigger-width) overflow-auto rounded-card bg-background shadow-popover outline-none",
+        "motion-pop min-w-(--trigger-width) overflow-auto overscroll-contain rounded-card bg-background shadow-popover outline-none",
       )}
     />
   );

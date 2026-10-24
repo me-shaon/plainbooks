@@ -116,6 +116,7 @@ export function DocumentsPage({ kind, search }: { kind: DocumentKind; search: Do
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <SegmentedControl
           aria-label="Filter"
+          className="w-full lg:w-auto"
           selectedKey={filterId}
           onSelectionChange={(key) =>
             navigate({

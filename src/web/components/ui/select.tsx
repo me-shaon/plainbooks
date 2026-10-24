@@ -51,7 +51,7 @@ export function Select<T extends object>({
       </RACButton>
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>
-      <Popover>
+      <Popover maxHeight={288}>
         <ListBox items={items}>{children}</ListBox>
       </Popover>
     </RACSelect>

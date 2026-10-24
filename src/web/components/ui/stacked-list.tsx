@@ -53,7 +53,7 @@ export function StackedRow({ title, meta, value, actions, to, params }: StackedR
       {value ? <div className="shrink-0 text-right text-sm">{value}</div> : null}
     </>
   );
-  const rowClass = "flex min-h-14 items-center gap-3 px-4 py-3";
+  const rowClass = "flex min-h-14 items-center gap-3 px-[18px] py-3";
   return (
     <li className="flex items-center">
       {to ? (
