@@ -144,6 +144,46 @@ export function enqueueStatement(db: Db, input: EnqueueInput, now = Date.now()) 
     .onConflictDoNothing({ target: jobs.idempotencyKey });
 }
 
+/**
+ * A raw D1 form of `enqueueStatement` that inserts only when `guard` (SQL) is true at that
+ * point of the batch. Use it after a guarded UPDATE, so a rejected change queues no job.
+ */
+export function guardedEnqueueStatement(
+  d1: D1Database,
+  input: EnqueueInput,
+  now: number,
+  guard: string,
+  guardParams: unknown[],
+): D1PreparedStatement {
+  const row = toRow(input, now);
+  return d1
+    .prepare(
+      `INSERT INTO jobs (id, type, payload, idempotency_key, run_after, max_attempts, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard}
+       ON CONFLICT(idempotency_key) DO NOTHING`,
+    )
+    .bind(
+      row.id,
+      row.type,
+      JSON.stringify(row.payload),
+      row.idempotencyKey,
+      row.runAfter,
+      row.maxAttempts,
+      row.createdAt,
+      row.updatedAt,
+      ...guardParams,
+    );
+}
+
+/** The ID of the job with this idempotency key, or null. */
+export async function jobIdByKey(db: Db, idempotencyKey: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(eq(jobs.idempotencyKey, idempotencyKey));
+  return row?.id ?? null;
+}
+
 /** Enqueues one job. `created` is false when a job with the same key already exists. */
 export async function enqueue(
   db: Db,
@@ -152,12 +192,9 @@ export async function enqueue(
 ): Promise<{ id: string; created: boolean }> {
   const [inserted] = await enqueueStatement(db, input, now).returning({ id: jobs.id });
   if (inserted) return { id: inserted.id, created: true };
-  const [existing] = await db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(eq(jobs.idempotencyKey, input.idempotencyKey));
+  const existing = await jobIdByKey(db, input.idempotencyKey);
   if (!existing) throw new Error(`Could not enqueue job ${input.idempotencyKey}`);
-  return { id: existing.id, created: false };
+  return { id: existing, created: false };
 }
 
 /** Enqueues many jobs with one D1 batch. Returns how many were new. */

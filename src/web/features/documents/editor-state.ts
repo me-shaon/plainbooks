@@ -127,12 +127,16 @@ function quantityOf(text: string): string {
   }
 }
 
-/** Keeps the typed amounts when the currency changes, cutting decimals it does not allow. */
+/**
+ * Keeps the typed amounts when the currency changes, cutting decimals it does not allow. A
+ * manual exchange rate belongs to the old currency, so a new currency clears it.
+ */
 export function changeCurrency(values: EditorValues, currency: string): EditorValues {
   const decimals = currencyDecimals(currency);
   return {
     ...values,
     currency,
+    fxManual: currency === values.currency ? values.fxManual : null,
     lines: values.lines.map((line) => ({
       ...line,
       unitPrice: fitAmountText(line.unitPrice, decimals),

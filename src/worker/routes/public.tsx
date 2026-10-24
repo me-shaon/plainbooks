@@ -13,7 +13,7 @@ import { cspNonce, documentHeaders } from "../render/http";
 import { DOCUMENT_CSS_PATH } from "../render/styles";
 import { guardedActivity } from "../services/activity";
 import { decideQuote, getDocumentByToken, getRevision, loadWorkspace } from "../services/documents";
-import { enqueue, runJobSoon } from "../services/jobs";
+import { jobIdByKey, runJobSoon } from "../services/jobs";
 import { getPdf, pdfResponse } from "../services/pdf";
 
 /** The job U13 handles: emails the sender and every Owner about a quote decision. */
@@ -229,9 +229,22 @@ export const publicRoutes = new Hono<AppEnv>()
           : "Choose Accept quote or Decline",
       });
     }
+    const recipientUserIds = await decisionRecipients(db, doc);
+    const jobKey = `${QUOTE_DECISION_JOB}:${doc.id}`;
     let decided: Document;
     try {
-      decided = await decideQuote(db, token, parsed.data, { now });
+      // The decision and its notification job commit in one batch.
+      decided = await decideQuote(db, token, parsed.data, {
+        now,
+        job: (d) => {
+          const payload: QuoteDecisionJobPayload = {
+            documentId: d.id,
+            decision: d.status === "accepted" ? "accepted" : "declined",
+            recipientUserIds,
+          };
+          return { type: QUOTE_DECISION_JOB, payload, idempotencyKey: jobKey };
+        },
+      });
     } catch (err) {
       if (!(err instanceof AppError)) throw err;
       if (err.status === 404) return notFoundPage();
@@ -242,19 +255,10 @@ export const publicRoutes = new Hono<AppEnv>()
       });
     }
     const decision = decided.status === "accepted" ? "accepted" : "declined";
-    const payload: QuoteDecisionJobPayload = {
-      documentId: decided.id,
-      decision,
-      recipientUserIds: await decisionRecipients(db, decided),
-    };
-    const job = await enqueue(
-      db,
-      { type: QUOTE_DECISION_JOB, payload, idempotencyKey: `${QUOTE_DECISION_JOB}:${decided.id}` },
-      now,
-    );
-    if (job.created) {
+    const jobId = await jobIdByKey(db, jobKey);
+    if (jobId) {
       try {
-        runJobSoon(c.executionCtx, c.env, job.id);
+        runJobSoon(c.executionCtx, c.env, jobId);
       } catch {
         // No execution context (tests). The cron tick runs the job.
       }

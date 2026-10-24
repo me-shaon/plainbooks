@@ -8,6 +8,7 @@ import {
   calculateTotals,
   convertTotals,
   type DiscountInput,
+  normalizeRate,
   rateToScaled,
 } from "../../shared/money";
 import {
@@ -36,6 +37,7 @@ import type { AuthUser } from "../env";
 import { AppError } from "../errors";
 import { type ActivityInput, guardedActivity } from "./activity";
 import { type Fetcher, type FxRate, getRate, manualRate } from "./fx";
+import { type EnqueueInput, guardedEnqueueStatement } from "./jobs";
 import { counterIncrement, numberExpression, UNNUMBERED_DRAFT } from "./numbering";
 import { getBrandKit } from "./settings";
 import { overdueSql } from "./status-sql";
@@ -353,6 +355,23 @@ function fxColumns(fx: { rate: string; date: string } | null) {
   };
 }
 
+/** The home currency converts at exactly 1, so a manual rate for it must be 1. */
+async function assertManualRate(
+  db: Db,
+  currency: string,
+  fxRate: { rate: string } | null | undefined,
+): Promise<void> {
+  if (!fxRate || normalizeRate(fxRate.rate) === "1") return;
+  const ws = await loadWorkspace(db);
+  if (currency === ws.homeCurrency) {
+    throw new AppError(
+      422,
+      "invalid_fx_rate",
+      `${currency} is the home currency, so its exchange rate is always 1`,
+    );
+  }
+}
+
 /** Creates a draft. It has no number until finalize. */
 export async function createDraft(
   db: Db,
@@ -370,6 +389,7 @@ export async function createDraft(
   await assertCustomFields(db, data.customFields);
   const rates = await validateLineTaxes(db, data.lines, new Set(origin?.allowTaxRateIds));
   const currency = data.currency ?? client.defaultCurrency;
+  await assertManualRate(db, currency, data.fxRate);
   const totals = computeTotals(currency, data.lines, data.discount, rates);
 
   const d1 = db.$client;
@@ -447,6 +467,14 @@ export async function updateDraft(
   const existingTaxIds = new Set(existing.map((l) => l.taxRateId).filter((v): v is string => !!v));
   const rates = await validateLineTaxes(db, lines, existingTaxIds);
   const currency = data.currency ?? doc.currency;
+  await assertManualRate(db, currency, data.fxRate);
+  // A manual rate belongs to one currency pair. A new currency without a new rate clears it.
+  const fx =
+    data.fxRate !== undefined
+      ? fxColumns(data.fxRate)
+      : currency !== doc.currency
+        ? fxColumns(null)
+        : {};
   const discount = data.discount ?? discountFromRow(doc);
   const totals = computeTotals(currency, lines, discount, rates);
 
@@ -466,7 +494,7 @@ export async function updateDraft(
       footerText: data.footerText,
       templateId: data.templateId,
       reminderMode: data.reminderMode,
-      ...(data.fxRate !== undefined ? fxColumns(data.fxRate) : {}),
+      ...fx,
       subtotal: totals.subtotal,
       discountTotal: totals.discount,
       taxTotal: totals.taxTotal,
@@ -603,10 +631,15 @@ export async function resolveTemplate(
   return { id: null, name: "Default", config: DEFAULT_TEMPLATE_CONFIG };
 }
 
+/**
+ * The custom fields for a snapshot. `documentValues`, when present, replaces the stored
+ * document-scope values (a revise builds the snapshot before it writes the new values).
+ */
 async function resolveCustomFields(
   db: Db,
   documentId: string,
   clientId: string,
+  documentValues?: { fieldId: string; value: string }[],
 ): Promise<SnapshotCustomField[]> {
   const defs = await db
     .select()
@@ -626,9 +659,12 @@ async function resolveCustomFields(
   for (const def of defs) {
     const entityId =
       def.scope === "workspace" ? "workspace" : def.scope === "client" ? clientId : documentId;
-    const value = values.find(
-      (v) => v.fieldId === def.id && v.entityType === def.scope && v.entityId === entityId,
-    )?.value;
+    const value =
+      def.scope === "document" && documentValues
+        ? documentValues.find((v) => v.fieldId === def.id)?.value
+        : values.find(
+            (v) => v.fieldId === def.id && v.entityType === def.scope && v.entityId === entityId,
+          )?.value;
     if (value) {
       result.push({
         fieldId: def.id,
@@ -653,6 +689,8 @@ export interface SnapshotInput {
   expiryDate: string | null;
   fx: FxRate | null;
   now: number;
+  /** New document custom field values that are not stored yet. */
+  documentFieldValues?: { fieldId: string; value: string }[];
 }
 
 /** Builds the full snapshot from live data: client, brand kit, template, and custom fields. */
@@ -686,7 +724,7 @@ async function assembleSnapshot(db: Db, input: SnapshotInput): Promise<DocumentS
       .orderBy(desc(clientContacts.isPrimary), asc(clientContacts.createdAt))
       .limit(1),
     getBrandKit(db),
-    resolveCustomFields(db, doc.id, doc.clientId),
+    resolveCustomFields(db, doc.id, doc.clientId, input.documentFieldValues),
   ]);
   if (!client) throw new AppError(409, "client_missing", "The client of this document is missing");
   const template = await resolveTemplate(db, ws, doc.templateId, client.templateId);
@@ -1170,13 +1208,16 @@ export async function revise(
         )
       : doc.dueDate;
 
-  // FX: a new manual rate wins. Clearing it, or changing the date or currency, refetches.
+  // FX: a new manual rate wins. Clearing it or changing the currency refetches. A new date
+  // refetches only when the rate is not manual.
+  await assertManualRate(db, merged.currency, data.fxRate);
   let fx: FxRate | null;
   if (data.fxRate) {
     fx = manualRate(data.fxRate.rate, data.fxRate.date);
   } else if (
     data.fxRate === null ||
-    (!doc.fxOverridden && (merged.currency !== doc.currency || issueDate !== doc.issueDate))
+    merged.currency !== doc.currency ||
+    (!doc.fxOverridden && issueDate !== doc.issueDate)
   ) {
     const result = await getRate(db, opts.fetcher ?? ((input, init) => fetch(input, init)), {
       from: merged.currency,
@@ -1208,6 +1249,7 @@ export async function revise(
     expiryDate: null,
     fx,
     now: opts.now,
+    documentFieldValues: data.customFields,
   });
   const totals = snapshot.totals;
   const today = workspaceToday(ws, opts.now);
@@ -1414,13 +1456,14 @@ export async function getDocumentByToken(db: Db, token: string): Promise<Documen
 
 /**
  * Records the client's accept or decline on a sent quote, from the public page. Accept is
- * blocked after the expiry date. A decision is final (R45).
+ * blocked after the expiry date. A decision is final (R45). `opts.job`, when set, gives the
+ * notification job. It is queued in the same batch, and only when the decision is stored.
  */
 export async function decideQuote(
   db: Db,
   token: string,
   input: { decision: "accept" | "decline"; comment?: string | null },
-  opts: { now: number },
+  opts: { now: number; job?: (decided: Document) => EnqueueInput },
 ): Promise<Document> {
   const doc = await getDocumentByToken(db, token);
   if (doc?.kind !== "quote") {
@@ -1462,6 +1505,17 @@ export async function decideQuote(
          WHERE id = ? AND status = 'sent'`,
       )
       .bind(status, opts.now, comment, opts.now, doc.id),
+    ...(opts.job
+      ? [
+          guardedEnqueueStatement(
+            d1,
+            opts.job({ ...doc, status, decidedAt: opts.now, decisionComment: comment }),
+            opts.now,
+            "EXISTS (SELECT 1 FROM documents WHERE id = ? AND status = ? AND decided_at = ?)",
+            [doc.id, status, opts.now],
+          ),
+        ]
+      : []),
   ]);
   if (changes(results[1]) === 0) {
     throw new AppError(409, "quote_decided", "This quote already has a decision");

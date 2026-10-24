@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { documentUpdateInput } from "../../src/shared/schemas/document";
-import { schema } from "../../src/worker/db/client";
+import { createDb, schema } from "../../src/worker/db/client";
 import { AppError } from "../../src/worker/errors";
 import {
   buildSnapshot,
@@ -298,6 +298,107 @@ describe("revise and void", () => {
   });
 });
 
+describe("exchange rates and custom fields on edits", () => {
+  const usd122: Fetcher = async () =>
+    Response.json({ date: "2026-10-23", base: "USD", quote: "BDT", rate: 122.5 });
+
+  it("a currency change on a draft clears the manual rate", async () => {
+    const id = await draft({ clientId, currency: "EUR", fxRate: { rate: "130", date: TODAY } });
+    await updateDraft(db, id, documentUpdateInput.parse({ currency: "USD" }), { now: NOW });
+    const doc = await loadDocument(db, id);
+    expect(doc.currency).toBe("USD");
+    expect(doc.fxRate).toBeNull();
+    expect(doc.fxProvider).toBeNull();
+    expect(doc.fxOverridden).toBe(false);
+  });
+
+  it("a currency change with a new manual rate keeps the new rate", async () => {
+    const id = await draft({ clientId, currency: "EUR", fxRate: { rate: "130", date: TODAY } });
+    await updateDraft(
+      db,
+      id,
+      documentUpdateInput.parse({ currency: "USD", fxRate: { rate: "122", date: TODAY } }),
+      { now: NOW },
+    );
+    const doc = await loadDocument(db, id);
+    expect(doc.fxRate).toBe("122");
+    expect(doc.fxOverridden).toBe(true);
+  });
+
+  it("rejects a manual rate other than 1 for the home currency", async () => {
+    await expectAppError(
+      draft({ clientId, currency: "BDT", fxRate: { rate: "2", date: TODAY } }),
+      422,
+      "invalid_fx_rate",
+    );
+    const id = await draft({ clientId, currency: "EUR", fxRate: { rate: "130", date: TODAY } });
+    await expectAppError(
+      updateDraft(
+        db,
+        id,
+        documentUpdateInput.parse({ currency: "BDT", fxRate: { rate: "130", date: TODAY } }),
+        { now: NOW },
+      ),
+      422,
+      "invalid_fx_rate",
+    );
+    const sent = await sentInvoice({ clientId });
+    await expectAppError(
+      revise(db, sent, documentUpdateInput.parse({ fxRate: { rate: "3", date: TODAY } }), {
+        now: NOW,
+        fetcher: noFetch,
+      }),
+      422,
+      "invalid_fx_rate",
+    );
+    const one = await draft({ clientId, currency: "BDT", fxRate: { rate: "1.0", date: TODAY } });
+    expect((await loadDocument(db, one)).fxRate).toBe("1");
+  });
+
+  it("revise refetches the rate after a currency change, even over a manual rate", async () => {
+    const id = await sentInvoice({
+      clientId,
+      currency: "EUR",
+      fxRate: { rate: "130", date: TODAY },
+    });
+    const result = await revise(db, id, documentUpdateInput.parse({ currency: "USD" }), {
+      now: NOW,
+      fetcher: usd122,
+    });
+    expect(result.document.currency).toBe("USD");
+    expect(result.document.fxRate).toBe("122.5");
+    expect(result.document.fxProvider).toBe("frankfurter");
+    expect(result.document.fxOverridden).toBe(false);
+    expect(result.revision.fxRate).toBe("122.5");
+  });
+
+  it("the revised snapshot uses the new document custom field values", async () => {
+    const [field] = await db
+      .insert(schema.customFieldDefs)
+      .values({ label: "PO number", type: "text", scope: "document", section: "header" })
+      .returning();
+    if (!field) throw new Error("field insert failed");
+    const id = await sentInvoice({
+      clientId,
+      customFields: [{ fieldId: field.id, value: "PO-1" }],
+    });
+    const result = await revise(
+      db,
+      id,
+      documentUpdateInput.parse({ customFields: [{ fieldId: field.id, value: "PO-2" }] }),
+      { now: NOW, fetcher: noFetch },
+    );
+    const { snapshot } = await getRevision(db, result.revision.id);
+    expect(snapshot.customFields.map((f) => f.value)).toEqual(["PO-2"]);
+
+    const cleared = await revise(db, id, documentUpdateInput.parse({ customFields: [] }), {
+      now: NOW,
+      fetcher: noFetch,
+    });
+    expect((await getRevision(db, cleared.revision.id)).snapshot.customFields).toEqual([]);
+  });
+});
+
 describe("duplicate and convert", () => {
   it("duplicate copies lines into a new draft with no number", async () => {
     const id = await sentInvoice({ clientId });
@@ -406,6 +507,42 @@ describe("quote decisions", () => {
       409,
       "quote_decided",
     );
+  });
+
+  it("stores the decision and its notification job in one batch", async () => {
+    const { id, token } = await sentQuote("2026-10-30");
+    const job = () => ({
+      type: "test.decision",
+      idempotencyKey: `decision:${id}`,
+      payload: { id },
+    });
+
+    // The job insert fails, so the decision must not be stored either.
+    const failing = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (query: string) => {
+            if (query.includes("INSERT INTO jobs")) throw new Error("jobs insert failed");
+            return target.prepare(query);
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    await expect(
+      decideQuote(createDb(failing), token, { decision: "accept" }, { now: NOW, job }),
+    ).rejects.toThrow("jobs insert failed");
+    expect((await loadDocument(db, id)).status).toBe("sent");
+
+    const accepted = await decideQuote(db, token, { decision: "accept" }, { now: NOW, job });
+    expect(accepted.status).toBe("accepted");
+    const rows = await db
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.idempotencyKey, `decision:${id}`));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.payload).toEqual({ id });
   });
 
   it("rejects a comment over 1000 characters and an unknown token", async () => {
