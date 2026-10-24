@@ -1,11 +1,8 @@
 import { Check } from "lucide-react";
 import {
   composeRenderProps,
-  Header,
   type ListBoxItemProps,
   type ListBoxProps,
-  ListBoxSection,
-  type ListBoxSectionProps,
   ListBox as RACListBox,
   ListBoxItem as RACListBoxItem,
 } from "react-aria-components";
@@ -43,31 +40,5 @@ export function ListBoxItem({ className, ...props }: ListBoxItemProps) {
         </>
       ))}
     </RACListBoxItem>
-  );
-}
-
-export function ListBoxHeader({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
-  return (
-    <Header
-      {...props}
-      className={cn("px-2.5 pt-2 pb-1 text-xs font-medium text-muted-foreground", className)}
-    />
-  );
-}
-
-export function ListBoxSectionGroup<T extends object>({
-  title,
-  className,
-  children,
-  ...props
-}: Omit<ListBoxSectionProps<T>, "children" | "items"> & {
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <ListBoxSection {...props} className={cn("not-first:mt-1", className)}>
-      {title ? <ListBoxHeader>{title}</ListBoxHeader> : null}
-      {children}
-    </ListBoxSection>
   );
 }

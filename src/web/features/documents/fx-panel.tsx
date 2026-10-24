@@ -1,6 +1,5 @@
 import { CircleAlert } from "lucide-react";
 import { normalizeRate } from "../../../shared/money";
-import type { FxQuote } from "../../../shared/schemas/document";
 import { IsoDatePicker } from "../../components/ui/date-picker";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Switch } from "../../components/ui/switch";
@@ -17,15 +16,6 @@ export interface FxPanelProps {
   manual: { rate: string; date: string } | null;
   onManualChange: (manual: { rate: string; date: string } | null) => void;
   isDisabled?: boolean;
-}
-
-/** True when the send must wait for a manual rate. */
-export function fxBlocksSend(
-  quote: FxQuote | null | undefined,
-  manual: { rate: string } | null,
-): boolean {
-  if (manual) return !isValidRate(manual.rate);
-  return quote?.status === "manual_required";
 }
 
 export function isValidRate(text: string): boolean {

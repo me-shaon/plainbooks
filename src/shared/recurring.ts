@@ -101,11 +101,6 @@ export function firstIndexOnOrAfter(rule: PeriodRule, date: string): number {
   return index;
 }
 
-/** The first issue date on or after `date`. */
-export function nextOccurrenceOnOrAfter(rule: PeriodRule, date: string): string {
-  return occurrenceDate(rule, firstIndexOnOrAfter(rule, date));
-}
-
 /** The issue date that follows `issueDate`. */
 export function occurrenceAfter(rule: PeriodRule, issueDate: string): string {
   return occurrenceDate(rule, firstIndexOnOrAfter(rule, addDays(issueDate, 1)));

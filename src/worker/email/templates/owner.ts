@@ -83,15 +83,6 @@ export function bounceEmail(
   );
 }
 
-export function jobFailedEmail(
-  input: OwnerBase & { jobType: string; attempts: number; message: string },
-): EmailContent {
-  return ownerEmail(input, "A background task failed", [
-    `The task "${input.jobType}" failed after ${input.attempts} attempts.`,
-    `Error: ${input.message}`,
-  ]);
-}
-
 export function recurringDraftReadyEmail(
   input: OwnerBase & { clientName: string; issueDate: string; scheduleName?: string | null },
 ): EmailContent {

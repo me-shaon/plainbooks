@@ -402,4 +402,21 @@ describe("team", () => {
     const self = await apiFetch(`/api/team/${owner?.id}`, { as: OWNER, method: "DELETE" });
     expect(self.status).toBe(409);
   });
+
+  it("stops an Owner from removing themselves while another Owner exists", async () => {
+    const team = await members();
+    const owner = team.find((m) => m.email === OWNER);
+    const other = team.find((m) => m.email === MEMBER);
+    const promote = await apiFetch(`/api/team/${other?.id}`, {
+      as: OWNER,
+      method: "PATCH",
+      json: { role: "owner" },
+    });
+    expect(promote.status).toBe(200);
+
+    const self = await apiFetch(`/api/team/${owner?.id}`, { as: OWNER, method: "DELETE" });
+    expect(self.status).toBe(409);
+    expect(((await self.json()) as { code: string }).code).toBe("cannot_remove_self");
+    expect((await members()).find((m) => m.id === owner?.id)?.role).toBe("owner");
+  });
 });

@@ -81,11 +81,6 @@ export function guardedActivity(
     );
 }
 
-/** Writes one activity row on its own. */
-export async function recordActivity(db: Db, input: ActivityInput): Promise<void> {
-  await activityInsert(db, input);
-}
-
 /** The document's history, newest first. */
 export async function listActivity(db: Db, documentId: string): Promise<ActivityEntry[]> {
   return db
