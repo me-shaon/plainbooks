@@ -1,6 +1,10 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { brandKitInput, workspaceSettingsInput } from "../../shared/schemas/settings";
+import {
+  brandKitInput,
+  MAX_LOGO_BYTES,
+  workspaceSettingsInput,
+} from "../../shared/schemas/settings";
 import { requireOwner } from "../auth/middleware";
 import { type Db, schema } from "../db/client";
 import type { AppEnv } from "../env";
@@ -14,6 +18,38 @@ import {
 } from "../services/settings";
 
 const { workspace, taxRates, templates } = schema;
+
+function logoTooLarge(): AppError {
+  return new AppError(413, "logo_too_large", "The logo must be 1 MB or smaller");
+}
+
+/**
+ * Reads the request body and stops after `max` bytes. A chunked body has no Content-Length,
+ * so the declared size alone cannot stop a large upload from filling memory.
+ */
+export async function readBodyCapped(request: Request, max: number): Promise<Uint8Array> {
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      throw logoTooLarge();
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
 
 async function assertTemplate(db: Db, id: string | null | undefined) {
   if (!id) return;
@@ -80,10 +116,8 @@ export const settingsRoutes = new Hono<AppEnv>()
    */
   .post("/brand-kit/logo", requireOwner, async (c) => {
     const declared = Number(c.req.header("content-length") ?? "0");
-    if (declared > 1024 * 1024) {
-      throw new AppError(413, "logo_too_large", "The logo must be 1 MB or smaller");
-    }
-    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (declared > MAX_LOGO_BYTES) throw logoTooLarge();
+    const bytes = await readBodyCapped(c.req.raw, MAX_LOGO_BYTES);
     const ext = validateLogo(bytes, c.req.header("content-type") ?? "");
     const key = await storeLogo(c.env.BUCKET, bytes, ext);
     await c.var.db

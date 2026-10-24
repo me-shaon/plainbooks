@@ -281,6 +281,22 @@ describe("logo upload", () => {
     expect((await uploadLogo(big, "image/png")).status).toBe(413);
   });
 
+  it("rejects a chunked upload over 1 MB that has no Content-Length", async () => {
+    const chunk = new Uint8Array(256 * 1024);
+    chunk.set(PNG);
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= 5) return controller.close();
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const res = await uploadLogo(stream, "image/png");
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { code: string }).code).toBe("logo_too_large");
+  });
+
   it("returns 404 for unknown or malformed logo paths", async () => {
     const missing = await exports.default.fetch(
       `https://app.test/p/assets/logo/${"a".repeat(64)}.png`,
