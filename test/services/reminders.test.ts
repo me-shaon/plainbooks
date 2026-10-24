@@ -1,9 +1,11 @@
 import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { documentUpdateInput } from "../../src/shared/schemas/document";
 import type { ReminderSuggestion } from "../../src/shared/schemas/reminder";
 import { addDays, todayIn } from "../../src/shared/time";
 import { schema } from "../../src/worker/db/client";
+import { revise } from "../../src/worker/services/documents";
 import {
   registerEmailJobHandlers,
   setResendFetchForTesting,
@@ -20,9 +22,17 @@ import {
 } from "../../src/worker/services/reminders";
 import { runTick } from "../../src/worker/services/scheduler";
 import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
-import { activityTypes, db, resetDocuments, seedClient, sentInvoice } from "../helpers/documents";
+import {
+  activityTypes,
+  db,
+  noFetch,
+  resetDocuments,
+  seedClient,
+  sentInvoice,
+} from "../helpers/documents";
 import { resetEmailState, stubResend } from "../helpers/email";
 import { resetPdfState } from "../helpers/pdf";
+import { runHour } from "../helpers/scheduler";
 
 /** 10:00 in Asia/Dhaka on `day`. */
 const at = (day: string) => Date.parse(`${day}T04:00:00Z`);
@@ -176,11 +186,11 @@ describe("suggestions and manual reminders", () => {
     const id = await invoice(client.id);
 
     await sendReminder(env, db, id, { now: offset(7), trigger: "manual" });
-    await runTick(env, offset(7));
-    await runTick(env, offset(14));
-    await runTick(env, offset(21));
-    await runTick(env, offset(28));
-    await runTick(env, offset(35));
+    await runHour(env, offset(7));
+    await runHour(env, offset(14));
+    await runHour(env, offset(21));
+    await runHour(env, offset(28));
+    await runHour(env, offset(35));
 
     const rows = await reminderRows(id);
     expect(rows.map((r) => [r.trigger, r.reminderOffsetDays])).toEqual([
@@ -188,7 +198,7 @@ describe("suggestions and manual reminders", () => {
       ["auto", 14],
       ["auto", 21],
     ]);
-    expect(await reminderJobs()).toEqual([`reminder:${id}:14`, `reminder:${id}:21`]);
+    expect(await reminderJobs()).toEqual([`reminder:${id}:${DUE}:14`, `reminder:${id}:${DUE}:21`]);
     expect(await listSuggestions(db, offset(35))).toEqual([]);
     await expect(
       sendReminder(env, db, id, { now: offset(35), trigger: "manual" }),
@@ -217,14 +227,55 @@ describe("suggestions and manual reminders", () => {
     const id = await invoice(client.id, "inherit");
     await env.DB.prepare("UPDATE workspace SET reminder_mode = 'auto_send'").run();
 
-    await runTick(env, offset(7));
-    await runTick(env, offset(7) + 15 * 60_000);
-    await runTick(env, offset(8));
+    await runHour(env, offset(7));
+    await runHour(env, offset(7) + 60 * 60_000);
+    await runHour(env, offset(8));
     expect(resend.calls).toHaveLength(1);
-    expect(await reminderJobs()).toEqual([`reminder:${id}:7`]);
+    expect(await reminderJobs()).toEqual([`reminder:${id}:${DUE}:7`]);
     const [row] = await reminderRows(id);
     expect(row?.trigger).toBe("auto");
     expect(await activityTypes(id)).toContain("reminder_sent");
+  });
+});
+
+describe("reminder edge cases", () => {
+  it("a revision that moves the due date starts the reminder steps again", async () => {
+    await env.DB.prepare(
+      `UPDATE workspace SET reminder_schedule = '[{"offsetDays":0},{"offsetDays":7},{"offsetDays":14}]'`,
+    ).run();
+    const client = await seedClient({ reminderMode: "auto_send" });
+    const id = await invoice(client.id);
+    await runHour(env, offset(7));
+    await runHour(env, offset(14));
+    expect((await reminderRows(id)).map((r) => r.reminderOffsetDays)).toEqual([7, 14]);
+
+    // The owner gives the client until Nov 30.
+    const NEW_DUE = "2026-11-30";
+    await revise(db, id, documentUpdateInput.parse({ dueDate: NEW_DUE }), {
+      now: offset(15),
+      fetcher: noFetch,
+    });
+    expect(ids(await listSuggestions(db, at(NEW_DUE)))).toEqual([]); // auto_send, not suggest
+    await runHour(env, at(NEW_DUE));
+    await runHour(env, at(addDays(NEW_DUE, 7)));
+
+    const rows = await reminderRows(id);
+    expect(rows.map((r) => r.reminderOffsetDays)).toEqual([7, 14, 0, 7]);
+    expect(await reminderJobs()).toEqual(
+      [
+        `reminder:${id}:${DUE}:7`,
+        `reminder:${id}:${DUE}:14`,
+        `reminder:${id}:${NEW_DUE}:0`,
+        `reminder:${id}:${NEW_DUE}:7`,
+      ].sort(),
+    );
+  });
+
+  it("lists suggestions for 120 open invoices (more IDs than D1 binds in one statement)", async () => {
+    const client = await seedClient();
+    for (let i = 0; i < 120; i++) await invoice(client.id);
+    const items = await listSuggestions(db, offset(7));
+    expect(items).toHaveLength(120);
   });
 });
 

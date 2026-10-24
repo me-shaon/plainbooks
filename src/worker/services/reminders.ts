@@ -7,6 +7,8 @@
 // - a step is done when a reminder went out on or after the step's day;
 // - the overdue cap counts reminders with an offset above 0 (R53). The before-due and
 //   due-date steps are outside the cap.
+// - only reminders sent for a revision with the current due date count. A revision that
+//   moves the due date starts the schedule again.
 // Email choice: the reminder links to the public page, and attaches the PDF only when the
 // current revision's PDF is already in R2. A reminder never waits for a browser render.
 import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
@@ -38,12 +40,14 @@ import {
 import { registerEnqueueHook, registerJobHandler } from "./jobs";
 import { pdfFilename, pdfKey } from "./pdf";
 
-const { documents, clients, emailLog } = schema;
+const { documents, documentRevisions, clients, emailLog } = schema;
 
 export const REMINDER_JOB = "send_reminder";
 /** Open invoices the enqueue hook and the suggestions read at most. */
 const CANDIDATE_LIMIT = 500;
 const OPEN = ["sent", "partially_paid"] as const;
+/** D1 allows 100 bound parameters per statement. Keep room for the other values. */
+const IDS_PER_QUERY = 90;
 
 export interface ReminderJobPayload {
   documentId: string;
@@ -128,27 +132,38 @@ function isOpen(doc: Pick<Document, "kind" | "status" | "dueDate" | "total" | "a
   );
 }
 
-/** Reminder counts per document, from accepted reminder emails. */
+/**
+ * Reminder counts per document, from accepted reminder emails sent for a revision with the
+ * document's current due date. Reads the IDs in chunks to stay under the parameter limit.
+ */
 async function reminderStats(db: Db, ids: string[]) {
   const stats = new Map<string, { last: number | null; lastAt: number | null; overdue: number }>();
-  if (ids.length === 0) return stats;
-  const rows = await db
-    .select({
-      documentId: emailLog.documentId,
-      last: sql<number | null>`max(${emailLog.reminderOffsetDays})`,
-      lastAt: sql<number | null>`max(${emailLog.createdAt})`,
-      overdue: sql<number>`sum(case when ${emailLog.reminderOffsetDays} > 0 then 1 else 0 end)`,
-    })
-    .from(emailLog)
-    .where(
-      and(
-        eq(emailLog.kind, "reminder"),
-        ne(emailLog.status, "failed"),
-        inArray(emailLog.documentId, ids),
-      ),
-    )
-    .groupBy(emailLog.documentId);
-  for (const row of rows) {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += IDS_PER_QUERY) chunks.push(ids.slice(i, i + IDS_PER_QUERY));
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      db
+        .select({
+          documentId: emailLog.documentId,
+          last: sql<number | null>`max(${emailLog.reminderOffsetDays})`,
+          lastAt: sql<number | null>`max(${emailLog.createdAt})`,
+          overdue: sql<number>`sum(case when ${emailLog.reminderOffsetDays} > 0 then 1 else 0 end)`,
+        })
+        .from(emailLog)
+        .innerJoin(documentRevisions, eq(documentRevisions.id, emailLog.revisionId))
+        .innerJoin(documents, eq(documents.id, emailLog.documentId))
+        .where(
+          and(
+            eq(emailLog.kind, "reminder"),
+            ne(emailLog.status, "failed"),
+            inArray(emailLog.documentId, chunk),
+            eq(documentRevisions.dueDate, documents.dueDate),
+          ),
+        )
+        .groupBy(emailLog.documentId),
+    ),
+  );
+  for (const row of results.flat()) {
     if (row.documentId) {
       stats.set(row.documentId, { last: row.last, lastAt: row.lastAt, overdue: row.overdue ?? 0 });
     }
@@ -421,6 +436,7 @@ export async function sendReminder(
       idempotencyKey: opts.idempotencyKey,
     },
     opts.now,
+    ws,
   );
   if (!outcome.ok) {
     const rejected = outcome.status >= 400 && outcome.status < 500 && outcome.status !== 429;
@@ -452,7 +468,7 @@ export async function reminderEnqueue(db: Db, ws: Workspace, now: number) {
     .filter((c) => c.mode === "auto_send" && c.step !== null)
     .map((c) => ({
       type: REMINDER_JOB,
-      idempotencyKey: `reminder:${c.doc.id}:${c.step}`,
+      idempotencyKey: `reminder:${c.doc.id}:${c.doc.dueDate}:${c.step}`,
       payload: { documentId: c.doc.id, step: c.step as number } satisfies ReminderJobPayload,
     }));
 }
@@ -470,35 +486,39 @@ const SKIP_CODES = new Set([
 export function registerReminderJobs(): void {
   registerEnqueueHook("reminders", ({ db, workspace, now }) => reminderEnqueue(db, workspace, now));
 
-  registerJobHandler<ReminderJobPayload>(REMINDER_JOB, async ({ env, db, now, payload, job }) => {
-    const ws = await loadWorkspace(db);
-    const [candidate] = await loadCandidates(db, ws, now, [payload.documentId]);
-    // Paid, voided, switched off, or reminded by hand since the job was queued.
-    if (candidate?.mode !== "auto_send" || candidate.step === null) return undefined;
-    if (!(await hasEmailCapacity(db, ws, now))) {
-      return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
-    }
-    try {
-      await sendReminder(env, db, payload.documentId, {
-        actor: null,
-        now,
-        trigger: "auto",
-        idempotencyKey: `job:${job.id}`,
-      });
-    } catch (err) {
-      if (err instanceof AppError) {
-        if (err.code === "daily_email_limit") {
-          return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
-        }
-        if (SKIP_CODES.has(err.code)) {
-          console.log("send_reminder skipped", JSON.stringify({ jobId: job.id, code: err.code }));
-          return undefined;
-        }
+  registerJobHandler<ReminderJobPayload>(
+    REMINDER_JOB,
+    async ({ env, db, now, payload, job }) => {
+      const ws = await loadWorkspace(db);
+      const [candidate] = await loadCandidates(db, ws, now, [payload.documentId]);
+      // Paid, voided, switched off, or reminded by hand since the job was queued.
+      if (candidate?.mode !== "auto_send" || candidate.step === null) return undefined;
+      if (!(await hasEmailCapacity(db, ws, now))) {
+        return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
       }
-      throw err;
-    }
-    return undefined;
-  });
+      try {
+        await sendReminder(env, db, payload.documentId, {
+          actor: null,
+          now,
+          trigger: "auto",
+          idempotencyKey: `job:${job.id}`,
+        });
+      } catch (err) {
+        if (err instanceof AppError) {
+          if (err.code === "daily_email_limit") {
+            return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
+          }
+          if (SKIP_CODES.has(err.code)) {
+            console.log("send_reminder skipped", JSON.stringify({ jobId: job.id, code: err.code }));
+            return undefined;
+          }
+        }
+        throw err;
+      }
+      return undefined;
+    },
+    { heavy: true },
+  );
 }
 
 registerReminderJobs();
