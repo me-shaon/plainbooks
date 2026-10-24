@@ -305,12 +305,14 @@ export const documents = sqliteTable(
     ),
     uniqueIndex("documents_kind_number_uq").on(t.kind, t.number),
     uniqueIndex("documents_recurring_period_uq").on(t.recurringScheduleId, t.recurringPeriodId),
-    index("documents_kind_status_idx").on(t.kind, t.status),
-    index("documents_kind_overdue_idx").on(t.kind, t.isOverdue),
-    index("documents_client_idx").on(t.clientId),
-    index("documents_issue_date_idx").on(t.issueDate),
-    index("documents_due_date_idx").on(t.dueDate),
-    index("documents_updated_idx").on(t.updatedAt),
+    // Status filters, and due-date ranges on open invoices (overdue tick, dashboard, aging).
+    index("documents_kind_status_due_idx").on(t.kind, t.status, t.dueDate),
+    // The list pages: one kind, newest first, so a page reads only its own rows.
+    index("documents_kind_updated_idx").on(t.kind, t.updatedAt, t.id),
+    // The few invoices flagged overdue, so the tick can clear the flag without a scan.
+    index("documents_overdue_idx").on(t.kind, t.isOverdue).where(sql`is_overdue = 1`),
+    // Client detail: the client's documents, newest first. Also serves the foreign key.
+    index("documents_client_created_idx").on(t.clientId, t.createdAt),
   ],
 );
 
@@ -367,7 +369,6 @@ export const documentRevisions = sqliteTable(
   (t) => [
     uniqueIndex("document_revisions_doc_number_uq").on(t.documentId, t.revisionNumber),
     index("document_revisions_issue_date_idx").on(t.issueDate),
-    index("document_revisions_client_idx").on(t.clientId),
   ],
 );
 
@@ -534,7 +535,7 @@ export const emailLog = sqliteTable(
   },
   (t) => [
     index("email_log_day_idx").on(t.day, t.status),
-    index("email_log_document_idx").on(t.documentId, t.kind),
+    index("email_log_document_idx").on(t.documentId, t.kind, t.createdAt),
     index("email_log_provider_idx").on(t.providerId),
   ],
 );
@@ -551,10 +552,7 @@ export const activity = sqliteTable(
     data: text("data", { mode: "json" }).$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
-  (t) => [
-    index("activity_document_idx").on(t.documentId, t.createdAt),
-    index("activity_client_idx").on(t.clientId, t.createdAt),
-  ],
+  (t) => [index("activity_document_idx").on(t.documentId, t.createdAt)],
 );
 
 /** In-app owner notifications (dashboard list). */
