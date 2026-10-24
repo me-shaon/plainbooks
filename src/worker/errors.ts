@@ -48,8 +48,16 @@ export function handleError(err: Error, c: Context): Response {
   return c.json<ErrorBody>({ error: "Internal server error" }, 500);
 }
 
-/** Parses the JSON body with a Zod schema. Invalid JSON or data becomes a 400. */
+/**
+ * Parses the JSON body with a Zod schema. A Content-Type other than application/json
+ * becomes a 415, so a cross-site form cannot send JSON as text/plain. Invalid JSON or
+ * data becomes a 400.
+ */
 export async function parseJson<T extends z.ZodType>(c: Context, schema: T): Promise<z.output<T>> {
+  const mediaType = (c.req.header("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
+  if (mediaType !== "application/json") {
+    throw new AppError(415, "unsupported_media_type", "The request body must be application/json");
+  }
   let body: unknown;
   try {
     body = await c.req.json();

@@ -133,6 +133,8 @@ describe("Access JWT verification", () => {
       "/api/webhooks/resend/extra",
       "/api/webhooks/resendx",
       "/api/webhooks/Resend",
+      "/api/webhooks/%72esend",
+      "/api/webhooks/resend%2F",
     ];
     for (const path of paths) {
       for (const method of ["GET", "POST"]) {
@@ -155,6 +157,102 @@ describe("Access JWT verification", () => {
     const res = await apiFetch("/api/nope", { as: "member@example.com" });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
+  });
+});
+
+describe("cross-site writes", () => {
+  const OWNER = "owner@example.com";
+  const APP_ORIGIN = new URL(env.APP_URL).origin;
+  const addMember = (headers: Record<string, string>, email = "new@example.com") =>
+    apiFetch("/api/team", { as: OWNER, method: "POST", headers, json: { email } });
+
+  beforeEach(async () => {
+    await seedUser(OWNER, "owner");
+  });
+
+  it("refuses a write marked cross-site or from another origin", async () => {
+    const cases: Record<string, string>[] = [
+      { "sec-fetch-site": "cross-site" },
+      { origin: "https://evil.example" },
+      { origin: "null" },
+      { origin: `${APP_ORIGIN}.evil.example` },
+    ];
+    for (const headers of cases) {
+      const res = await addMember(headers);
+      expect(res.status, JSON.stringify(headers)).toBe(403);
+      expect(await res.json()).toMatchObject({ code: "cross_site_request" });
+    }
+    const bodiless = await apiFetch("/api/jobs/job_1/retry", {
+      as: OWNER,
+      method: "POST",
+      headers: { origin: "https://evil.example" },
+    });
+    expect(bodiless.status).toBe(403);
+  });
+
+  it("allows a same-origin write and a write with no Origin header", async () => {
+    const same = await addMember({ origin: APP_ORIGIN, "sec-fetch-site": "same-origin" });
+    expect(same.status).toBe(201);
+    const tool = await addMember({}, "tool@example.com");
+    expect(tool.status).toBe(201);
+  });
+
+  it("lets cross-site reads through", async () => {
+    const res = await apiFetch("/api/me", {
+      as: OWNER,
+      headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 415 for JSON sent as text/plain", async () => {
+    const res = await apiFetch("/api/team", {
+      as: OWNER,
+      method: "POST",
+      headers: { origin: APP_ORIGIN, "content-type": "text/plain" },
+      body: JSON.stringify({ email: "plain@example.com" }),
+    });
+    expect(res.status).toBe(415);
+    expect(await res.json()).toMatchObject({ code: "unsupported_media_type" });
+  });
+
+  it("does not apply to the Resend webhook", async () => {
+    const res = await apiFetch("/api/webhooks/resend", {
+      method: "POST",
+      headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
+      body: "{}",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: "invalid_signature" });
+  });
+
+  it("allows the local origin only in development", async () => {
+    await seedUser("dev@example.com", "owner");
+    const dev = { APP_ENV: "development", DEV_USER_EMAIL: "dev@example.com" };
+    const post = (origin: string) =>
+      new Request("http://localhost:5173/api/team", {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ email: `x${crypto.randomUUID()}@example.com` }),
+      });
+    expect((await fetchWith(dev, post("http://localhost:5173"))).status).toBe(201);
+    expect((await fetchWith({ ...dev, APP_URL: "" }, post("http://localhost:5173"))).status).toBe(
+      201,
+    );
+    expect((await fetchWith(dev, post("http://localhost:9999"))).status).toBe(403);
+  });
+
+  it("refuses browser writes when APP_URL is not set outside development", async () => {
+    const res = await fetchWith(
+      { APP_URL: "" },
+      await buildRequest("/api/team", {
+        as: OWNER,
+        method: "POST",
+        headers: { origin: "https://app.test" },
+        json: { email: "unset@example.com" },
+      }),
+    );
+    expect(res.status).toBe(403);
   });
 });
 

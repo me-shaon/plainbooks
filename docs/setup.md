@@ -71,7 +71,7 @@ Edit `vars` in `wrangler.jsonc`:
 | `ACCESS_TEAM_DOMAIN` | Your Zero Trust team domain, for example `your-team.cloudflareaccess.com`. You get it in step 7. |
 | `ACCESS_AUD` | The Application Audience (AUD) tag of Access application 1. You get it in step 8. |
 | `OWNER_EMAIL` | The email of the first Owner. Use lowercase. |
-| `APP_URL` | `https://invoices.example.com`, with no trailing slash. Email links use it. |
+| `APP_URL` | `https://invoices.example.com`, with no trailing slash. Email links use it. The API refuses writes from a browser page on any other origin. |
 | `APP_ENV` | `production`. Do not change it. |
 
 Do not put `DEV_USER_EMAIL` or `FAKE_EXTERNALS` in the production config. The Worker ignores both when `APP_ENV` is `production`.
@@ -115,11 +115,14 @@ You create three self-hosted applications. Access uses the most specific matchin
 4. Add the public hostname `invoices.example.com`. Leave the path empty.
 5. Add a policy named `Team` with the action **Allow**.
 6. Add an include rule **Emails** with the email of each team member. You can use **Emails ending in** `@example.com` instead.
-7. Save the application.
-8. Open the application again and copy the **Application Audience (AUD) Tag**.
-9. Put the tag in `ACCESS_AUD` in `wrangler.jsonc`.
+7. Open **Settings** > **Cookies** and set **SameSite attribute** to **Lax**. Then the browser does not send the Access cookie on cross-site writes.
+8. Save the application.
+9. Open the application again and copy the **Application Audience (AUD) Tag**.
+10. Put the tag in `ACCESS_AUD` in `wrangler.jsonc`.
 
 The Worker checks the Access JWT on every API request. It checks the AUD tag and the team domain, so a token for another application is rejected.
+
+The Worker also refuses cross-site writes. A POST, PATCH, PUT, or DELETE request gets a 403 error when the browser marks it as cross-site, or when its `Origin` header is not the origin of `APP_URL`. JSON bodies must use the `application/json` content type. The Resend webhook path is exempt from these checks.
 
 ### Application 2: public document links
 
@@ -297,4 +300,6 @@ The request reached the Worker without an Access JWT. Check that Access applicat
 
 ### You get a 403 error after sign-in
 
-Your email is not in the users table. The first Owner must sign in with `OWNER_EMAIL`. Other members must be added on the Team page.
+If the error code is `cross_site_request`, the page origin is not the origin of `APP_URL`. Set `APP_URL` to the host in the address bar, then run `pnpm deploy` again.
+
+Otherwise, your email is not in the users table. The first Owner must sign in with `OWNER_EMAIL`. Other members must be added on the Team page.

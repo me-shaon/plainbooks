@@ -5,6 +5,8 @@ import { z } from "zod";
 import { MoneyError } from "../src/shared/money";
 import { AppError, handleError, parseJson } from "../src/worker/errors";
 
+const JSON_HEADERS = { "content-type": "application/json" };
+
 const app = new Hono();
 app.onError(handleError);
 app.get("/app-error", () => {
@@ -36,12 +38,34 @@ describe("JSON error handler", () => {
   });
 
   it("maps Zod errors and invalid JSON to 400", async () => {
-    const bad = await app.request("/zod", { method: "POST", body: JSON.stringify({ name: "" }) });
+    const bad = await app.request("/zod", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ name: "" }),
+    });
     expect(bad.status).toBe(400);
     expect(await bad.json()).toMatchObject({ code: "invalid_request", issues: [{ path: "name" }] });
-    const notJson = await app.request("/zod", { method: "POST", body: "{" });
+    const notJson = await app.request("/zod", { method: "POST", headers: JSON_HEADERS, body: "{" });
     expect(notJson.status).toBe(400);
     expect(await notJson.json()).toMatchObject({ code: "invalid_json" });
+  });
+
+  it("rejects a JSON body that is not sent as application/json", async () => {
+    for (const type of ["text/plain", "application/x-www-form-urlencoded", undefined]) {
+      const res = await app.request("/zod", {
+        method: "POST",
+        headers: type ? { "content-type": type } : {},
+        body: JSON.stringify({ name: "Ada" }),
+      });
+      expect(res.status).toBe(415);
+      expect(await res.json()).toMatchObject({ code: "unsupported_media_type" });
+    }
+    const ok = await app.request("/zod", {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ name: "Ada" }),
+    });
+    expect(ok.status).toBe(200);
   });
 
   it("hides unexpected errors behind a 500", async () => {

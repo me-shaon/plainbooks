@@ -10,6 +10,52 @@ export const AUTH_EXEMPT_PATHS: ReadonlySet<string> = new Set(["/api/webhooks/re
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
+/** Methods that do not change data. They skip the origin check. */
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * True when the raw request path is exactly an exempt path. The check uses the path as
+ * sent, so percent-encoded or trailing-slash variants still need Access.
+ */
+export function isAuthExempt(url: string): boolean {
+  return AUTH_EXEMPT_PATHS.has(new URL(url).pathname);
+}
+
+/**
+ * The origins that may send writes: the origin of APP_URL. In development on a local host,
+ * the request's own origin is allowed too, because the dev server is not on APP_URL.
+ */
+export function allowedOrigins(env: Bindings, url: string): Set<string> {
+  const origins = new Set<string>();
+  if (env.APP_URL) {
+    try {
+      origins.add(new URL(env.APP_URL).origin);
+    } catch {
+      // A malformed APP_URL allows no origin, so browser writes fail closed.
+    }
+  }
+  const requestUrl = new URL(url);
+  if (env.APP_ENV === "development" && LOCAL_HOSTS.has(requestUrl.hostname)) {
+    origins.add(requestUrl.origin);
+  }
+  return origins;
+}
+
+/**
+ * Blocks cross-site writes (CSRF). A write is refused when Sec-Fetch-Site is "cross-site",
+ * or when it has an Origin header that is not an allowed origin. Requests with no Origin
+ * header come from tools, not browser pages, so they pass.
+ */
+export function assertSameOriginWrite(request: Request, env: Bindings): void {
+  if (SAFE_METHODS.has(request.method)) return;
+  const refuse = () => {
+    throw new AppError(403, "cross_site_request", "Cross-site requests are not allowed");
+  };
+  if (request.headers.get("sec-fetch-site") === "cross-site") refuse();
+  const origin = request.headers.get("origin");
+  if (origin !== null && !allowedOrigins(env, request.url).has(origin)) refuse();
+}
+
 /**
  * The dev bypass applies only when APP_ENV is exactly "development", the request host is
  * local, and DEV_USER_EMAIL is set.
@@ -62,10 +108,12 @@ async function findUser(db: Db, email: string): Promise<AuthUser | null> {
 
 /**
  * Verifies the Access JWT on `/api/*` and `/render/*` and sets `c.var.user` and `c.var.db`.
- * Missing or invalid tokens get 401. Valid tokens for unknown emails get 403.
+ * Cross-site writes get 403 first. Missing or invalid tokens get 401. Valid tokens for
+ * unknown emails get 403.
  */
 export const accessAuth = createMiddleware<AppEnv>(async (c, next) => {
-  if (AUTH_EXEMPT_PATHS.has(c.req.path)) return next();
+  if (isAuthExempt(c.req.url)) return next();
+  assertSameOriginWrite(c.req.raw, c.env);
 
   let email = devBypassEmail(c.env, c.req.url);
   if (!email) {
