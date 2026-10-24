@@ -5,7 +5,7 @@
 // src/worker/index.ts so the registration runs in every isolate.
 import { and, eq, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
-import { createDb, type Db, schema } from "../db/client";
+import { createRequestDb, type Db, schema } from "../db/client";
 import type { Workspace } from "../db/schema";
 import type { Bindings } from "../env";
 import { AppError } from "../errors";
@@ -394,7 +394,7 @@ export async function runJobById(
   jobId: string,
   now = Date.now(),
 ): Promise<JobRunStatus | null> {
-  const db = createDb(env.DB);
+  const db = createRequestDb(env.DB);
   const [job] = await claimJobs(db, { owner: `soon:${crypto.randomUUID()}`, now, ids: [jobId] });
   return job ? runJob(env, db, job, now) : null;
 }

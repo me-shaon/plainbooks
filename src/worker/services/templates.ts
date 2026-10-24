@@ -14,6 +14,7 @@ import {
 } from "../../shared/schemas/template";
 import { type Db, schema } from "../db/client";
 import { AppError } from "../errors";
+import { forgetWorkspace } from "./settings";
 
 const { templates, workspace } = schema;
 
@@ -116,6 +117,7 @@ export async function setDefaultTemplate(db: Db, id: string, now: number): Promi
     .update(workspace)
     .set({ defaultTemplateId: id, updatedAt: now })
     .where(eq(workspace.id, 1));
+  forgetWorkspace(db);
   return getTemplate(db, id);
 }
 

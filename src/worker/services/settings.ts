@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import type { BrandKit, WorkspaceSettings } from "../../shared/schemas/settings";
 import { logoUrl } from "../../shared/schemas/settings";
-import { type Db, schema } from "../db/client";
+import { type Db, isRequestScoped, schema } from "../db/client";
+import type { Workspace } from "../db/schema";
 import { AppError } from "../errors";
 
 const { workspace, documents } = schema;
@@ -9,10 +10,36 @@ const { workspace, documents } = schema;
 /** Invoice statuses that prove an invoice was sent. */
 const SENT_INVOICE_STATUSES = ["sent", "partially_paid", "paid", "void"] as const;
 
-async function workspaceRow(db: Db) {
+/**
+ * Workspace reads per request-scoped handle. Without it a send reads the same row five
+ * times and the dashboard four times, and each read counts toward the D1 query limit.
+ */
+const workspaceReads = new WeakMap<Db, Promise<Workspace>>();
+
+/** Drops the cached workspace row. Call it after every write to the workspace table. */
+export function forgetWorkspace(db: Db): void {
+  workspaceReads.delete(db);
+}
+
+async function readWorkspace(db: Db): Promise<Workspace> {
   const [row] = await db.select().from(workspace).where(eq(workspace.id, 1));
   if (!row) throw new AppError(500, "workspace_missing", "The workspace row is missing");
   return row;
+}
+
+/**
+ * The workspace row. On a handle from `createRequestDb`, the first read is reused, and each
+ * caller gets its own copy so no caller can change another caller's row.
+ */
+export async function loadWorkspace(db: Db): Promise<Workspace> {
+  if (!isRequestScoped(db)) return readWorkspace(db);
+  let read = workspaceReads.get(db);
+  if (!read) {
+    read = readWorkspace(db);
+    workspaceReads.set(db, read);
+    read.catch(() => workspaceReads.delete(db));
+  }
+  return structuredClone(await read);
 }
 
 /**
@@ -37,7 +64,10 @@ export async function isHomeCurrencyLocked(db: Db): Promise<boolean> {
 }
 
 export async function getWorkspaceSettings(db: Db): Promise<WorkspaceSettings> {
-  const [row, homeCurrencyLocked] = await Promise.all([workspaceRow(db), isHomeCurrencyLocked(db)]);
+  const [row, homeCurrencyLocked] = await Promise.all([
+    loadWorkspace(db),
+    isHomeCurrencyLocked(db),
+  ]);
   return {
     name: row.name,
     homeCurrency: row.homeCurrency,
@@ -65,7 +95,11 @@ export async function getWorkspaceSettings(db: Db): Promise<WorkspaceSettings> {
  * revision snapshot, so later changes never alter a sent document.
  */
 export async function getBrandKit(db: Db): Promise<BrandKit> {
-  const row = await workspaceRow(db);
+  return brandKitOf(await loadWorkspace(db));
+}
+
+/** The brand kit fields of a workspace row. */
+export function brandKitOf(row: Workspace): BrandKit {
   return {
     businessName: row.businessName,
     logoKey: row.logoKey,

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
-import { createDb, type Db, schema } from "../db/client";
+import { createRequestDb, type Db, schema } from "../db/client";
 import type { AppEnv, AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
 import { ACCESS_JWT_HEADER, AccessTokenError, verifyAccessJwt } from "./access";
@@ -132,7 +132,7 @@ export const accessAuth = createMiddleware<AppEnv>(async (c, next) => {
     }
   }
 
-  const db = createDb(c.env.DB);
+  const db = createRequestDb(c.env.DB);
   const user = await resolveUser(db, c.env, email);
   if (!user) {
     throw new AppError(

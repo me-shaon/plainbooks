@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import type { Child } from "hono/jsx";
 import { MAX_DECISION_COMMENT, quoteDecisionInput } from "../../shared/schemas/document";
 import { todayIn } from "../../shared/time";
-import { createDb, type Db } from "../db/client";
+import { createRequestDb, type Db } from "../db/client";
 import type { Document } from "../db/schema";
 import type { AppEnv } from "../env";
 import { AppError } from "../errors";
@@ -188,7 +188,7 @@ function Notice({ tone, children }: { tone: "success" | "danger"; children: stri
  */
 export const publicRoutes = new Hono<AppEnv>()
   .use("*", async (c, next) => {
-    c.set("db", createDb(c.env.DB));
+    c.set("db", createRequestDb(c.env.DB));
     await next();
   })
   .get("/:token", async (c) => {

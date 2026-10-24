@@ -39,11 +39,13 @@ import { type ActivityInput, guardedActivity } from "./activity";
 import { type Fetcher, type FxRate, getRate, manualRate } from "./fx";
 import { type EnqueueInput, guardedEnqueueStatement } from "./jobs";
 import { counterIncrement, numberExpression, UNNUMBERED_DRAFT } from "./numbering";
-import { getBrandKit } from "./settings";
+import { brandKitOf, loadWorkspace } from "./settings";
 import { overdueSql } from "./status-sql";
 
+// The workspace loader lives in settings.ts. Callers import it from here too.
+export { forgetWorkspace, loadWorkspace } from "./settings";
+
 const {
-  workspace,
   clients,
   clientContacts,
   documents,
@@ -82,12 +84,6 @@ export function newPublicToken(): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-export async function loadWorkspace(db: Db): Promise<Workspace> {
-  const [row] = await db.select().from(workspace).where(eq(workspace.id, 1));
-  if (!row) throw new AppError(500, "workspace_missing", "The workspace row is missing");
-  return row;
 }
 
 /** Today in the workspace timezone. */
@@ -723,7 +719,7 @@ async function assembleSnapshot(db: Db, input: SnapshotInput): Promise<DocumentS
       .where(eq(clientContacts.clientId, doc.clientId))
       .orderBy(desc(clientContacts.isPrimary), asc(clientContacts.createdAt))
       .limit(1),
-    getBrandKit(db),
+    brandKitOf(ws),
     resolveCustomFields(db, doc.id, doc.clientId, input.documentFieldValues),
   ]);
   if (!client) throw new AppError(409, "client_missing", "The client of this document is missing");

@@ -11,4 +11,22 @@ export function createDb(d1: D1Database) {
   return drizzle(d1, { schema });
 }
 
+const requestScoped = new WeakSet<Db>();
+
+/**
+ * `createDb` for a handle that lives for one request or one cron tick. Services may cache
+ * reads on such a handle (see `loadWorkspace`), because every statement counts toward the
+ * D1 per-invocation query limit. Never cache on a shared handle.
+ */
+export function createRequestDb(d1: D1Database): Db {
+  const db = createDb(d1);
+  requestScoped.add(db);
+  return db;
+}
+
+/** True for a handle from `createRequestDb`. */
+export function isRequestScoped(db: Db): boolean {
+  return requestScoped.has(db);
+}
+
 export { schema };

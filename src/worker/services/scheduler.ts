@@ -7,9 +7,9 @@
 // job. The :00 tick always runs the enqueue phase, so derived statuses and new jobs never
 // wait more than an hour behind a queue of heavy jobs.
 import { todayIn, WORKSPACE_TIMEZONE } from "../../shared/time";
-import { createDb, type Db, schema } from "../db/client";
-import type { Workspace } from "../db/schema";
+import { createRequestDb, type Db } from "../db/client";
 import type { Bindings } from "../env";
+import { loadWorkspace } from "./documents";
 import {
   type ClaimedJob,
   claimJobs,
@@ -83,7 +83,8 @@ export async function runTick(
   const nowMs = typeof now === "number" ? now : now.getTime();
   const queries = countQueries(env.DB);
   const tickEnv: Bindings = { ...env, DB: queries.d1 };
-  const db = createDb(queries.d1);
+  // One tick is one invocation, so its handle may reuse the workspace row.
+  const db = createRequestDb(queries.d1);
   const owner = options.owner ?? `tick:${crypto.randomUUID()}`;
   const counts: Record<JobRunStatus | "error", number> = {
     done: 0,
@@ -167,12 +168,6 @@ export async function runTick(
   }
 
   return summary("normal", today, enqueued, claimed);
-}
-
-async function loadWorkspace(db: Db): Promise<Workspace> {
-  const [workspace] = await db.select().from(schema.workspace).limit(1);
-  if (!workspace) throw new Error("The workspace row is missing. Apply the seed migration.");
-  return workspace;
 }
 
 /** A random UUID v4 string built in SQL, for INSERT ... SELECT. */

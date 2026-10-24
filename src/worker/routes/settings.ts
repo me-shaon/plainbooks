@@ -6,7 +6,12 @@ import { type Db, schema } from "../db/client";
 import type { AppEnv } from "../env";
 import { AppError, parseJson } from "../errors";
 import { storeLogo, validateLogo } from "../services/logo";
-import { getBrandKit, getWorkspaceSettings, isHomeCurrencyLocked } from "../services/settings";
+import {
+  forgetWorkspace,
+  getBrandKit,
+  getWorkspaceSettings,
+  isHomeCurrencyLocked,
+} from "../services/settings";
 
 const { workspace, taxRates, templates } = schema;
 
@@ -53,6 +58,7 @@ export const settingsRoutes = new Hono<AppEnv>()
         .update(workspace)
         .set({ ...data, updatedAt: Date.now() })
         .where(eq(workspace.id, 1));
+      forgetWorkspace(c.var.db);
     }
     return c.json(await getWorkspaceSettings(db));
   })
@@ -64,6 +70,7 @@ export const settingsRoutes = new Hono<AppEnv>()
         .update(workspace)
         .set({ ...data, updatedAt: Date.now() })
         .where(eq(workspace.id, 1));
+      forgetWorkspace(c.var.db);
     }
     return c.json(await getBrandKit(c.var.db));
   })
@@ -83,6 +90,7 @@ export const settingsRoutes = new Hono<AppEnv>()
       .update(workspace)
       .set({ logoKey: key, updatedAt: Date.now() })
       .where(eq(workspace.id, 1));
+    forgetWorkspace(c.var.db);
     return c.json(await getBrandKit(c.var.db));
   })
   /** Removes the logo from the brand kit. The file stays in R2 for sent revisions. */
@@ -91,5 +99,6 @@ export const settingsRoutes = new Hono<AppEnv>()
       .update(workspace)
       .set({ logoKey: null, updatedAt: Date.now() })
       .where(eq(workspace.id, 1));
+    forgetWorkspace(c.var.db);
     return c.json(await getBrandKit(c.var.db));
   });
