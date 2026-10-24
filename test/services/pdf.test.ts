@@ -4,6 +4,7 @@ import { documentUpdateInput } from "../../src/shared/schemas/document";
 import { finalize, revise } from "../../src/worker/services/documents";
 import {
   BROWSER_LEASE_MS,
+  browserRunRenderer,
   getPdf,
   pdfKey,
   setPdfRendererForTesting,
@@ -172,6 +173,18 @@ describe("getPdf", () => {
     expect(renderer.calls).toHaveLength(2);
     expect(renderer.calls[1]).toContain("Revised notes");
     expect(await env.BUCKET.head(pdfKey(first))).not.toBeNull();
+  });
+});
+
+describe("browserRunRenderer", () => {
+  it("fails a Quick Action that does not answer in time", async () => {
+    const hung = { quickAction: () => new Promise<Response>(() => {}) };
+    const outcome = await browserRunRenderer(
+      hung as unknown as Pick<BrowserRun, "quickAction">,
+      50,
+    ).render("<p>x</p>");
+    expect(outcome).toMatchObject({ ok: false, status: 0, rateLimited: false });
+    expect(outcome.ok ? "" : outcome.message).toContain("did not answer within 50 ms");
   });
 });
 

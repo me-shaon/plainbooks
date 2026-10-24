@@ -153,8 +153,12 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
     reason: event.data?.bounce?.message ?? null,
   });
   const jobKey = `email_${kind}:${svixId}`;
+  // A bounce on an owner notification must not email the owners again (a loop). It gets
+  // the status and the in-app notification only. The job row with no recipients still
+  // marks this svix-id as handled.
+  const ownerNotice = log?.kind === "notification";
   const payload: SendEmailJobPayload = {
-    to: await ownerEmails(db),
+    to: ownerNotice ? [] : await ownerEmails(db),
     subject: content.subject,
     html: content.html,
     text: content.text,
@@ -165,7 +169,7 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
   // The guard makes a replayed webhook (same svix-id) a no-op.
   const fresh = "NOT EXISTS (SELECT 1 FROM jobs WHERE idempotency_key = ?)";
   const statements: D1PreparedStatement[] = [];
-  if (doc) {
+  if (doc && !ownerNotice) {
     statements.push(
       guardedActivity(
         d1,

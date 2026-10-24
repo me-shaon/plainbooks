@@ -32,6 +32,10 @@ export { DAILY_EMAIL_LIMIT };
 export const RESEND_ENDPOINT = "https://api.resend.com/emails";
 export const SEND_DOCUMENT_JOB = "send_document";
 export const SEND_EMAIL_JOB = "send_email";
+/** A Resend call that takes longer than this fails like any other send error. */
+export const RESEND_TIMEOUT_MS = 15_000;
+/** A job that meets a busy browser tries again after this long, without using an attempt. */
+export const PDF_PENDING_RETRY_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Resend transport
@@ -40,10 +44,16 @@ export const SEND_EMAIL_JOB = "send_email";
 export type ResendFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 let testFetch: ResendFetch | null = null;
+let resendTimeoutMs = RESEND_TIMEOUT_MS;
 
 /** Tests only: replaces the fetch used for Resend. Pass null to restore it. */
 export function setResendFetchForTesting(fetcher: ResendFetch | null): void {
   testFetch = fetcher;
+}
+
+/** Tests only: changes the Resend timeout. Pass null to restore it. */
+export function setResendTimeoutForTesting(ms: number | null): void {
+  resendTimeoutMs = ms ?? RESEND_TIMEOUT_MS;
 }
 
 function resendFetch(env: Bindings): ResendFetch {
@@ -67,6 +77,14 @@ function base64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+/** Throws 422 `email_not_configured` when the sender address or the Resend API key is missing. */
+export function assertEmailConfigured(env: Pick<Bindings, "RESEND_API_KEY">, ws: Workspace): void {
+  fromHeader(ws);
+  if (!env.RESEND_API_KEY) {
+    throw new AppError(422, "email_not_configured", "The Resend API key is not set");
+  }
 }
 
 /** `"Studio One" <billing@studio.example>`. Throws 422 when no sender address is set. */
@@ -111,8 +129,10 @@ export async function deliverEmail(
   db: Db,
   email: OutgoingEmail,
   now: number,
+  /** The workspace row, when the caller already loaded it. */
+  workspace?: Workspace,
 ): Promise<DeliveryOutcome> {
-  const ws = await loadWorkspace(db);
+  const ws = workspace ?? (await loadWorkspace(db));
   const from = fromHeader(ws);
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
@@ -146,6 +166,7 @@ export async function deliverEmail(
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(resendTimeoutMs),
     });
     status = res.status;
     const json = (await res.json().catch(() => null)) as {
@@ -310,7 +331,8 @@ export async function sendDocument(
   const doc = await loadDocument(db, documentId);
   assertSendable(doc);
   const ws = await loadWorkspace(db);
-  fromHeader(ws);
+  // Before finalize, so a missing sender or API key never uses an invoice number.
+  assertEmailConfigured(env, ws);
   await assertEmailCapacity(db, ws, opts.now);
   const recipients = opts.recipients?.length
     ? [...new Set(opts.recipients.map((r) => r.trim().toLowerCase()))]
@@ -373,6 +395,7 @@ export async function sendDocument(
       idempotencyKey: opts.idempotencyKey,
     },
     opts.now,
+    ws,
   );
   if (!outcome.ok) {
     const rejected = outcome.status >= 400 && outcome.status < 500 && outcome.status !== 429;
@@ -522,6 +545,11 @@ const deferToTomorrow = (ws: Workspace, now: number) => ({
   defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" },
 });
 
+/** The browser is busy or rate limited. Try again soon without using an attempt. */
+export const deferForPdf = (now: number) => ({
+  defer: { runAfter: now + PDF_PENDING_RETRY_MS, reason: "pdf_pending" },
+});
+
 /** Registers the email job handlers. Runs at module scope; tests call it after a reset. */
 export function registerEmailJobHandlers(): void {
   registerJobHandler<SendDocumentJobPayload>(
@@ -542,6 +570,7 @@ export function registerEmailJobHandlers(): void {
       } catch (err) {
         if (err instanceof AppError) {
           if (err.code === "daily_email_limit") return deferToTomorrow(ws, now);
+          if (err.code === "pdf_pending") return deferForPdf(now);
           // The document was voided, paid, or deleted since the job was queued. Nothing to send.
           if (
             err.status === 404 ||
@@ -556,6 +585,7 @@ export function registerEmailJobHandlers(): void {
       }
       return undefined;
     },
+    { heavy: true },
   );
 
   registerJobHandler<SendEmailJobPayload>(
@@ -585,26 +615,20 @@ export function registerEmailJobHandlers(): void {
   );
 
   /**
-   * Quote decisions (R6): one email to the sender and every Owner, plus an in-app
-   * notification row that commits with the job's done marker.
+   * Quote decisions (R6): an in-app notification first, then one email to the sender and
+   * every Owner. The notification does not wait for the email or the daily cap. Its ID is
+   * the job ID, so a retried job does not add a second one.
    */
   registerJobHandler<QuoteDecisionJobPayload>(
     QUOTE_DECISION_JOB,
     async ({ env, db, now, payload, job }) => {
       const ws = await loadWorkspace(db);
-      if (!(await hasEmailCapacity(db, ws, now))) return deferToTomorrow(ws, now);
       const doc = await loadDocument(db, payload.documentId);
       const [client] = await db
         .select({ name: schema.clients.name })
         .from(schema.clients)
         .where(eq(schema.clients.id, doc.clientId));
       const clientName = client?.name ?? "The client";
-      const ids = payload.recipientUserIds;
-      const recipients = ids.length
-        ? (await db.select({ email: users.email }).from(users).where(inArray(users.id, ids))).map(
-            (r) => r.email,
-          )
-        : await ownerEmails(db);
       const content = quoteDecisionEmail({
         workspace: ws.businessName || ws.name,
         accent: ws.accentColor,
@@ -614,36 +638,46 @@ export function registerEmailJobHandlers(): void {
         decision: payload.decision,
         comment: doc.decisionComment,
       });
-      if (recipients.length) {
-        const outcome = await deliverEmail(
-          env,
-          db,
-          {
-            to: [...new Set(recipients)],
-            subject: content.subject,
-            html: content.html,
-            text: content.text,
-            kind: "notification",
-            trigger: "auto",
-            documentId: doc.id,
-            idempotencyKey: `job:${job.id}`,
-          },
-          now,
-        );
-        if (!outcome.ok) throw new Error(`Resend HTTP ${outcome.status}: ${outcome.message}`);
-      }
-      return {
-        statements: [
-          db.insert(notifications).values({
-            type: "quote_decision",
-            title: content.subject,
-            body: doc.decisionComment,
-            documentId: doc.id,
-            createdAt: now,
-          }),
-        ],
-      };
+      await db
+        .insert(notifications)
+        .values({
+          id: job.id,
+          type: "quote_decision",
+          title: content.subject,
+          body: doc.decisionComment,
+          documentId: doc.id,
+          createdAt: now,
+        })
+        .onConflictDoNothing({ target: notifications.id });
+
+      const ids = payload.recipientUserIds;
+      const recipients = ids.length
+        ? (await db.select({ email: users.email }).from(users).where(inArray(users.id, ids))).map(
+            (r) => r.email,
+          )
+        : await ownerEmails(db);
+      if (recipients.length === 0) return undefined;
+      if (!(await hasEmailCapacity(db, ws, now))) return deferToTomorrow(ws, now);
+      const outcome = await deliverEmail(
+        env,
+        db,
+        {
+          to: [...new Set(recipients)],
+          subject: content.subject,
+          html: content.html,
+          text: content.text,
+          kind: "notification",
+          trigger: "auto",
+          documentId: doc.id,
+          idempotencyKey: `job:${job.id}`,
+        },
+        now,
+        ws,
+      );
+      if (!outcome.ok) throw new Error(`Resend HTTP ${outcome.status}: ${outcome.message}`);
+      return undefined;
     },
+    { heavy: true },
   );
 }
 

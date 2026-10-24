@@ -53,20 +53,38 @@ async function errorMessageOf(res: Response): Promise<string> {
   return `Browser Run returned HTTP ${res.status}`;
 }
 
+/** A Quick Action that takes longer than this counts as a failed render. */
+export const PDF_RENDER_TIMEOUT_MS = 25_000;
+
 /** The production renderer: `env.BROWSER.quickAction("pdf", ...)` with raw HTML. */
-export function browserRunRenderer(browser: BrowserRun): PdfRenderer {
+export function browserRunRenderer(
+  browser: Pick<BrowserRun, "quickAction">,
+  timeoutMs = PDF_RENDER_TIMEOUT_MS,
+): PdfRenderer {
   return {
     async render(html) {
       let res: Response;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        res = await browser.quickAction("pdf", {
-          html,
-          gotoOptions: { waitUntil: "networkidle0", timeout: 20_000 },
-          pdfOptions: { format: "a4", printBackground: true, preferCSSPageSize: true },
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Browser Run did not answer within ${timeoutMs} ms`)),
+            timeoutMs,
+          );
         });
+        res = await Promise.race([
+          browser.quickAction("pdf", {
+            html,
+            gotoOptions: { waitUntil: "networkidle0", timeout: 20_000 },
+            pdfOptions: { format: "a4", printBackground: true, preferCSSPageSize: true },
+          }),
+          timeout,
+        ]);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { ok: false, status: 0, message, rateLimited: false };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
       }
       if (res.ok) {
         return { ok: true, bytes: await res.arrayBuffer(), browserMs: browserMsOf(res) };

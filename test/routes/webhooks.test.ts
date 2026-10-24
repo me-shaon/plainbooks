@@ -152,6 +152,36 @@ describe("POST /api/webhooks/resend", () => {
     expect((await activityTypes(docId)).filter((t) => t === "email_bounced")).toHaveLength(1);
   });
 
+  it("a bounce on an owner notification records it but emails nobody", async () => {
+    await env.DB.prepare(
+      `INSERT INTO email_log (id, day, kind, trigger, document_id, recipients, subject, status, provider_id, created_at)
+       VALUES ('owner-note', '2026-10-23', 'notification', 'auto', ?, '["owner@studio.test"]', 'Email bounced', 'sent', 're_owner', 0)`,
+    )
+      .bind(docId)
+      .run();
+    const res = await postWebhook(bounce("re_owner"), { id: "msg_owner_1" });
+    expect(res.status).toBe(200);
+
+    const log = await env.DB.prepare("SELECT status FROM email_log WHERE id = 'owner-note'").first<{
+      status: string;
+    }>();
+    expect(log?.status).toBe("bounced");
+    const notes = await env.DB.prepare("SELECT type FROM notifications").all();
+    expect(notes.results).toEqual([{ type: "email_bounced" }]);
+    expect(await activityTypes(docId)).not.toContain("email_bounced");
+    const job = await env.DB.prepare("SELECT payload FROM jobs WHERE idempotency_key = ?")
+      .bind("email_bounced:msg_owner_1")
+      .first<{ payload: string }>();
+    expect((JSON.parse(job?.payload ?? "{}") as { to: string[] }).to).toEqual([]);
+
+    // A replay is still a no-op.
+    await postWebhook(bounce("re_owner"), { id: "msg_owner_1" });
+    const count = await env.DB.prepare("SELECT count(*) AS n FROM notifications").first<{
+      n: number;
+    }>();
+    expect(count?.n).toBe(1);
+  });
+
   it("records a complaint", async () => {
     const res = await postWebhook({ ...bounce("re_123"), type: "email.complained" });
     expect(res.status).toBe(200);

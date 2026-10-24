@@ -15,6 +15,7 @@ import {
   SEND_EMAIL_JOB,
   sendDocument,
   setResendFetchForTesting,
+  setResendTimeoutForTesting,
 } from "../../src/worker/services/email";
 import { enqueue, runJobById } from "../../src/worker/services/jobs";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
@@ -67,7 +68,14 @@ beforeEach(async () => {
 afterEach(() => {
   setPdfRendererForTesting(null);
   setResendFetchForTesting(null);
+  setResendTimeoutForTesting(null);
 });
+
+async function jobRow(id: string) {
+  return env.DB.prepare("SELECT status, attempts, last_error FROM jobs WHERE id = ?")
+    .bind(id)
+    .first<{ status: string; attempts: number; last_error: string | null }>();
+}
 
 describe("sendDocument", () => {
   it("finalizes a draft, attaches the PDF, calls Resend once, and marks it sent", async () => {
@@ -190,6 +198,34 @@ describe("sendDocument", () => {
     expect((await docRow(id))?.number).toBeNull();
   });
 
+  it("requires the Resend API key before it uses a number", async () => {
+    const id = await draft({ clientId });
+    await expect(
+      sendDocument({ ...env, RESEND_API_KEY: undefined }, db, id, { now: NOW, fetcher: noFetch }),
+    ).rejects.toMatchObject({ status: 422, code: "email_not_configured" });
+    expect((await docRow(id))?.number).toBeNull();
+    expect(await counterValue("invoice")).toBe(0);
+    expect(resend.calls).toHaveLength(0);
+  });
+
+  it("gives up on a Resend call that hangs, and fails like a send error", async () => {
+    setResendTimeoutForTesting(50);
+    setResendFetchForTesting(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    );
+    const id = await draft({ clientId });
+    await expect(sendDocument(env, db, id, { now: NOW, fetcher: noFetch })).rejects.toMatchObject({
+      status: 502,
+      code: "email_send_failed",
+    });
+    expect((await docRow(id))?.status).toBe("finalized");
+    const log = await env.DB.prepare("SELECT status FROM email_log").first<{ status: string }>();
+    expect(log?.status).toBe("failed");
+  });
+
   it("uses the updated-invoice email for a revised invoice", async () => {
     const id = await draft({ clientId });
     await sendDocument(env, db, id, { now: NOW, fetcher: noFetch });
@@ -266,6 +302,28 @@ describe("email jobs", () => {
     expect(log?.trigger).toBe("auto");
   });
 
+  it("send_document waits without using an attempt while the browser is busy", async () => {
+    await env.DB.prepare(
+      "INSERT INTO leases (name, holder, expires_at, last_used_at) VALUES ('browser', 'other', ?, 0)",
+    )
+      // getPdf reads the lease with the real clock.
+      .bind(Date.now() + 60 * 60_000)
+      .run();
+    const id = await draft({ clientId });
+    const job = await enqueue(
+      db,
+      { type: SEND_DOCUMENT_JOB, payload: { documentId: id }, idempotencyKey: `auto:${id}` },
+      NOW,
+    );
+    expect(await runJobById(env, job.id, NOW)).toBe("deferred");
+    expect(await jobRow(job.id)).toEqual({
+      status: "pending",
+      attempts: 0,
+      last_error: "pdf_pending",
+    });
+    expect(resend.calls).toHaveLength(0);
+  });
+
   it("send_email retries when Resend fails", async () => {
     setResendFetchForTesting(stubResend(() => new Response("{}", { status: 500 })));
     const job = await enqueue(
@@ -324,6 +382,36 @@ describe("email jobs", () => {
 
     const notes = await env.DB.prepare("SELECT type, document_id FROM notifications").all();
     expect(notes.results).toEqual([{ type: "quote_decision", document_id: id }]);
+  });
+});
+
+describe("notify_quote_decision at the daily limit", () => {
+  it("adds the in-app notification at once and sends the email tomorrow", async () => {
+    const owner = await seedUser("owner@studio.test", "owner");
+    const id = await draft({ clientId, kind: "quote" });
+    await sendDocument(env, db, id, { now: NOW, fetcher: noFetch });
+    const token = (await docRow(id))?.token ?? "";
+    await decideQuote(db, token, { decision: "accept", comment: "" }, { now: NOW });
+    await fillEmailLog(TODAY, DAILY_EMAIL_LIMIT);
+    const job = await enqueue(
+      db,
+      {
+        type: QUOTE_DECISION_JOB,
+        payload: { documentId: id, decision: "accepted", recipientUserIds: [owner.id] },
+        idempotencyKey: `${QUOTE_DECISION_JOB}:${id}`,
+      },
+      NOW,
+    );
+    expect(await runJobById(env, job.id, NOW)).toBe("deferred");
+    const notes = () => env.DB.prepare("SELECT type FROM notifications").all();
+    expect((await notes()).results).toEqual([{ type: "quote_decision" }]);
+    expect(resend.calls).toHaveLength(1); // only the quote email from the send above
+
+    const tomorrow = nextEmailWindow({ timezone: "Asia/Dhaka" }, NOW);
+    expect(await runJobById(env, job.id, tomorrow)).toBe("done");
+    expect(resend.calls[1]?.body.to).toEqual(["owner@studio.test"]);
+    // The retried job did not add a second notification.
+    expect((await notes()).results).toEqual([{ type: "quote_decision" }]);
   });
 });
 
