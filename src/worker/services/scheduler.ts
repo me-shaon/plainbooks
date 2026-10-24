@@ -1,34 +1,76 @@
-// The cron tick: enqueue due work, update derived statuses, then drain a small batch of
-// jobs. Workers Free gives a cron run 10 ms CPU and 50 subrequests, so every step is
-// a few D1 statements and the job batch is small.
+// The cron tick: enqueue due work, update derived statuses, then drain a few jobs. Workers
+// Free gives a cron run 10 ms CPU and 50 D1 queries, so the tick counts every statement
+// and claims a job only when the rest of the budget can pay for it.
+//
+// A heavy job (a document send uses about 45 queries) does not fit next to the enqueue
+// phase. So the :15, :30 and :45 ticks first claim one due heavy job and run only that
+// job. The :00 tick always runs the enqueue phase, so derived statuses and new jobs never
+// wait more than an hour behind a queue of heavy jobs.
 import { todayIn, WORKSPACE_TIMEZONE } from "../../shared/time";
 import { createDb, type Db, schema } from "../db/client";
 import type { Workspace } from "../db/schema";
 import type { Bindings } from "../env";
 import {
+  type ClaimedJob,
   claimJobs,
   type EnqueueInput,
   enqueueMany,
   getEnqueueHooks,
+  getHeavyJobTypes,
   JOB_BATCH_SIZE,
+  JOB_FAILURE_RESERVE,
   type JobRunStatus,
+  LIGHT_JOB_QUERIES,
   runJob,
+  TICK_QUERY_BUDGET,
 } from "./jobs";
+
+/** The cron interval. */
+export const TICK_INTERVAL_MS = 15 * 60 * 1000;
 
 export interface TickSummary {
   today: string;
+  /** "heavy" when the tick ran one heavy job and skipped the enqueue phase. */
+  mode: "normal" | "heavy";
   enqueued: number;
   claimed: number;
   done: number;
   retried: number;
   failed: number;
   deferred: number;
+  /** Jobs whose result could not be recorded. Their lease expires and they run again. */
+  errors: number;
+  /** D1 statements this tick prepared. */
+  queries: number;
 }
 
 export interface TickOptions {
   batchSize?: number;
   /** Lease owner ID. Defaults to a random ID per tick. */
   owner?: string;
+}
+
+/** Wraps a D1 binding and counts every prepared statement, also the ones in a batch. */
+export function countQueries(d1: D1Database): { d1: D1Database; count: () => number } {
+  let count = 0;
+  const wrapped = new Proxy(d1, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (query: string) => {
+          count += 1;
+          return target.prepare(query);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { d1: wrapped, count: () => count };
+}
+
+/** True for the :15, :30 and :45 ticks, which may run one heavy job. */
+export function isHeavySlot(now: number): boolean {
+  return Math.floor(now / TICK_INTERVAL_MS) % 4 !== 0;
 }
 
 /** One scheduler run. `now` is the cron's scheduled time, so tests can fix the clock. */
@@ -38,46 +80,92 @@ export async function runTick(
   options: TickOptions = {},
 ): Promise<TickSummary> {
   const nowMs = typeof now === "number" ? now : now.getTime();
-  const db = createDb(env.DB);
+  const queries = countQueries(env.DB);
+  const tickEnv: Bindings = { ...env, DB: queries.d1 };
+  const db = createDb(queries.d1);
+  const owner = options.owner ?? `tick:${crypto.randomUUID()}`;
+  const counts: Record<JobRunStatus | "error", number> = {
+    done: 0,
+    retry: 0,
+    failed: 0,
+    deferred: 0,
+    error: 0,
+  };
+  const run = async (job: ClaimedJob) => {
+    try {
+      counts[await runJob(tickEnv, db, job, nowMs)] += 1;
+    } catch (err) {
+      // Most likely D1 failed while it recorded the result. The lease is the backstop.
+      counts.error += 1;
+      console.error(`Job ${job.id} (${job.type}) did not finish`, err);
+    }
+  };
+  const summary = (
+    mode: TickSummary["mode"],
+    today: string,
+    enqueued: number,
+    claimed: number,
+  ) => ({
+    today,
+    mode,
+    enqueued,
+    claimed,
+    done: counts.done,
+    retried: counts.retry,
+    failed: counts.failed,
+    deferred: counts.deferred,
+    errors: counts.error,
+    queries: queries.count(),
+  });
+
+  const heavy = getHeavyJobTypes();
+  if (heavy.length > 0 && isHeavySlot(nowMs)) {
+    const [job] = await claimJobs(db, { owner, now: nowMs, limit: 1, types: heavy });
+    if (job) {
+      await run(job);
+      return summary("heavy", todayIn(WORKSPACE_TIMEZONE, nowMs), 0, 1);
+    }
+  }
+
   const workspace = await loadWorkspace(db);
   const today = todayIn(workspace.timezone || WORKSPACE_TIMEZONE, nowMs);
 
-  // 1. Enqueue hooks. A failing hook is logged and does not block the outbox.
+  // 1. Enqueue hooks. A failing phase is logged and does not block the outbox.
   const inputs: EnqueueInput[] = [];
   for (const [name, hook] of getEnqueueHooks()) {
     try {
-      const found = await hook({ env, db, now: nowMs, today, workspace });
+      const found = await hook({ env: tickEnv, db, now: nowMs, today, workspace });
       if (found) inputs.push(...found);
     } catch (err) {
       console.error(`Enqueue hook "${name}" failed`, err);
     }
   }
-  const enqueued = await enqueueMany(db, inputs, nowMs);
-
-  // 2. Derived statuses.
-  await updateDerivedStatuses(db, today, nowMs);
-
-  // 3 and 4. Claim and run jobs, one at a time to keep subrequests predictable.
-  const owner = options.owner ?? `tick:${crypto.randomUUID()}`;
-  const claimed = await claimJobs(db, {
-    owner,
-    now: nowMs,
-    limit: options.batchSize ?? JOB_BATCH_SIZE,
-  });
-  const counts: Record<JobRunStatus, number> = { done: 0, retry: 0, failed: 0, deferred: 0 };
-  for (const job of claimed) {
-    counts[await runJob(env, db, job, nowMs)] += 1;
+  let enqueued = 0;
+  try {
+    enqueued = await enqueueMany(db, inputs, nowMs);
+  } catch (err) {
+    console.error("Enqueueing the hook jobs failed", err);
   }
 
-  return {
-    today,
-    enqueued,
-    claimed: claimed.length,
-    done: counts.done,
-    retried: counts.retry,
-    failed: counts.failed,
-    deferred: counts.deferred,
-  };
+  // 2. Derived statuses.
+  try {
+    await updateDerivedStatuses(db, today, nowMs);
+  } catch (err) {
+    console.error("Updating derived statuses failed", err);
+  }
+
+  // 3 and 4. Claim and run light jobs one at a time, while the budget can pay for one more.
+  const limit = options.batchSize ?? JOB_BATCH_SIZE;
+  const perJob = 1 + LIGHT_JOB_QUERIES + JOB_FAILURE_RESERVE;
+  let claimed = 0;
+  while (claimed < limit && queries.count() + perJob <= TICK_QUERY_BUDGET) {
+    const [job] = await claimJobs(db, { owner, now: nowMs, limit: 1, excludeTypes: heavy });
+    if (!job) break;
+    claimed += 1;
+    await run(job);
+  }
+
+  return summary("normal", today, enqueued, claimed);
 }
 
 async function loadWorkspace(db: Db): Promise<Workspace> {

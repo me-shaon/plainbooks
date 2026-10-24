@@ -237,7 +237,7 @@ To remove a member, remove the email from the app and from the Access policy. Th
 | --- | --- | --- |
 | Workers requests | 100,000 per day, reset at 00:00 UTC | Cloudflare shows error 1027 until the reset. |
 | Workers CPU time | 10 ms per request | The request fails. The app keeps each request small. |
-| Workers subrequests | 50 per request | The request fails. The scheduler runs at most 5 jobs per tick to stay under it. |
+| Workers subrequests | 50 per request (each D1 statement counts) | The request fails. The scheduler counts its D1 statements and claims a job only when the budget can pay for it. A document send uses about 45 statements, so the :15, :30, and :45 ticks each run one send and nothing else. The :00 tick queues new work and runs small jobs. |
 | Cron Triggers | 5 per account | The app uses 1 trigger, every 15 minutes. |
 | D1 rows read | 5 million per day, reset at 00:00 UTC | Queries fail with an error until the reset. |
 | D1 rows written | 100,000 per day, reset at 00:00 UTC | Queries fail with an error until the reset. |

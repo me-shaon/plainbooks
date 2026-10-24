@@ -3,7 +3,7 @@
 //   registerEnqueueHook("recurring", hook)        (U15)
 // Register at module scope in the feature's service file, and import that file from
 // src/worker/index.ts so the registration runs in every isolate.
-import { and, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { createDb, type Db, schema } from "../db/client";
 import type { Workspace } from "../db/schema";
@@ -15,8 +15,14 @@ const { jobs, notifications } = schema;
 /** A Drizzle query that has not run yet. Handlers return these to commit atomically. */
 export type BatchStatement = BatchItem<"sqlite">;
 
-/** Jobs per tick. Budget: 10 D1 queries for the enqueue phase and 8 per job, under 50. */
+/** The most jobs one tick runs. The query budget below usually stops it sooner. */
 export const JOB_BATCH_SIZE = 5;
+/** Workers Free allows 50 D1 queries per invocation. Every statement in a batch counts. */
+export const TICK_QUERY_BUDGET = 50;
+/** The most queries a light job (for example send_email) may use, its done marker included. */
+export const LIGHT_JOB_QUERIES = 10;
+/** Queries kept free for the retry or failure write after a job. */
+export const JOB_FAILURE_RESERVE = 2;
 /** A claimed job is leased for this long. After that, another tick can claim it again. */
 export const JOB_LEASE_MS = 10 * 60 * 1000;
 export const DEFAULT_MAX_ATTEMPTS = 3;
@@ -74,9 +80,29 @@ export type EnqueueHook = (
 
 const handlers = new Map<string, JobHandler>();
 const hooks = new Map<string, EnqueueHook>();
+const heavyTypes = new Set<string>();
 
-export function registerJobHandler<P>(type: string, handler: JobHandler<P>): void {
+export interface JobHandlerOptions {
+  /**
+   * The job can use up to about 45 D1 queries (a document send: finalize, PDF, email,
+   * mark sent). The scheduler runs a heavy job only in a tick of its own.
+   */
+  heavy?: boolean;
+}
+
+export function registerJobHandler<P>(
+  type: string,
+  handler: JobHandler<P>,
+  options: JobHandlerOptions = {},
+): void {
   handlers.set(type, handler as JobHandler);
+  if (options.heavy) heavyTypes.add(type);
+  else heavyTypes.delete(type);
+}
+
+/** The job types registered as heavy. */
+export function getHeavyJobTypes(): string[] {
+  return [...heavyTypes];
 }
 
 export function registerEnqueueHook(name: string, hook: EnqueueHook): void {
@@ -91,6 +117,7 @@ export function getEnqueueHooks(): [string, EnqueueHook][] {
 export function resetJobRegistryForTesting(): void {
   handlers.clear();
   hooks.clear();
+  heavyTypes.clear();
 }
 
 function toRow(input: EnqueueInput, now: number) {
@@ -160,6 +187,10 @@ export interface ClaimOptions {
   limit?: number;
   /** Claim only these jobs (runJobSoon). */
   ids?: string[];
+  /** Claim only jobs of these types. */
+  types?: string[];
+  /** Do not claim jobs of these types. */
+  excludeTypes?: string[];
 }
 
 /**
@@ -168,13 +199,16 @@ export interface ClaimOptions {
  * statement atomically, so overlapping ticks always get disjoint jobs.
  */
 export async function claimJobs(db: Db, options: ClaimOptions): Promise<ClaimedJob[]> {
-  const { owner, now, limit = JOB_BATCH_SIZE, ids } = options;
+  const { owner, now, limit = JOB_BATCH_SIZE, ids, types, excludeTypes } = options;
+  if (types?.length === 0) return [];
   const claimable = and(
     or(
       and(eq(jobs.status, "pending"), lte(jobs.runAfter, now)),
       and(eq(jobs.status, "running"), lt(jobs.leaseUntil, now)),
     ),
     ids ? inArray(jobs.id, ids) : undefined,
+    types ? inArray(jobs.type, types) : undefined,
+    excludeTypes?.length ? notInArray(jobs.type, excludeTypes) : undefined,
   );
   const due = db
     .select({ id: jobs.id })

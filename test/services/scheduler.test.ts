@@ -47,6 +47,23 @@ async function seedJobs(count: number, type = "test.job") {
   }
 }
 
+/** The test env, with a D1 binding whose prepare() throws for the queries `fails` picks. */
+function failingEnv(fails: (query: string) => boolean): typeof env {
+  const DB = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (query: string) => {
+          if (fails(query)) throw new Error(`D1 failure for: ${query.slice(0, 40)}`);
+          return target.prepare(query);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { ...env, DB };
+}
+
 /** A handler that records the payloads it saw. */
 function recordingHandler() {
   const seen: unknown[] = [];
@@ -119,6 +136,85 @@ describe("runTick", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("drains jobs when the enqueue and derived-status phases throw", async () => {
+    const { seen, handler } = recordingHandler();
+    registerJobHandler("test.job", handler);
+    await seedJobs(2);
+    registerEnqueueHook("ok", () => [{ type: "test.job", idempotencyKey: "from-hook" }]);
+    const broken = failingEnv(
+      (query) => query.includes("is_overdue = (CASE") || query.startsWith('insert into "jobs"'),
+    );
+    const summary = await runTick(broken, NOW);
+    expect(summary).toMatchObject({ enqueued: 0, claimed: 2, done: 2, errors: 0 });
+    expect(seen).toHaveLength(2);
+  });
+
+  it("keeps running the other jobs when one job's result cannot be recorded", async () => {
+    const { seen, handler } = recordingHandler();
+    registerJobHandler("test.job", handler);
+    registerJobHandler("test.broken", () => {
+      throw new Error("handler bug");
+    });
+    await enqueue(db, { type: "test.broken", idempotencyKey: "a:broken", runAfter: NOW - 2 * MIN });
+    await seedJobs(2);
+    // The retry write after the handler error fails, so runJob itself throws.
+    const broken = failingEnv(
+      (query) =>
+        query.startsWith('update "jobs"') &&
+        query.includes('"last_error"') &&
+        !query.includes('"finished_at"') &&
+        !query.includes('"attempts"'),
+    );
+    const summary = await runTick(broken, NOW);
+    expect(summary).toMatchObject({ claimed: 3, done: 2, errors: 1 });
+    expect(seen).toHaveLength(2);
+    // The lease is the backstop: the broken job stays running until it expires.
+    expect((await jobByKey("a:broken")).status).toBe("running");
+  });
+
+  it("runs a heavy job only in a :15, :30 or :45 tick, alone", async () => {
+    const { seen, handler } = recordingHandler();
+    const heavySeen: unknown[] = [];
+    registerJobHandler("test.job", handler);
+    registerJobHandler(
+      "test.heavy",
+      ({ payload }) => {
+        heavySeen.push(payload);
+      },
+      { heavy: true },
+    );
+    let hookCalls = 0;
+    registerEnqueueHook("count", () => {
+      hookCalls += 1;
+      return [];
+    });
+    for (const n of [1, 2]) {
+      await enqueue(
+        db,
+        { type: "test.heavy", idempotencyKey: `heavy:${n}`, payload: { n }, runAfter: NOW - MIN },
+        NOW,
+      );
+    }
+    await seedJobs(1);
+
+    // NOW is a :00 tick: the enqueue phase and the light job, no heavy job.
+    expect(await runTick(env, NOW)).toMatchObject({ mode: "normal", claimed: 1, done: 1 });
+    expect(heavySeen).toEqual([]);
+    expect(await jobByKey("heavy:1")).toMatchObject({ status: "pending", attempts: 0 });
+    expect(hookCalls).toBe(1);
+
+    // :15 and :30 run one heavy job each and skip the enqueue phase.
+    expect(await runTick(env, NOW + 15 * MIN)).toMatchObject({ mode: "heavy", done: 1 });
+    expect(await runTick(env, NOW + 30 * MIN)).toMatchObject({ mode: "heavy", done: 1 });
+    expect(heavySeen).toEqual([{ n: 1 }, { n: 2 }]);
+    expect(hookCalls).toBe(1);
+
+    // No heavy job left: :45 is a normal tick again.
+    expect(await runTick(env, NOW + 45 * MIN)).toMatchObject({ mode: "normal", claimed: 0 });
+    expect(hookCalls).toBe(2);
+    expect(seen).toHaveLength(1);
+  });
+
   it("stays within the D1 query budget for a tick with 5 jobs", async () => {
     registerJobHandler<{ n: number }>("budget.job", async ({ db: jobDb, payload, now }) => ({
       statements: [
@@ -140,9 +236,10 @@ describe("runTick", () => {
     const { env: counted, counter } = countingEnv();
     const summary = await runTick(counted, NOW);
     expect(summary).toMatchObject({ enqueued: 5, done: 5 });
-    const perJob = 2; // the handler's insert plus the done marker, in one batch
+    const perJob = 3; // the claim, then the handler's insert and the done marker in one batch
     console.log(`tick with 5 jobs: ${counter.statements} statements, ${counter.batches} batches`);
     expect(counter.statements).toBeLessThanOrEqual(10 + 5 * perJob);
+    expect(summary.queries).toBe(counter.statements);
     expect(counter.statements).toBeLessThanOrEqual(50);
     const notes = await db.select().from(schema.notifications);
     expect(notes).toHaveLength(5);
