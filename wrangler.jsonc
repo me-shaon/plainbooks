@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "invoicing",
+  "name": "plainbooks",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -19,13 +19,13 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "invoicing",
-      // Placeholder. Replace with the ID from `wrangler d1 create invoicing`.
+      "database_name": "plainbooks",
+      // Placeholder. Replace with the ID from `wrangler d1 create plainbooks`.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "invoicing-files" }],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "plainbooks-files" }],
   "browser": { "binding": "BROWSER" },
   "triggers": { "crons": ["*/15 * * * *"] },
   // Secrets (set with `wrangler secret put`): RESEND_API_KEY, RESEND_WEBHOOK_SECRET.

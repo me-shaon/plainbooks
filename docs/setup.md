@@ -34,7 +34,7 @@ Cloudflare Access and the custom domain both need the domain to be active on Clo
 1. Create the database:
 
    ```sh
-   pnpm wrangler d1 create invoicing
+   pnpm wrangler d1 create plainbooks
    ```
 
 2. Copy the `database_id` from the output.
@@ -47,7 +47,7 @@ Do not change the binding name `DB` or the `migrations_dir`.
 1. Create the bucket:
 
    ```sh
-   pnpm wrangler r2 bucket create invoicing-files
+   pnpm wrangler r2 bucket create plainbooks-files
    ```
 
 2. If you use another bucket name, put it in `bucket_name` in `wrangler.jsonc`.
@@ -111,7 +111,7 @@ You create three self-hosted applications. Access uses the most specific matchin
 
 1. Go to **Access** > **Applications** and select **Add an application**.
 2. Select **Self-hosted**.
-3. Name: `Invoicing`.
+3. Name: `PlainBooks`.
 4. Add the public hostname `invoices.example.com`. Leave the path empty.
 5. Add a policy named `Team` with the action **Allow**.
 6. Add an include rule **Emails** with the email of each team member. You can use **Emails ending in** `@example.com` instead.
@@ -126,7 +126,7 @@ The Worker also refuses cross-site writes. A POST, PATCH, PUT, or DELETE request
 
 ### Application 2: public document links
 
-1. Add another self-hosted application named `Invoicing public links`.
+1. Add another self-hosted application named `PlainBooks public links`.
 2. Add the public hostname `invoices.example.com` with the path `p/*`.
 3. Add a policy named `Public` with the action **Bypass**.
 4. Add an include rule **Everyone**.
@@ -136,7 +136,7 @@ Clients open quotes and invoices at `/p/<token>`. The fonts, CSS, and logos for 
 
 ### Application 3: the Resend webhook
 
-1. Add another self-hosted application named `Invoicing Resend webhook`.
+1. Add another self-hosted application named `PlainBooks Resend webhook`.
 2. Add the public hostname `invoices.example.com` with the path `api/webhooks/resend`. Do not add a wildcard.
 3. Add a policy named `Resend` with the action **Bypass**.
 4. Add an include rule **Everyone**.
@@ -257,7 +257,7 @@ The expected use is fewer than 100 invoices per month and fewer than 10 users. T
 Export the D1 database to a SQL file:
 
 ```sh
-pnpm wrangler d1 export invoicing --remote --output=backup-$(date +%F).sql
+pnpm wrangler d1 export plainbooks --remote --output=backup-$(date +%F).sql
 ```
 
 Keep the file in a safe place. It contains client data. D1 Time Travel also keeps 7 days of history on the Free plan.

@@ -1,6 +1,6 @@
-# Invoicing
+# PlainBooks
 
-A private invoicing app for one agency. It runs as a single Cloudflare Worker on the Workers Free plan. The team signs in through Cloudflare Access. Clients open quotes and invoices through public links and need no account.
+PlainBooks is a private invoicing app for one agency. It runs as a single Cloudflare Worker on the Workers Free plan. The team signs in through Cloudflare Access. Clients open quotes and invoices through public links and need no account.
 
 ## Features
 
