@@ -15,7 +15,7 @@ const E2E_VARS: Record<string, string> = {
   OWNER_EMAIL: "owner@example.com",
   FAKE_EXTERNALS: "1",
   RESEND_API_KEY: "re_fake_e2e",
-  RESEND_WEBHOOK_SECRET: "whsec_ZmFrZS1lMmUtd2ViaG9vay1zZWNyZXQ=",
+  RESEND_WEBHOOK_SECRET: `whsec_${btoa("fake-e2e-webhook-secret")}`,
 };
 
 /**
