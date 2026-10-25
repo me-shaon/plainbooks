@@ -1,0 +1,4 @@
+Tool: built-in image_gen, transparent_background=true
+Input: approved-concept.png
+
+Finalize the approved top primary PlainBooks logo in the reference as ONE isolated horizontal logo with a truly transparent background. Preserve the exact folded invoice symbol design and rounded sans serif typography and spacing. Exact text PlainBooks, Plain in solid #171a18 and Books in solid #2f7f6f. Invoice outline and two rules solid #171a18, folded lower right corner solid #2f7f6f. Remove the bottom two miniature logos and the entire background. Clean flat solid fills with no texture, no gradients, no shadow. Center with modest transparent padding, wide landscape high resolution. This is production logo cleanup, do not redesign.

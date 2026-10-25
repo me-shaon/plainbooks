@@ -1,4 +1,9 @@
-# PlainBooks
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logos/plainbooks-dark.svg">
+    <img src="brand/logos/plainbooks-color.svg" alt="PlainBooks" width="280">
+  </picture>
+</h1>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/me-shaon/plainbooks)
 
