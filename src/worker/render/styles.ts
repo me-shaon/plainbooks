@@ -33,7 +33,7 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .fields{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;margin:6px 0 0;font-size:12px}
 .fields dt{color:#66635c}
 .fields dd{margin:0;color:#1b1b19}
-.header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px}
+.header{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:20px}
 .brand{display:flex;flex-direction:column;gap:4px;min-width:0}
 .logo{max-width:180px;max-height:64px;object-fit:contain;object-position:left;align-self:flex-start;margin-bottom:6px}
 .business{font-weight:600;font-size:15px}
@@ -49,9 +49,9 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .items th+th,.items td+td{padding-left:16px}
 .items .desc{white-space:pre-line;overflow-wrap:anywhere}
 .items .tax-name{display:block;font-size:11px;color:#66635c}
-.totals{display:grid;grid-template-columns:auto auto;gap:6px 28px;font-size:13px;align-self:flex-end;min-width:260px}
+.totals{display:grid;grid-template-columns:auto auto;gap:6px 0;font-size:13px;align-self:flex-end;min-width:260px}
 .totals dt{color:#66635c}
-.totals dd{margin:0;text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.totals dd{margin:0;padding-left:28px;text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 .totals .grand{font-weight:600;color:#1b1b19;padding-top:8px;border-top:1px solid #1b1b19}
 .totals .balance{font-weight:600;color:#1b1b19}
 .totals-wrap{display:flex;flex-direction:column;gap:8px}
@@ -91,7 +91,8 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .layout-bold .title{font-size:34px}
 .layout-bold .items th{border-bottom:2px solid var(--accent)}
 .layout-bold .totals .grand{border-top:0;margin-top:8px;padding:14px 0 14px 16px;background:var(--accent-soft);font-size:15px}
-.layout-bold .totals dd.grand{padding:14px 16px 14px 0;font-size:24px;color:var(--accent-ink)}
+.layout-bold .totals dt.grand{display:flex;align-items:center}
+.layout-bold .totals dd.grand{padding:14px 16px 14px 28px;font-size:24px;color:var(--accent-ink)}
 
 @media (max-width:767px){
   .shell{padding:16px 12px 40px;gap:12px}
