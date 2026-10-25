@@ -28,13 +28,10 @@
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "plainbooks-files" }],
   "browser": { "binding": "BROWSER" },
   "triggers": { "crons": ["*/15 * * * *"] },
-  // Secrets (set with `wrangler secret put`): RESEND_API_KEY, RESEND_WEBHOOK_SECRET.
+  // Secrets (set with `wrangler secret put`): RESEND_API_KEY, RESEND_WEBHOOK_SECRET,
+  // ACCESS_TEAM_DOMAIN, ACCESS_AUD, OWNER_EMAIL, APP_URL. They are secrets, not vars, so a
+  // deploy keeps them: `wrangler deploy` replaces every var with the values in this file.
   "vars": {
-    "ACCESS_TEAM_DOMAIN": "your-team.cloudflareaccess.com",
-    "ACCESS_AUD": "replace-with-access-application-aud",
-    "OWNER_EMAIL": "owner@example.com",
-    // The public origin for links in emails, for example "https://invoices.example.com".
-    "APP_URL": "https://invoices.example.com",
     "APP_ENV": "production"
   }
 }

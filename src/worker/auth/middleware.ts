@@ -119,11 +119,14 @@ export const accessAuth = createMiddleware<AppEnv>(async (c, next) => {
   if (!email) {
     const token = c.req.header(ACCESS_JWT_HEADER);
     if (!token) throw new AppError(401, "unauthenticated", "Sign in through Cloudflare Access");
+    const teamDomain = c.env.ACCESS_TEAM_DOMAIN?.trim();
+    const audience = c.env.ACCESS_AUD?.trim();
+    if (!teamDomain || !audience) {
+      console.error("ACCESS_TEAM_DOMAIN or ACCESS_AUD is not set. See docs/setup.md step 4.");
+      throw new AppError(401, "unauthenticated", "Your sign-in is not valid. Sign in again.");
+    }
     try {
-      ({ email } = await verifyAccessJwt(token, {
-        teamDomain: c.env.ACCESS_TEAM_DOMAIN,
-        audience: c.env.ACCESS_AUD,
-      }));
+      ({ email } = await verifyAccessJwt(token, { teamDomain, audience }));
     } catch (err) {
       if (err instanceof AccessTokenError) {
         throw new AppError(401, "unauthenticated", "Your sign-in is not valid. Sign in again.");

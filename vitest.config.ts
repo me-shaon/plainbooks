@@ -20,6 +20,10 @@ export default defineConfig(async () => {
                   TEST_MIGRATIONS: migrations,
                   RESEND_API_KEY: "re_test_key",
                   RESEND_WEBHOOK_SECRET: `whsec_${btoa("test-webhook-secret-0123456789ab")}`,
+                  ACCESS_TEAM_DOMAIN: "your-team.cloudflareaccess.com",
+                  ACCESS_AUD: "replace-with-access-application-aud",
+                  OWNER_EMAIL: "owner@example.com",
+                  APP_URL: "https://invoices.example.com",
                 },
                 assets: {
                   directory: fileURLToPath(new URL("./test/fixtures/assets", import.meta.url)),

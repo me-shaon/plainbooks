@@ -25,6 +25,7 @@ const E2E_VARS: Record<string, string> = {
 const DEV_VARS: Record<string, string> = {
   APP_ENV: "development",
   DEV_USER_EMAIL: "owner@example.com",
+  OWNER_EMAIL: "owner@example.com",
 };
 
 function e2ePluginConfig(): PluginConfig {

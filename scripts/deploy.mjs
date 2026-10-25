@@ -5,7 +5,9 @@
  * The first run asks for your host and Access values, then creates the D1 database and the
  * R2 bucket. It saves the answers in `.deploy.env` and writes `wrangler.production.jsonc`.
  * Both files are git-ignored, so the tracked `wrangler.jsonc` stays a template.
- * Each run then builds, applies the remote D1 migrations, and deploys.
+ * Each run then builds, applies the remote D1 migrations, deploys, and sets OWNER_EMAIL,
+ * APP_URL, and the Access values as Worker secrets. They are secrets, not vars, so a later
+ * deploy from another machine or from Git does not reset them.
  *
  * Values in the environment win over `.deploy.env`. Set them to run without prompts in CI.
  */
@@ -175,18 +177,26 @@ function writeProductionConfig(template, settings) {
   config.d1_databases = config.d1_databases.map((db) =>
     db.binding === "DB" ? { ...db, database_id: settings.D1_DATABASE_ID } : db,
   );
-  config.vars = {
-    ...config.vars,
-    OWNER_EMAIL: settings.OWNER_EMAIL,
-    APP_URL: `https://${settings.APP_HOST}`,
-    APP_ENV: "production",
-    ...(settings.ACCESS_TEAM_DOMAIN && { ACCESS_TEAM_DOMAIN: settings.ACCESS_TEAM_DOMAIN }),
-    ...(settings.ACCESS_AUD && { ACCESS_AUD: settings.ACCESS_AUD }),
-  };
+  config.vars = { ...config.vars, APP_ENV: "production" };
   writeFileSync(
     PROD_CONFIG,
     `// Written by \`pnpm run ship\` from wrangler.jsonc and ${SETTINGS_FILE}. Do not edit.\n${JSON.stringify(config, null, 2)}\n`,
   );
+}
+
+/** Sets the values from `.deploy.env` as Worker secrets. Skips empty Access values. */
+function syncConfigSecrets(settings) {
+  const values = {
+    OWNER_EMAIL: settings.OWNER_EMAIL,
+    APP_URL: `https://${settings.APP_HOST}`,
+    ...(settings.ACCESS_TEAM_DOMAIN && { ACCESS_TEAM_DOMAIN: settings.ACCESS_TEAM_DOMAIN }),
+    ...(settings.ACCESS_AUD && { ACCESS_AUD: settings.ACCESS_AUD }),
+  };
+  const result = spawnSync("pnpm", ["exec", "wrangler", "secret", "bulk", "-c", PROD_CONFIG], {
+    input: JSON.stringify(values),
+    stdio: ["pipe", "inherit", "inherit"],
+  });
+  if (result.status !== 0) fail("Could not set the Worker secrets.");
 }
 
 async function ensureSecrets() {
@@ -221,6 +231,9 @@ async function main() {
 
   step("Deploying the Worker");
   runWrangler(["deploy"]);
+
+  step("Setting OWNER_EMAIL, APP_URL, and the Access values");
+  syncConfigSecrets(settings);
 
   await ensureSecrets();
 

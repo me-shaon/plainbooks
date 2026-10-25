@@ -12,6 +12,14 @@ export type Bindings = Env & {
   RESEND_API_KEY?: string;
   /** Secret. The Resend webhook signing secret ("whsec_..."). */
   RESEND_WEBHOOK_SECRET?: string;
+  /** Secret. The Zero Trust team domain: "team.cloudflareaccess.com". */
+  ACCESS_TEAM_DOMAIN?: string;
+  /** Secret. The Application Audience (AUD) tag of the Access application. */
+  ACCESS_AUD?: string;
+  /** Secret. The email of the first Owner. */
+  OWNER_EMAIL?: string;
+  /** Secret. The public origin of the app: "https://invoices.example.com". */
+  APP_URL?: string;
   /** Local development only. "1" swaps Resend, Frankfurter, and Browser Run for fakes. */
   FAKE_EXTERNALS?: string;
 };

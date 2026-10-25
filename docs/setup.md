@@ -59,7 +59,8 @@ The script does these steps:
 3. It saves your answers and the database ID in `.deploy.env`.
 4. It writes `wrangler.production.jsonc` from `wrangler.jsonc` and `.deploy.env`.
 5. It builds the app, applies the D1 migrations to the remote database, and deploys the Worker.
-6. It asks for each Resend secret that is not set.
+6. It sets `OWNER_EMAIL`, `APP_URL`, `ACCESS_TEAM_DOMAIN`, and `ACCESS_AUD` as Worker secrets. It skips an Access value that is empty.
+7. It asks for each Resend secret that is not set.
 
 Git ignores `.deploy.env` and `wrangler.production.jsonc`. The tracked `wrangler.jsonc` keeps its placeholder values. Do not edit `wrangler.production.jsonc`. To change a value, edit `.deploy.env` and run `pnpm run ship` again.
 
@@ -74,15 +75,14 @@ The Worker runs only on the custom domain. A `workers.dev` URL would skip Cloudf
 3. Keep the new D1 database and the new R2 bucket that Cloudflare suggests.
 4. Set `OWNER_EMAIL` to your email in lowercase.
 5. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash.
-6. Type a placeholder value for `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET`. You get the real values in step 6 of this guide.
-7. Select **Deploy**.
-8. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
+6. Type a placeholder value for `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`. You get the real values in steps 3 and 4 of this guide.
+7. Type a placeholder value for `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET`. You get the real values in step 6 of this guide.
+8. Select **Deploy**.
+9. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
 
 The Worker has no URL until you add the custom domain. This is intentional: a `workers.dev` URL would skip Cloudflare Access.
 
-Each push to the new repository deploys again. Change the variables in `wrangler.jsonc` in the new repository, not in the dashboard. A deploy replaces the variables that you set in the dashboard.
-
-To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
+The Deploy button stores the values from steps 4 to 7 as Worker secrets. Each push to the new repository deploys again and keeps the secrets. To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
 
 Do not open the app yet. Until Access is in front of it, every API request gets a 401 error.
 
@@ -91,7 +91,7 @@ Do not open the app yet. Until Access is in front of it, every API request gets 
 1. In the Cloudflare dashboard, open **Zero Trust**.
 2. Choose a team name and select the Free plan.
 3. Copy the team domain, for example `your-team.cloudflareaccess.com`.
-4. Keep the value. You use it in "Deploy again" in step 4.
+4. Keep the value. You use it in "Set the Access values" in step 4.
 5. Make sure that a login method is on. The default **One-time PIN** sends a code by email. That is enough.
 
 ## 4. Create the Access applications
@@ -109,7 +109,7 @@ You create three self-hosted applications. Access uses the most specific matchin
 7. Open **Settings** > **Cookies** and set **SameSite attribute** to **Lax**. Then the browser does not send the Access cookie on cross-site writes.
 8. Save the application.
 9. Open the application again and copy the **Application Audience (AUD) Tag**.
-10. Keep the tag. You use it in "Deploy again" below.
+10. Keep the tag. You use it in "Set the Access values" below.
 
 The Worker checks the Access JWT on every API request. It checks the AUD tag and the team domain, so a token for another application is rejected.
 
@@ -135,9 +135,9 @@ Clients open quotes and invoices at `/p/<token>`. The fonts, CSS, and logos for 
 
 The webhook route checks the Svix signature from Resend instead of an Access JWT. A request with a bad signature gets a 400 error.
 
-### Deploy again
+### Set the Access values
 
-Deploy with the team domain and the AUD tag.
+Give the Worker the team domain and the AUD tag.
 
 If you used the deploy script:
 
@@ -150,9 +150,11 @@ If you used the deploy script:
 
 If you used the Deploy button:
 
-1. In your new repository, open `wrangler.jsonc`.
-2. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `vars`.
-3. Commit and push. The push deploys the Worker.
+1. In the dashboard, open the Worker and go to **Settings** > **Variables and Secrets**.
+2. Change the `ACCESS_TEAM_DOMAIN` secret to the team domain.
+3. Change the `ACCESS_AUD` secret to the AUD tag.
+
+A secret change deploys the Worker. You do not need to push.
 
 ## 5. Sign in for the first time
 
@@ -298,10 +300,10 @@ The Worker used all 100,000 free requests for the day. Requests work again after
 
 ### Every page shows "Sign in through Cloudflare Access"
 
-The request reached the Worker without an Access JWT. Check that Access application 1 covers the host. Check that `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` match the values in Zero Trust. Then deploy again as in step 4.
+The request reached the Worker without an Access JWT. Check that Access application 1 covers the host. Check that `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` match the values in Zero Trust. To change them, follow "Set the Access values" in step 4. The Worker logs an error when either value is not set.
 
 ### You get a 403 error after sign-in
 
-If the error code is `cross_site_request`, the page origin is not the origin of `APP_URL`. Set `APP_URL` to the host in the address bar. Then deploy again as in step 4. The deploy script sets `APP_URL` from `APP_HOST` in `.deploy.env`.
+If the error code is `cross_site_request`, the page origin is not the origin of `APP_URL`. Set `APP_URL` to the origin in the address bar. If you used the deploy script, change `APP_HOST` in `.deploy.env` and run `pnpm run ship` again. If you used the Deploy button, change the `APP_URL` secret in the dashboard.
 
 Otherwise, your email is not in the users table. The first Owner must sign in with `OWNER_EMAIL`. Other members must be added on the Team page.

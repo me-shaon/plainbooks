@@ -17,10 +17,10 @@
         "description": "Signing secret of the Resend webhook. It starts with `whsec_`. Use a placeholder now and change it later."
       },
       "ACCESS_TEAM_DOMAIN": {
-        "description": "Your Zero Trust team domain, for example `your-team.cloudflareaccess.com`."
+        "description": "Your Zero Trust team domain, for example `your-team.cloudflareaccess.com`. Use a placeholder now and change it later."
       },
       "ACCESS_AUD": {
-        "description": "The **Application Audience (AUD) Tag** of the Access application for the whole app."
+        "description": "The **Application Audience (AUD) Tag** of the Access application for the whole app. Use a placeholder now and change it later."
       },
       "OWNER_EMAIL": {
         "description": "Email of the first Owner, in lowercase."

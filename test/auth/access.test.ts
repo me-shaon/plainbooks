@@ -53,6 +53,17 @@ describe("Access JWT verification", () => {
     expect(jwksFetchCount).toBe(1);
   });
 
+  it("rejects a valid token when the Access secrets are not set", async () => {
+    await seedUser("member@example.com");
+    for (const missing of [{ ACCESS_TEAM_DOMAIN: undefined }, { ACCESS_AUD: " " }]) {
+      const res = await fetchWith(
+        missing,
+        await buildRequest("/api/me", { as: "member@example.com" }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+
   it("matches the email case-insensitively", async () => {
     await seedUser("member@example.com");
     const res = await apiFetch("/api/me", { as: "Member@Example.COM" });
