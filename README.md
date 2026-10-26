@@ -110,12 +110,12 @@ Local email, exchange rates, and PDFs call the real services. Put a real Resend 
 
 You can deploy in two ways:
 
-- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. Each push to your copy deploys again.
+- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for your owner email, app URL, Access values, and Resend keys, and stores them as Worker secrets. To change one later, edit it in the dashboard, not in `wrangler.jsonc`. Each push to your copy deploys again and keeps the secrets.
 - **The script.** Run `pnpm run ship` on your computer. The first run asks for your host and owner email, creates the D1 database and the R2 bucket, and deploys. Later runs only build, migrate, and deploy.
 
 Both ways need Cloudflare Access and Resend set up by hand. Read [docs/setup.md](docs/setup.md) for each step.
 
-Use `pnpm run deploy` or `pnpm run ship`, not `pnpm deploy`. `pnpm deploy` is a built-in pnpm command and does not run the script.
+On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command for the button's copy, where Cloudflare fills in the real database ID. On your computer it fails, because `wrangler.jsonc` has a placeholder database ID. Do not use `pnpm deploy`. It is a built-in pnpm command and does not run either script.
 
 ## Manage it
 
