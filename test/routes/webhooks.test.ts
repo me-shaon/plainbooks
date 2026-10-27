@@ -490,7 +490,10 @@ describe("POST /api/webhooks/email/:role with Amazon SES", () => {
     });
     expect(res.status).toBe(200);
     expect(await logStatus("ses-msg-1")).toBe("bounced");
-    const notes = await env.DB.prepare("SELECT body FROM notifications").all<{ body: string }>();
+    // Only this bounce's notices: background work from other tests can add unrelated rows.
+    const notes = await env.DB.prepare("SELECT body FROM notifications WHERE body LIKE ?")
+      .bind("%@x.test%")
+      .all<{ body: string }>();
     expect(notes.results).toEqual([
       { body: "To a@northwind.test, b@x.test: Invoice INV-0001 from Studio One" },
     ]);
