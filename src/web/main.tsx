@@ -2,7 +2,9 @@ import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-qu
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiError, toastError } from "./lib/api";
+import { ApiError, isUnauthenticated, setUnauthenticatedHandler, toastError } from "./lib/api";
+import { redirectToSignIn } from "./lib/auth";
+import { PUBLIC_PATHS } from "./lib/setup";
 import { routeTree } from "./routeTree.gen";
 import "@fontsource/instrument-sans/400.css";
 import "@fontsource/instrument-sans/500.css";
@@ -12,9 +14,12 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./styles.css";
 
 const queryClient = new QueryClient({
-  // A failed query shows one toast. Client errors (4xx) are not retried.
+  // A failed query shows one toast. Client errors (4xx) are not retried. The session 401
+  // shows no toast, because api() sends the user to sign-in.
   queryCache: new QueryCache({
-    onError: (err) => toastError(err, "Could not load data"),
+    onError: (err) => {
+      if (!isUnauthenticated(err)) toastError(err, "Could not load data");
+    },
   }),
   defaultOptions: {
     queries: {
@@ -30,6 +35,9 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: "intent",
 });
+
+// Any API call that finds no session opens sign-in and keeps the page in `next`.
+setUnauthenticatedHandler(() => redirectToSignIn(router, PUBLIC_PATHS));
 
 declare module "@tanstack/react-router" {
   interface Register {

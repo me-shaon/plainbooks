@@ -1,17 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Form } from "react-aria-components";
 import { type RecoverOwnerInput, recoverOwnerInput } from "../../../shared/schemas/setup";
 import { Button, buttonStyles } from "../../components/ui/button";
 import { TextField } from "../../components/ui/text-field";
 import { api, issuesByPath } from "../../lib/api";
+import { SIGN_IN_PATH } from "../../lib/auth";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { setupErrorMessage } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
 import { FIX_FIELDS, PASSWORDS_DIFFER } from "./setup-form";
-
-/** The sign-in page. U10 adds it. A plain link, so it does not need a typed route yet. */
-const SIGN_IN_PATH = "/sign-in";
 
 /**
  * Owner recovery: a new, unused setup token sets a new password for an Owner email and
@@ -59,9 +58,9 @@ export function RecoverPage() {
           <p className="m-0 text-sm text-ink">
             Sign in with the new password. All other sessions of this Owner are signed out.
           </p>
-          <a href={SIGN_IN_PATH} className={buttonStyles({ className: "w-full" })}>
+          <Link to={SIGN_IN_PATH} className={buttonStyles({ className: "w-full" })}>
             Go to sign in
-          </a>
+          </Link>
         </div>
       </AuthCard>
     );

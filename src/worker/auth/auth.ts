@@ -28,6 +28,16 @@ export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH };
 export const SESSION_EXPIRES_IN_SECONDS = 30 * 24 * 60 * 60;
 export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 export const RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
+/** The web page that sets a new password. The reset email links to it with the token. */
+export const RESET_PASSWORD_PATH = "/reset-password";
+
+/**
+ * The reset link in the email. It opens the web page directly, so the token reaches the
+ * page in the query string and only the page's POST uses it.
+ */
+export function resetPasswordUrl(origin: string, token: string): string {
+  return `${origin}${RESET_PASSWORD_PATH}?token=${encodeURIComponent(token)}`;
+}
 
 /** True when both Google secrets are set. Google sign-in is off otherwise. */
 export function googleEnabled(env: Bindings): boolean {
@@ -113,6 +123,7 @@ export function createAuth(env: Bindings, request: Request) {
   const secret = env.AUTH_SECRET?.trim();
   if (!secret) throw new Error("AUTH_SECRET is not set.");
   const db = createDb(env.DB);
+  const origin = appOrigin(env) || new URL(request.url).origin;
   const google =
     googleEnabled(env) && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
       ? {
@@ -127,7 +138,7 @@ export function createAuth(env: Bindings, request: Request) {
 
   return betterAuth({
     appName: "PlainBooks",
-    baseURL: appOrigin(env) || new URL(request.url).origin,
+    baseURL: origin,
     basePath: AUTH_BASE_PATH,
     secret,
     database: drizzleAdapter(db, {
@@ -171,7 +182,10 @@ export function createAuth(env: Bindings, request: Request) {
       password: hasher,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: RESET_TOKEN_EXPIRES_IN_SECONDS,
-      sendResetPassword: ({ user, url }) => sendResetPassword(env, user.email, url),
+      // better-auth's own link goes to its GET endpoint, which redirects to a page. The app
+      // links to the page directly.
+      sendResetPassword: ({ user, token }) =>
+        sendResetPassword(env, user.email, resetPasswordUrl(origin, token)),
     },
     socialProviders: google,
     // The AuthRateLimiter Durable Object limits attempts (hooks.before). The built-in

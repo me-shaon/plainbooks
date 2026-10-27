@@ -4,6 +4,7 @@ import {
   FileText,
   House,
   LayoutDashboard,
+  LogOut,
   type LucideIcon,
   Menu,
   MessageSquare,
@@ -45,6 +46,8 @@ export interface AppShellProps {
   logoUrl?: string;
   userName: string;
   userRole: string;
+  /** Ends the session. The sidebar shows a "Sign out" button when it is set. */
+  onSignOut?: () => void;
   children: ReactNode;
 }
 
@@ -63,9 +66,16 @@ export function initials(name: string): string {
 /**
  * The app frame: the paper sidebar on wide screens, and a top bar with a drawer below 768 px.
  */
-export function AppShell({ agencyName, logoUrl, userName, userRole, children }: AppShellProps) {
+export function AppShell({
+  agencyName,
+  logoUrl,
+  userName,
+  userRole,
+  onSignOut,
+  children,
+}: AppShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const sidebarProps = { agencyName, logoUrl, userName, userRole };
+  const sidebarProps = { agencyName, logoUrl, userName, userRole, onSignOut };
 
   return (
     <div className="flex min-h-dvh bg-background text-ink">
@@ -156,6 +166,7 @@ function SidebarNav({
   logoUrl,
   userName,
   userRole,
+  onSignOut,
   touch,
   onNavigate,
 }: SidebarNavProps) {
@@ -194,10 +205,24 @@ function SidebarNav({
         >
           {initials(userName)}
         </div>
-        <div className="flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate font-medium text-sidebar-foreground">{userName}</span>
           <span className="text-xs text-sidebar-muted">{userRole}</span>
         </div>
+        {onSignOut ? (
+          <Button
+            variant="ghost"
+            size={touch ? "icon" : "icon-sm"}
+            aria-label="Sign out"
+            className="text-sidebar-muted"
+            onPress={() => {
+              onNavigate?.();
+              onSignOut();
+            }}
+          >
+            <LogOut className="size-4" strokeWidth={1.7} aria-hidden="true" />
+          </Button>
+        ) : null}
       </div>
     </nav>
   );

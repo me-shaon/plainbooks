@@ -11,9 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DesignRouteImport } from './routes/[_]design'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as RecoverRouteImport } from './routes/recover'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as BrandKitIndexRouteImport } from './routes/brand-kit/index'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsClientIdRouteImport } from './routes/clients/$clientId'
@@ -47,9 +50,19 @@ const DesignRoute = DesignRouteImport.update({
   path: '/_design',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecoverRoute = RecoverRouteImport.update({
   id: '/recover',
   path: '/recover',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRouteRoute = SettingsRouteRouteImport.update({
@@ -60,6 +73,11 @@ const SettingsRouteRoute = SettingsRouteRouteImport.update({
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrandKitIndexRoute = BrandKitIndexRouteImport.update({
@@ -177,8 +195,11 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRouteRouteWithChildren
   '/_design': typeof DesignRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/recover': typeof RecoverRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/sign-in': typeof SignInRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
@@ -205,8 +226,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/_design': typeof DesignRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/recover': typeof RecoverRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/sign-in': typeof SignInRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
@@ -235,8 +259,11 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRouteRouteWithChildren
   '/_design': typeof DesignRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/recover': typeof RecoverRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/sign-in': typeof SignInRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
@@ -266,8 +293,11 @@ export interface FileRouteTypes {
     | '/'
     | '/settings'
     | '/_design'
+    | '/forgot-password'
     | '/recover'
+    | '/reset-password'
     | '/setup'
+    | '/sign-in'
     | '/clients/$clientId'
     | '/invoices/new'
     | '/quotes/new'
@@ -294,8 +324,11 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/_design'
+    | '/forgot-password'
     | '/recover'
+    | '/reset-password'
     | '/setup'
+    | '/sign-in'
     | '/clients/$clientId'
     | '/invoices/new'
     | '/quotes/new'
@@ -323,8 +356,11 @@ export interface FileRouteTypes {
     | '/'
     | '/settings'
     | '/_design'
+    | '/forgot-password'
     | '/recover'
+    | '/reset-password'
     | '/setup'
+    | '/sign-in'
     | '/clients/$clientId'
     | '/invoices/new'
     | '/quotes/new'
@@ -353,8 +389,11 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   DesignRoute: typeof DesignRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   RecoverRoute: typeof RecoverRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SetupRoute: typeof SetupRoute
+  SignInRoute: typeof SignInRoute
   ClientsClientIdRoute: typeof ClientsClientIdRoute
   InvoicesNewRoute: typeof InvoicesNewRoute
   QuotesNewRoute: typeof QuotesNewRoute
@@ -390,11 +429,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesignRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/recover': {
       id: '/recover'
       path: '/recover'
       fullPath: '/recover'
       preLoaderRoute: typeof RecoverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -409,6 +462,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/setup'
       preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/brand-kit/': {
@@ -592,8 +652,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
   DesignRoute: DesignRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   RecoverRoute: RecoverRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SetupRoute: SetupRoute,
+  SignInRoute: SignInRoute,
   ClientsClientIdRoute: ClientsClientIdRoute,
   InvoicesNewRoute: InvoicesNewRoute,
   QuotesNewRoute: QuotesNewRoute,

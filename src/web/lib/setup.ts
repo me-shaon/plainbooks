@@ -1,13 +1,16 @@
 import { queryOptions } from "@tanstack/react-query";
 import type { SetupStatus } from "../../shared/schemas/setup";
 import { ApiError, api } from "./api";
+import { AUTH_PATHS, formatRetry, tooManyAttempts } from "./auth";
 import { queryKeys } from "./query-keys";
+
+export { formatRetry };
 
 /** The Owner recovery page. The sign-in page links to it as "Locked out?". */
 export const RECOVER_PATH = "/recover";
 
 /** Pages that render without the app shell and need no session. */
-export const PUBLIC_PATHS: readonly string[] = ["/setup", RECOVER_PATH];
+export const PUBLIC_PATHS: readonly string[] = ["/setup", RECOVER_PATH, ...AUTH_PATHS];
 
 /** GET /api/setup/status. The root route reads it before every page. */
 export const setupStatusQuery = queryOptions({
@@ -15,13 +18,6 @@ export const setupStatusQuery = queryOptions({
   queryFn: () => api<SetupStatus>("/setup/status"),
   staleTime: 60 * 1000,
 });
-
-/** "45 seconds" or "12 minutes". */
-export function formatRetry(seconds: number): string {
-  if (seconds < 60) return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
-  const minutes = Math.ceil(seconds / 60);
-  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-}
 
 /**
  * The form message for a failed setup or recovery call. Field problems (400) return null,
@@ -35,9 +31,7 @@ export function setupErrorMessage(err: unknown): string | null {
     case "recovery_refused":
       return "The setup token or the Owner email is not right. A token that was used once does not work again.";
     case "rate_limited":
-      return err.retryAfter
-        ? `Too many attempts. Try again in ${formatRetry(err.retryAfter)}.`
-        : "Too many attempts. Try again later.";
+      return tooManyAttempts(err);
     case "setup_closed":
       return "Setup is closed. An Owner already exists.";
     case "setup_disabled":

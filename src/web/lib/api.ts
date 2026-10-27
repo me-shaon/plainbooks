@@ -49,6 +49,21 @@ function buildUrl(path: string, query: ApiOptions["query"]): string {
   return text ? `${url}?${text}` : url;
 }
 
+/**
+ * True for the session middleware's 401: there is no session, or it ended. Other 401s,
+ * such as wrong sign-in credentials, carry another code.
+ */
+export function isUnauthenticated(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401 && err.code === "unauthenticated";
+}
+
+let unauthenticatedHandler: (() => void) | null = null;
+
+/** Sets what happens when a call gets the session 401. main.tsx sends the user to sign-in. */
+export function setUnauthenticatedHandler(handler: (() => void) | null): void {
+  unauthenticatedHandler = handler;
+}
+
 /** Shows an API error as a toast. */
 export function toastError(err: unknown, title = "Something went wrong"): void {
   const description = err instanceof Error ? err.message : undefined;
@@ -94,19 +109,31 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   const data: unknown = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
+    // The app's errors use `error`. better-auth's errors (/api/auth/*) use `message`.
     const info = (data ?? {}) as {
       error?: string;
+      message?: string;
       code?: string;
       issues?: ApiIssue[];
       retryAfter?: number;
     };
+    const retryHeader = Number(res.headers.get("retry-after"));
     const error = new ApiError(
       res.status,
-      info.error ?? `Request failed (${res.status})`,
+      info.error ?? info.message ?? `Request failed (${res.status})`,
       info.code,
       info.issues ?? [],
-      typeof info.retryAfter === "number" ? info.retryAfter : undefined,
+      typeof info.retryAfter === "number"
+        ? info.retryAfter
+        : retryHeader > 0
+          ? retryHeader
+          : undefined,
     );
+    if (isUnauthenticated(error)) {
+      // The sign-in page explains the state. A toast would only repeat it.
+      unauthenticatedHandler?.();
+      throw error;
+    }
     if (toastOnError) toastError(error, "Could not save");
     throw error;
   }

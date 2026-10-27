@@ -6,6 +6,7 @@ import { hashPassword, parseHash } from "../../src/worker/auth/pbkdf2";
 import { setRateBackendForTesting } from "../../src/worker/auth/rate-limit";
 import { createDb, schema } from "../../src/worker/db/client";
 import { clearUsers } from "../helpers/auth";
+import { resetEmailState, useFakeEmail } from "../helpers/email";
 
 const db = createDb(env.DB);
 const ORIGIN = "https://invoices.example.com";
@@ -71,8 +72,9 @@ function cookieHeader(res: Response): string {
 beforeEach(async () => {
   await clearUsers();
 });
-afterEach(() => {
+afterEach(async () => {
   setRateBackendForTesting(null);
+  await resetEmailState();
   vi.restoreAllMocks();
 });
 
@@ -245,6 +247,44 @@ describe("password rules and reset", () => {
     expect(await session.json()).toBeNull();
     expect((await signIn("member@example.com", PASSWORD)).status).toBe(401);
     expect((await signIn("member@example.com", newPassword)).status).toBe(200);
+  });
+});
+
+describe("the reset email", () => {
+  it("links to the /reset-password page with a token that works", async () => {
+    await resetEmailState();
+    const email = await useFakeEmail();
+    await createAuthUser("member@example.com");
+
+    const requested = await authFetch("/request-password-reset", {
+      json: { email: "member@example.com" },
+    });
+    expect(requested.status).toBe(200);
+    const [message] = email.messages();
+    expect(JSON.stringify(message?.to)).toContain("member@example.com");
+    const link = message?.text?.match(/https:\/\/\S+/)?.[0] ?? "";
+    const url = new URL(link);
+    expect(`${url.origin}${url.pathname}`).toBe(`${ORIGIN}/reset-password`);
+    expect(message?.html).toContain(`${ORIGIN}/reset-password?token=`);
+
+    const token = url.searchParams.get("token") ?? "";
+    const newPassword = "a brand new passphrase";
+    expect((await authFetch("/reset-password", { json: { token, newPassword } })).status).toBe(200);
+    // The token works once.
+    const again = await authFetch("/reset-password", { json: { token, newPassword } });
+    expect(again.status).toBe(400);
+    expect(((await again.json()) as { code: string }).code).toBe("INVALID_TOKEN");
+    expect((await signIn("member@example.com", newPassword)).status).toBe(200);
+  });
+
+  it("sends nothing for an unknown email and gives the same response", async () => {
+    await resetEmailState();
+    const email = await useFakeEmail();
+    const res = await authFetch("/request-password-reset", {
+      json: { email: "nobody@example.com" },
+    });
+    expect(res.status).toBe(200);
+    expect(email.messages()).toEqual([]);
   });
 });
 
