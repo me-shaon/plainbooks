@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import type { UserRole } from "../../src/shared/domain";
-import { createAuth } from "../../src/worker/auth/auth";
+import { createAuth, SESSION_EXPIRES_IN_SECONDS } from "../../src/worker/auth/auth";
 import { createDb, schema } from "../../src/worker/db/client";
 
 /** The better-auth context for tests: the internal adapter and the cookie names. */
@@ -36,10 +36,22 @@ export async function sessionCookie(token: string): Promise<string> {
   return `${await sessionCookieName()}=${await signCookieValue(token)}`;
 }
 
-/** Creates a better-auth session for the user and returns its token. */
+/**
+ * Inserts a better-auth session for the user and returns its token. The row is written
+ * directly, so the session-create hook (the invite check) does not run. Tests can then
+ * hold a session for an `invited` user.
+ */
 export async function createSession(userId: string): Promise<string> {
-  const session = await (await authContext()).internalAdapter.createSession(userId);
-  return session.token;
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO sessions (id, user_id, token, expires_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(crypto.randomUUID(), userId, token, now + SESSION_EXPIRES_IN_SECONDS * 1000, now, now)
+    .run();
+  return token;
 }
 
 /**

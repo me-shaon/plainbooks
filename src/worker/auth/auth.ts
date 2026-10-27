@@ -6,6 +6,7 @@ import { createDb, schema } from "../db/client";
 import { passwordResetEmail } from "../email/templates";
 import type { Bindings } from "../env";
 import { appOrigin, deliverEmail } from "../services/email";
+import { activateInvitedUser, hasOpenInvite, userStatus } from "../services/invites";
 import { loadWorkspace } from "../services/settings";
 import { allowedOrigins } from "./middleware";
 import { createPasswordHasher, needsRehash, resolveIterations } from "./pbkdf2";
@@ -116,6 +117,49 @@ async function sendResetPassword(env: Bindings, to: string, url: string): Promis
   }
 }
 
+/** Error codes that a refused Google sign-in brings back to the sign-in page. */
+export const GOOGLE_REFUSAL = {
+  /** The Google account says that its email address is not verified. */
+  emailNotVerified: "email_not_verified",
+  /** The user is invited, but the invite was used, removed, or has expired. */
+  inviteExpired: "invite_expired",
+} as const;
+
+/** The claims of a JWT, without a signature check. Returns null for a malformed token. */
+function jwtClaims(token: string): Record<string, unknown> | null {
+  const part = token.split(".")[1];
+  if (!part) return null;
+  try {
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    const claims: unknown = JSON.parse(json);
+    return claims && typeof claims === "object" ? (claims as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuses a Google account whose ID token does not say `email_verified: true`. better-auth
+ * trusts Google for account linking, so this check stops a login with an unverified
+ * address from linking to the member with that address. The ID token comes from Google's
+ * token endpoint over TLS, which is why the claims are read without a signature check.
+ */
+function assertGoogleEmailVerified(account: { providerId?: unknown; idToken?: unknown }): void {
+  if (account.providerId !== "google" || typeof account.idToken !== "string") return;
+  const verified = jwtClaims(account.idToken)?.email_verified;
+  if (verified === true || verified === "true") return;
+  throw new APIError("FORBIDDEN", {
+    code: GOOGLE_REFUSAL.emailNotVerified,
+    message: "Google has not verified this email address.",
+  });
+}
+
+const inviteExpired = () =>
+  new APIError("FORBIDDEN", {
+    code: GOOGLE_REFUSAL.inviteExpired,
+    message: "The invite was used or has expired. Ask your Owner for a new link.",
+  });
+
 /** Builds the better-auth instance for one request. */
 export function createAuth(env: Bindings, request: Request) {
   const iterations = resolveIterations(env.PBKDF2_ITERATIONS);
@@ -130,7 +174,7 @@ export function createAuth(env: Bindings, request: Request) {
           google: {
             clientId: env.GOOGLE_CLIENT_ID.trim(),
             clientSecret: env.GOOGLE_CLIENT_SECRET.trim(),
-            // Only members and invited people sign in. U11 adds the invite check.
+            // Only members and invited people sign in. The session hook checks the invite.
             disableSignUp: true,
           },
         }
@@ -200,6 +244,44 @@ export function createAuth(env: Bindings, request: Request) {
         generateId: "uuid",
         // The committed migration defines the schema. Skip the check on every request.
         validateSchema: false,
+      },
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          // An `invited` user signs in only with an unused, unexpired invite, which this
+          // step uses up while it marks the user active. Active users pass with no check.
+          // Invite accept and setup mark the user active before they create the session.
+          before: async (session) => {
+            const status = await userStatus(env.DB, session.userId);
+            if (status !== "invited") return;
+            if (!(await activateInvitedUser(env.DB, session.userId, Date.now()))) {
+              throw inviteExpired();
+            }
+          },
+        },
+      },
+      account: {
+        create: {
+          before: async (account) => {
+            assertGoogleEmailVerified(account);
+            // Do not link a Google account to an invited user whose invite is closed.
+            if (account.providerId !== "google") return;
+            const status = await userStatus(env.DB, account.userId);
+            if (
+              status === "invited" &&
+              !(await hasOpenInvite(env.DB, account.userId, Date.now()))
+            ) {
+              throw inviteExpired();
+            }
+          },
+        },
+        update: {
+          // A sign-in with a linked Google account updates its tokens here.
+          before: async (account) => {
+            assertGoogleEmailVerified(account);
+          },
+        },
       },
     },
     hooks: {
