@@ -17,7 +17,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Toaster } from "../components/ui/toast";
 import { useBrandKit, useWorkspaceSettings } from "../features/settings/queries";
 import { api } from "../lib/api";
-import { SIGN_IN_PATH } from "../lib/auth";
+import { isPublicPath, SIGN_IN_PATH } from "../lib/auth";
 import { queryKeys } from "../lib/query-keys";
 import { useMe } from "../lib/session";
 import { PUBLIC_PATHS, setupStatusQuery } from "../lib/setup";
@@ -71,7 +71,7 @@ function RootLayout() {
       navigate={(to, options) => router.navigate({ ...options, to })}
       useHref={(to) => router.buildLocation({ to }).href}
     >
-      {PUBLIC_PATHS.includes(pathname) ? <Outlet /> : <AppLayout />}
+      {isPublicPath(pathname, PUBLIC_PATHS) ? <Outlet /> : <AppLayout />}
       <Toaster />
     </RouterProvider>
   );

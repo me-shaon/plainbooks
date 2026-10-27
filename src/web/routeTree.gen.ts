@@ -20,6 +20,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as BrandKitIndexRouteImport } from './routes/brand-kit/index'
 import { Route as ClientsIndexRouteImport } from './routes/clients/index'
 import { Route as ClientsClientIdRouteImport } from './routes/clients/$clientId'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesNewRouteImport } from './routes/invoices/new'
 import { Route as NotificationsIndexRouteImport } from './routes/notifications/index'
@@ -93,6 +94,11 @@ const ClientsIndexRoute = ClientsIndexRouteImport.update({
 const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   id: '/clients/$clientId',
   path: '/clients/$clientId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
@@ -201,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
@@ -232,6 +239,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
@@ -265,6 +273,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/clients/$clientId': typeof ClientsClientIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
@@ -299,6 +308,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/clients/$clientId'
+    | '/invite/$token'
     | '/invoices/new'
     | '/quotes/new'
     | '/recurring/$scheduleId'
@@ -330,6 +340,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/clients/$clientId'
+    | '/invite/$token'
     | '/invoices/new'
     | '/quotes/new'
     | '/recurring/$scheduleId'
@@ -362,6 +373,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/clients/$clientId'
+    | '/invite/$token'
     | '/invoices/new'
     | '/quotes/new'
     | '/recurring/$scheduleId'
@@ -395,6 +407,7 @@ export interface RootRouteChildren {
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
   ClientsClientIdRoute: typeof ClientsClientIdRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   InvoicesNewRoute: typeof InvoicesNewRoute
   QuotesNewRoute: typeof QuotesNewRoute
   RecurringScheduleIdRoute: typeof RecurringScheduleIdRoute
@@ -490,6 +503,13 @@ declare module '@tanstack/react-router' {
       path: '/clients/$clientId'
       fullPath: '/clients/$clientId'
       preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invoices/': {
@@ -658,6 +678,7 @@ const rootRouteChildren: RootRouteChildren = {
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
   ClientsClientIdRoute: ClientsClientIdRoute,
+  InviteTokenRoute: InviteTokenRoute,
   InvoicesNewRoute: InvoicesNewRoute,
   QuotesNewRoute: QuotesNewRoute,
   RecurringScheduleIdRoute: RecurringScheduleIdRoute,

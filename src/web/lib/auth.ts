@@ -41,12 +41,22 @@ export function safeNext(next: unknown): string {
 }
 
 /**
+ * True when the path is one of the public paths. An entry that ends with "/" matches
+ * every path under it, for example "/invite/" matches "/invite/<token>".
+ */
+export function isPublicPath(pathname: string, publicPaths: readonly string[]): boolean {
+  return publicPaths.some((path) =>
+    path.endsWith("/") ? pathname.startsWith(path) : pathname === path,
+  );
+}
+
+/**
  * Sends the user to sign-in and keeps the current page in `next`. main.tsx calls it when an
  * API call gets the session 401. It does nothing on a page that needs no session.
  */
 export function redirectToSignIn(router: AnyRouter, publicPaths: readonly string[]): void {
   const { pathname, href } = router.state.location;
-  if (publicPaths.includes(pathname)) return;
+  if (isPublicPath(pathname, publicPaths)) return;
   void router.navigate({ to: SIGN_IN_PATH, search: { next: safeNext(href) }, replace: true });
 }
 
@@ -94,7 +104,10 @@ export function passwordErrorMessage(err: unknown): string {
  */
 export const GOOGLE_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   signup_disabled: "This Google account has no invite. Ask your Owner.",
+  invite_expired: "Your invite was used or has expired. Ask your Owner for a new link.",
   email_not_verified: "Google has not verified this email address. Use another Google account.",
+  account_not_linked:
+    "This Google account is not linked to your sign-in yet. Sign in with your password.",
   access_denied: "Google sign-in was cancelled.",
 };
 

@@ -9,6 +9,7 @@ import type {
 import type {
   BrandKit,
   BrandKitInput,
+  MemberLink,
   TeamMember,
   TeamMemberInput,
   WorkspaceSettings,
@@ -104,11 +105,30 @@ export function useTeam(enabled: boolean) {
   });
 }
 
+/** Adds a member. The answer holds the invite link, which shows once. */
 export function useAddMember() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: TeamMemberInput) =>
-      api<TeamMember>("/team", { method: "POST", json: input, toastOnError: false }),
+      api<MemberLink>("/team", { method: "POST", json: input, toastOnError: false }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.team.all }),
+  });
+}
+
+/** Replaces an invite link with a new 7-day link. The old link stops working. */
+export function useResendInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<MemberLink>(`/team/${id}/invite`, { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.team.all }),
+  });
+}
+
+/** Ends a member's sessions, removes the password, and returns a 24-hour reset link. */
+export function useResetSignIn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<MemberLink>(`/team/${id}/reset`, { method: "POST" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.team.all }),
   });
 }

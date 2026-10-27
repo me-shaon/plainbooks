@@ -9,8 +9,19 @@ export { formatRetry };
 /** The Owner recovery page. The sign-in page links to it as "Locked out?". */
 export const RECOVER_PATH = "/recover";
 
-/** Pages that render without the app shell and need no session. */
-export const PUBLIC_PATHS: readonly string[] = ["/setup", RECOVER_PATH, ...AUTH_PATHS];
+/** The invite and reset link page. The token follows in the path. */
+export const INVITE_PATH_PREFIX = "/invite/";
+
+/**
+ * Pages that render without the app shell and need no session. An entry that ends with
+ * "/" covers every page under it (see `isPublicPath`).
+ */
+export const PUBLIC_PATHS: readonly string[] = [
+  "/setup",
+  RECOVER_PATH,
+  INVITE_PATH_PREFIX,
+  ...AUTH_PATHS,
+];
 
 /** GET /api/setup/status. The root route reads it before every page. */
 export const setupStatusQuery = queryOptions({
