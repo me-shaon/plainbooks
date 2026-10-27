@@ -90,21 +90,28 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Open the URL that Vite prints, for example `http://localhost:5173`. The app signs you in as `owner@example.com`. You do not need Cloudflare Access on your computer.
+Before the first `pnpm dev`, set these values in `.dev.vars`:
 
-To use fake email, exchange rate, and PDF services, add `FAKE_EXTERNALS=1` to `.dev.vars`. Without it, the app calls the real services. Read [Dev auth bypass](#dev-auth-bypass) for more details.
+- `AUTH_SECRET`: a random value of 32 characters or more.
+- `ENCRYPTION_KEY`: 32 random bytes as base64.
+- `SETUP_TOKEN`: a random value of 32 characters or more.
+- `APP_URL`: the URL that Vite prints, for example `http://localhost:5173`.
 
-### Dev auth bypass
+To make the three random values, run this command three times:
 
-Locally there is no Cloudflare Access in front of the app. The Worker signs you in as `DEV_USER_EMAIL` when all of these are true:
+```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
-- `APP_ENV` is `development`. `pnpm dev` sets it. The build never does.
-- The request host is `localhost` or `127.0.0.1`.
-- `DEV_USER_EMAIL` is set. `pnpm dev` sets it to `owner@example.com`.
+Open the URL that Vite prints. The first visit opens the setup screen. Enter the setup token from `.dev.vars`, your name, your email, and a password. This creates the Owner and signs you in. You do this one time for each local database. After that, sign in with the email and password.
 
-The first sign-in creates the Owner only when the email is `OWNER_EMAIL`. Both default to `owner@example.com`. To use another email, set `DEV_USER_EMAIL` in `.dev.vars` before the first sign-in. Also set `OWNER_EMAIL` there to the same value.
+To use fake email, exchange rate, and PDF services, add `FAKE_EXTERNALS=1` to `.dev.vars`. Without it, the app calls the real services. Read [Local services](#local-services) for more details.
 
-Local email, exchange rates, and PDFs call the real services. Put a real Resend key in `.dev.vars` to send email. Browser Run Quick Actions do not run locally, so PDF downloads fail in `pnpm dev`. To use fakes for all three, add `FAKE_EXTERNALS=1` to `.dev.vars`. The Worker ignores this flag unless `APP_ENV` is `development`.
+### Local services
+
+`pnpm dev` sets `APP_ENV=development`. The build never does. In development, the Worker also accepts writes from the local origin, `localhost` or `127.0.0.1`.
+
+Local email, exchange rates, and PDFs call the real services. To send real email, set up an email provider in **Settings** > **Email**. Browser Run Quick Actions do not run locally, so PDF downloads fail in `pnpm dev`. To use fakes for all three, add `FAKE_EXTERNALS=1` to `.dev.vars`. With this flag and no saved email provider, the app sends email through a fake provider. The Worker ignores this flag unless `APP_ENV` is `development`.
 
 ## Deploy
 
@@ -136,8 +143,8 @@ On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command fo
 | `pnpm format` | Applies Biome fixes and formatting. |
 | `pnpm test` | Runs the Worker and web unit tests with Vitest. |
 | `pnpm test:perf` | Runs the render benchmark. |
-| `pnpm e2e` | Runs the Playwright smoke test and the axe checks. |
-| `pnpm e2e:db` | Resets the end-to-end D1 database and applies the migrations. |
+| `pnpm e2e` | Runs the Playwright specs and the axe checks. |
+| `pnpm e2e:db` | Resets the two end-to-end D1 databases and applies the migrations. |
 | `pnpm db:generate` | Generates a migration from `src/worker/db/schema.ts`. |
 | `pnpm db:migrate` | Applies the migrations to the local D1 database. |
 | `pnpm cf-typegen` | Generates `worker-configuration.d.ts` from `wrangler.jsonc`. |
@@ -148,11 +155,14 @@ On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command fo
 
 - `pnpm test` runs two Vitest projects. The `worker` project runs `test/**/*.test.ts` in the Workers runtime with the migrations applied. The `web` project runs `src/**/*.test.{ts,tsx}` in happy-dom. Tests stub Resend, Frankfurter, and Browser Run.
 - `pnpm test:perf` runs the render benchmark. It is skipped in `pnpm test`.
-- `pnpm e2e` runs `e2e/smoke.spec.ts` in Chromium. Install the browser once with `pnpm exec playwright install chromium`.
+- `pnpm e2e` runs the Playwright specs in `e2e/` in Chromium. Install the browser once with `pnpm exec playwright install chromium`.
 
-The end-to-end test starts `vite` with `E2E=1` on port 5197. In this mode the Worker uses the dev auth bypass, fake external services, and a separate D1 database in `.wrangler/e2e`. The database is reset before each run. The test creates a client, sends a quote, accepts it on the public page, converts it, sends the invoice, records the payment, and checks the dashboard. It also runs axe on the dashboard, the invoice editor, and the public invoice page, and checks the public page at 390 px wide.
+The end-to-end run starts two `vite` servers with `E2E=1`. Each server has its own D1 database in `.wrangler/e2e`, fixed test secrets, and fake external services. `pnpm e2e:db` resets both databases before each run.
 
-If your `.dev.vars` sets `APP_ENV`, `DEV_USER_EMAIL`, `OWNER_EMAIL`, `FAKE_EXTERNALS`, or the Resend values to other values, the end-to-end server stops with an error. Values in `.dev.vars` override the test values.
+- Port 5197 runs `e2e/smoke.spec.ts`. Before the specs start, `e2e/global-setup.ts` creates the Owner through the setup API and saves the signed-in browser state. The smoke spec uses this state. It creates a client, sends a quote, accepts it on the public page, converts it, sends the invoice, records the payment, and checks the dashboard. It also runs axe on the dashboard, the invoice editor, and the public invoice page, and checks the public page at 390 px wide.
+- Port 5198 runs `e2e/auth.spec.ts` on an empty database. It completes setup in the browser, signs out, signs in, invites a member, and accepts the invite.
+
+`e2e/env.ts` holds the test values. If your `.dev.vars` sets `APP_ENV`, `APP_URL`, `FAKE_EXTERNALS`, `SETUP_TOKEN`, `AUTH_SECRET`, or `ENCRYPTION_KEY` to other values, the end-to-end server stops with an error. Values in `.dev.vars` override the test values. To run the tests, move your `.dev.vars` away for the run, or remove these lines from it.
 
 ## Project layout
 

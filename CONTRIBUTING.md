@@ -25,7 +25,8 @@ Open an issue before you write code for a large change. Describe the problem tha
 
 1. Fork the repository and clone your fork.
 2. Follow [Run it on your computer](README.md#run-it-on-your-computer) in the README.
-3. Add `FAKE_EXTERNALS=1` to `.dev.vars` if you do not have a Resend key.
+3. Add `FAKE_EXTERNALS=1` to `.dev.vars` if you do not have an email provider key.
+4. Open the app and complete the setup screen one time. Use the `SETUP_TOKEN` value from `.dev.vars`.
 
 ## Make a change
 
@@ -47,6 +48,8 @@ pnpm e2e
 ```
 
 Run `pnpm format` to fix lint and format problems that Biome can fix.
+
+`pnpm e2e` uses its own test secrets and databases. If your `.dev.vars` sets other values for the same keys, the run stops with an error. Read [Testing](README.md#testing) in the README.
 
 ## Write commit messages
 

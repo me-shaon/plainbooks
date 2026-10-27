@@ -40,7 +40,7 @@
     "test": "vitest run",
     "test:perf": "RUN_PERF=1 vitest run src/worker/render/render.perf.test.ts",
     "e2e": "playwright test",
-    "e2e:db": "rm -rf .wrangler/e2e && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e",
+    "e2e:db": "rm -rf .wrangler/e2e && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e/main && wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e/auth",
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "format": "biome check --write .",

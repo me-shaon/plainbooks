@@ -1,5 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { E2E_OWNER } from "./env";
+
+// Runs signed in as the Owner that e2e/global-setup.ts creates (playwright.config.ts).
 
 const RUN = Date.now().toString(36);
 const CLIENT = `Smoke Client ${RUN}`;
@@ -25,6 +28,10 @@ async function expectNoSeriousA11yIssues(page: Page, label: string) {
 test.describe.configure({ mode: "serial" });
 
 test("quote to paid invoice", async ({ page, browser, request }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(page.getByText(E2E_OWNER.name, { exact: true }).first()).toBeVisible();
+
   // The sender address is a prerequisite for email.
   const settings = await request.patch("/api/settings/workspace", {
     data: { emailFromAddress: "billing@example.com" },
@@ -45,7 +52,10 @@ test("quote to paid invoice", async ({ page, browser, request }) => {
   });
 
   await test.step("create a quote and send it", async () => {
+    // The client list opens only on typing, so wait for the clients to load first.
+    const clients = page.waitForResponse((res) => new URL(res.url()).pathname === "/api/clients");
     await page.goto("/quotes/new");
+    await clients;
     await page.getByRole("combobox", { name: "Client" }).fill(CLIENT);
     await page.getByRole("option", { name: CLIENT }).click();
     await expect(page.getByRole("button", { name: /USD Currency/ })).toBeVisible();
