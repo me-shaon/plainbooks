@@ -18,7 +18,7 @@ import {
 } from "../../src/worker/services/email";
 import { enqueue, runJobById } from "../../src/worker/services/jobs";
 import { pdfKey, setPdfRendererForTesting } from "../../src/worker/services/pdf";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import {
   activityTypes,
   counterValue,
@@ -100,7 +100,6 @@ const sendNote = (key: string, subject = "Hi") =>
   );
 
 beforeAll(() => {
-  installAccessKeys();
   registerEmailJobHandlers();
 });
 

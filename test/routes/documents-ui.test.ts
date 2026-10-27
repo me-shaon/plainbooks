@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DocumentSummary, FxQuote, SendPreview } from "../../src/shared/schemas/document";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { draft, resetDocuments, seedClient } from "../helpers/documents";
 import { fillDailyCap, resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
 
@@ -8,7 +8,6 @@ const MEMBER = "member@docs-ui.test";
 let clientId: string;
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser(MEMBER, "member");
 });

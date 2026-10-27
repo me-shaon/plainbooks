@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DocumentDetail } from "../../src/shared/schemas/document";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { resetDocuments, seedClient } from "../helpers/documents";
 
 const OWNER = "owner@docs.test";
@@ -8,7 +8,6 @@ const MEMBER = "member@docs.test";
 let clientId: string;
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser(OWNER, "owner");
   await seedUser(MEMBER, "member");

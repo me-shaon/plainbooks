@@ -18,7 +18,7 @@ import {
   sendReminder,
 } from "../../src/worker/services/reminders";
 import { runTick } from "../../src/worker/services/scheduler";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import {
   activityTypes,
   db,
@@ -63,7 +63,6 @@ async function reminderJobs() {
 const ids = (items: ReminderSuggestion[]) => items.map((s) => s.documentId);
 
 beforeAll(() => {
-  installAccessKeys();
   registerEmailJobHandlers();
   registerReminderJobs();
 });

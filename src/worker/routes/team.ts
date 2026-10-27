@@ -25,7 +25,7 @@ function toTeamMember(row: Omit<TeamMember, "createdAt"> & { createdAt: Date }):
 
 /**
  * The team list, mounted at /api/team. Owner only. Adding a member only adds the row.
- * The person also needs permission in the Cloudflare Access application.
+ * Removing a member ends their sessions.
  */
 export const teamRoutes = new Hono<AppEnv>()
   .use(requireOwner)

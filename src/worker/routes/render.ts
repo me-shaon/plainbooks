@@ -21,9 +21,9 @@ function html(body: string, nonce: string): Response {
 }
 
 /**
- * In-app document previews, mounted at /render. The Access JWT middleware covers every
- * route. All three render from a snapshot: a stored revision, a transient draft snapshot,
- * or the sample invoice.
+ * In-app document previews, mounted at /render. `sessionAuth` covers every route. All
+ * three render from a snapshot: a stored revision, a transient draft snapshot, or the
+ * sample invoice.
  */
 export const renderRoutes = new Hono<AppEnv>()
   .get("/draft/:documentId", async (c) => {

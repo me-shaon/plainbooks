@@ -7,7 +7,7 @@ import { finalize, voidDocument } from "../../src/worker/services/documents";
 import { retryFailedJob } from "../../src/worker/services/jobs";
 import { recordPayment } from "../../src/worker/services/payments";
 import { createSchedule } from "../../src/worker/services/recurring";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import {
   db,
   draft,
@@ -24,7 +24,6 @@ const MEMBER = "member@dashboard.test";
 let owner: Awaited<ReturnType<typeof seedUser>>;
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   owner = await seedUser(OWNER, "owner");
   await seedUser(MEMBER, "member");

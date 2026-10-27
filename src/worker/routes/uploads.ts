@@ -20,7 +20,7 @@ const PUBLIC_ASSET_HEADERS = {
 
 /**
  * Public files, mounted at /p/assets: logos, document fonts, and the document CSS. No sign-in: public invoice pages and emails load
- * these. Access bypasses /p/* (see the plan's Key Technical Decisions).
+ * these. `sessionAuth` does not cover /p/*.
  */
 export const publicAssetRoutes = new Hono<AppEnv>()
   .get(

@@ -6,14 +6,6 @@ import type { Db } from "./db/client";
  * `.dev.vars` (local development) are added here as optional.
  */
 export type Bindings = Env & {
-  /** Local development only. Used by the auth dev bypass. */
-  DEV_USER_EMAIL?: string;
-  /** Secret. The Zero Trust team domain: "team.cloudflareaccess.com". */
-  ACCESS_TEAM_DOMAIN?: string;
-  /** Secret. The Application Audience (AUD) tag of the Access application. */
-  ACCESS_AUD?: string;
-  /** Secret. The email of the first Owner. */
-  OWNER_EMAIL?: string;
   /** Secret. The public origin of the app: "https://invoices.example.com". */
   APP_URL?: string;
   /**

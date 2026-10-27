@@ -1,68 +1,79 @@
 import { env, exports } from "cloudflare:workers";
-import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from "jose";
+import { eq } from "drizzle-orm";
 import type { UserRole } from "../../src/shared/domain";
-import {
-  ACCESS_JWT_HEADER,
-  normalizeTeamDomain,
-  setJwksFetchForTesting,
-} from "../../src/worker/auth/access";
+import { createAuth } from "../../src/worker/auth/auth";
 import { createDb, schema } from "../../src/worker/db/client";
 
-// One RSA key pair per test file. The Worker fetches the JWKS through the stub below,
-// so tokens signed here verify exactly as real Access tokens do.
-const { privateKey, publicKey } = await generateKeyPair("RS256");
-const publicJwk = { ...(await exportJWK(publicKey)), kid: "test-key", alg: "RS256", use: "sig" };
-
-export const TEST_ISSUER = normalizeTeamDomain(env.ACCESS_TEAM_DOMAIN);
-export const TEST_CERTS_URL = `${TEST_ISSUER}/cdn-cgi/access/certs`;
-
-/** Number of JWKS fetches since the last `installAccessKeys()`. */
-export let jwksFetchCount = 0;
-
-/** Serves the test key set to the Access verifier. Call in `beforeAll` or `beforeEach`. */
-export function installAccessKeys(): void {
-  jwksFetchCount = 0;
-  setJwksFetchForTesting(async (url) => {
-    jwksFetchCount += 1;
-    if (url !== TEST_CERTS_URL) return new Response("not found", { status: 404 });
-    return Response.json({ keys: [publicJwk] });
-  });
+/** The better-auth context for tests: the internal adapter and the cookie names. */
+async function authContext() {
+  return createAuth(env, new Request(env.APP_URL)).$context;
 }
 
-export interface TokenOptions {
-  audience?: string;
-  issuer?: string;
-  /** Seconds since the epoch, or a jose time span such as "1h" or "-1m". */
-  expiresAt?: number | string;
-  claims?: JWTPayload;
-  key?: CryptoKey;
+/**
+ * Signs a cookie value the way better-auth does: `value.base64(HMAC-SHA256(value))` with
+ * AUTH_SECRET as the key, then URL-encoded.
+ */
+export async function signCookieValue(value: string, secret = env.AUTH_SECRET): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  const signature = btoa(String.fromCharCode(...new Uint8Array(mac)));
+  return encodeURIComponent(`${value}.${signature}`);
 }
 
-/** Signs an Access-style JWT for `email` with the test key. */
-export async function accessToken(email: string, options: TokenOptions = {}): Promise<string> {
-  return new SignJWT({ email, ...options.claims })
-    .setProtectedHeader({ alg: "RS256", kid: "test-key" })
-    .setIssuer(options.issuer ?? TEST_ISSUER)
-    .setAudience(options.audience ?? env.ACCESS_AUD)
-    .setSubject(crypto.randomUUID())
-    .setIssuedAt()
-    .setExpirationTime(options.expiresAt ?? "1h")
-    .sign(options.key ?? privateKey);
+/** The name of the better-auth session cookie. */
+export async function sessionCookieName(): Promise<string> {
+  return (await authContext()).authCookies.sessionToken.name;
+}
+
+/** The Cookie header for a session token. */
+export async function sessionCookie(token: string): Promise<string> {
+  return `${await sessionCookieName()}=${await signCookieValue(token)}`;
+}
+
+/** Creates a better-auth session for the user and returns its token. */
+export async function createSession(userId: string): Promise<string> {
+  const session = await (await authContext()).internalAdapter.createSession(userId);
+  return session.token;
+}
+
+/**
+ * Creates a session for `email` and returns its Cookie header. Seeds the email as a
+ * Member when no user has it.
+ */
+export async function signInAs(email: string): Promise<string> {
+  const db = createDb(env.DB);
+  const normalized = email.trim().toLowerCase();
+  const [existing] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.email, normalized))
+    .limit(1);
+  const userId = existing?.id ?? (await seedUser(normalized)).id;
+  return sessionCookie(await createSession(userId));
 }
 
 export interface AuthedInit extends RequestInit {
-  /** Signs the request as this email. Omit for an unauthenticated request. */
+  /** Signs the request in as this email. Omit for an unauthenticated request. */
   as?: string;
-  token?: TokenOptions;
   /** Sends a JSON body with the right content type. */
   json?: unknown;
 }
 
-/** Builds a Request for the Worker, with an Access JWT when `as` is set. */
+/** Builds a Request for the Worker, with a session cookie when `as` is set. */
 export async function buildRequest(path: string, init: AuthedInit = {}): Promise<Request> {
-  const { as, token, json, ...rest } = init;
+  const { as, json, ...rest } = init;
   const headers = new Headers(rest.headers);
-  if (as) headers.set(ACCESS_JWT_HEADER, await accessToken(as, token));
+  if (as) {
+    const cookie = await signInAs(as);
+    const current = headers.get("cookie");
+    headers.set("cookie", current ? `${current}; ${cookie}` : cookie);
+  }
   let body = rest.body;
   if (json !== undefined) {
     headers.set("content-type", "application/json");
@@ -77,18 +88,28 @@ export async function apiFetch(path: string, init: AuthedInit = {}): Promise<Res
   return exports.default.fetch(await buildRequest(path, init));
 }
 
-/** Inserts a team member. Emails are stored lowercase. */
-export async function seedUser(email: string, role: UserRole = "member") {
+/** Inserts a team member. Emails are stored lowercase. The name is the part before "@". */
+export async function seedUser(
+  email: string,
+  role: UserRole = "member",
+  options: { status?: "invited" | "active" } = {},
+) {
   const db = createDb(env.DB);
+  const normalized = email.toLowerCase();
   const [user] = await db
     .insert(schema.users)
-    .values({ email: email.toLowerCase(), role })
+    .values({
+      email: normalized,
+      name: normalized.split("@")[0] || normalized,
+      role,
+      ...(options.status ? { status: options.status } : {}),
+    })
     .returning();
   if (!user) throw new Error("user insert failed");
   return user;
 }
 
-/** Deletes every team member. */
+/** Deletes every team member. Their sessions and accounts go with them. */
 export async function clearUsers(): Promise<void> {
   await env.DB.prepare("DELETE FROM users").run();
 }

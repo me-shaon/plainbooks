@@ -157,7 +157,7 @@ export function TeamPage() {
           });
         }}
       >
-        They lose access to the app. Also remove them from the Cloudflare Access application.
+        They lose access to the app. Their sessions end at once.
       </AlertDialog>
     </Section>
   );
@@ -182,11 +182,7 @@ function AddMemberDialog({
     }
     try {
       await add.mutateAsync(values);
-      toast({
-        title: "Member added",
-        description: "Also give this email access in Cloudflare Access.",
-        tone: "success",
-      });
+      toast({ title: "Member added", tone: "success" });
       close();
     } catch (err) {
       const fieldErrors = issuesByPath(err);
@@ -197,10 +193,7 @@ function AddMemberDialog({
 
   return (
     <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="sm">
-      <Dialog
-        title="Add member"
-        description="This adds the email to the team. The person also needs Cloudflare Access permission."
-      >
+      <Dialog title="Add member" description="This adds the email to the team.">
         {(close) => (
           <Form
             validationBehavior="aria"

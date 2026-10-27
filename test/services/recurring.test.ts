@@ -24,7 +24,7 @@ import {
   updateSchedule,
 } from "../../src/worker/services/recurring";
 import { runTick } from "../../src/worker/services/scheduler";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { db, draft, noFetch, resetDocuments, seedClient, seedTaxRate } from "../helpers/documents";
 import {
   type FakeEmail,
@@ -79,7 +79,6 @@ async function jobKeys() {
 }
 
 beforeAll(() => {
-  installAccessKeys();
   registerEmailJobHandlers();
   registerRecurringJobs();
 });

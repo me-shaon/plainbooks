@@ -1,23 +1,24 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
-import { generateKeyPair } from "jose";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/worker/app";
-import { verifyAccessJwt } from "../../src/worker/auth/access";
-import { accessAuth, requireOwner, resolveUser } from "../../src/worker/auth/middleware";
+import { createAuth, SESSION_EXPIRES_IN_SECONDS } from "../../src/worker/auth/auth";
+import { requireOwner, sessionAuth } from "../../src/worker/auth/middleware";
 import { createDb } from "../../src/worker/db/client";
 import type { AppEnv, Bindings } from "../../src/worker/env";
 import { handleError } from "../../src/worker/errors";
 import { LAST_OWNER_MESSAGE, removeUser, setUserRole } from "../../src/worker/services/team";
 import {
-  accessToken,
   apiFetch,
   buildRequest,
   clearUsers,
-  installAccessKeys,
-  jwksFetchCount,
+  createSession,
   seedUser,
+  sessionCookie,
+  sessionCookieName,
+  signCookieValue,
+  signInAs,
 } from "../helpers/auth";
 
 const db = createDb(env.DB);
@@ -29,101 +30,112 @@ async function fetchWith(bindings: Partial<Bindings>, request: Request, target =
   return res;
 }
 
-beforeAll(() => installAccessKeys());
+function me(cookie?: string) {
+  return apiFetch("/api/me", cookie ? { headers: { cookie } } : {});
+}
+
+async function sessionCount(userId: string): Promise<number> {
+  const row = await env.DB.prepare("SELECT count(*) AS n FROM sessions WHERE user_id = ?")
+    .bind(userId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 beforeEach(async () => {
   await clearUsers();
 });
 
-describe("Access JWT verification", () => {
-  it("returns /api/me for a team member with role Member", async () => {
-    const member = await seedUser("member@example.com", "member");
-    const res = await apiFetch("/api/me", { as: "member@example.com" });
+describe("sessionAuth", () => {
+  it("sets the signed-in member for a valid session", async () => {
+    await seedUser("member@example.com");
+    const res = await apiFetch("/api/me", { as: "MEMBER@example.com" });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      user: { id: member.id, email: "member@example.com", name: null, role: "member" },
-    });
+    const body = await res.json<{ user: { email: string; role: string } }>();
+    expect(body.user).toMatchObject({ email: "member@example.com", role: "member" });
   });
 
-  it("fetches the team JWKS from /cdn-cgi/access/certs and caches it", async () => {
-    await seedUser("member@example.com");
-    installAccessKeys();
-    for (let i = 0; i < 3; i++) {
-      expect((await apiFetch("/api/me", { as: "member@example.com" })).status).toBe(200);
-    }
-    expect(jwksFetchCount).toBe(1);
-  });
-
-  it("rejects a valid token when the Access secrets are not set", async () => {
-    await seedUser("member@example.com");
-    for (const missing of [{ ACCESS_TEAM_DOMAIN: undefined }, { ACCESS_AUD: " " }]) {
-      const res = await fetchWith(
-        missing,
-        await buildRequest("/api/me", { as: "member@example.com" }),
-      );
-      expect(res.status).toBe(401);
-    }
-  });
-
-  it("matches the email case-insensitively", async () => {
-    await seedUser("member@example.com");
-    const res = await apiFetch("/api/me", { as: "Member@Example.COM" });
-    expect(res.status).toBe(200);
-  });
-
-  it("returns 401 when the header is missing", async () => {
-    await seedUser("member@example.com");
-    const res = await apiFetch("/api/me");
+  it("returns 401 with no session cookie", async () => {
+    const res = await me();
     expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ code: "unauthenticated" });
   });
 
-  it("returns 401 for an expired token", async () => {
+  it("returns 401 for an expired session and deletes it", async () => {
+    const user = await seedUser("member@example.com");
+    const token = await createSession(user.id);
+    await env.DB.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?")
+      .bind(Date.now() - 1000, token)
+      .run();
+    const res = await me(await sessionCookie(token));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "unauthenticated" });
+    expect(await sessionCount(user.id)).toBe(0);
+  });
+
+  it("returns 401 for a tampered cookie", async () => {
+    const user = await seedUser("member@example.com");
+    const token = await createSession(user.id);
+    const name = await sessionCookieName();
+    const signed = decodeURIComponent(await signCookieValue(token));
+    const [value = "", signature = ""] = signed.split(".");
+    const cookies = [
+      // Another token with the old signature.
+      `${name}=${encodeURIComponent(`${value.slice(0, -1)}x.${signature}`)}`,
+      // The token with a signature from another secret.
+      `${name}=${await signCookieValue(token, "another-secret-0123456789abcdef0123")}`,
+      // The token with no signature.
+      `${name}=${token}`,
+      // A garbage value.
+      `${name}=not-a-cookie`,
+    ];
+    for (const cookie of cookies) {
+      const res = await me(cookie);
+      expect(res.status, cookie).toBe(401);
+      expect(await res.json()).toMatchObject({ code: "unauthenticated" });
+    }
+    // The real cookie still works.
+    expect((await me(await sessionCookie(token))).status).toBe(200);
+  });
+
+  it("returns 401 for a signed token that has no session", async () => {
     await seedUser("member@example.com");
-    const expiresAt = Math.floor(Date.now() / 1000) - 60;
-    const res = await apiFetch("/api/me", { as: "member@example.com", token: { expiresAt } });
+    const res = await me(await sessionCookie("no-such-session-token-0123456789"));
     expect(res.status).toBe(401);
   });
 
-  it("returns 401 for a wrong audience", async () => {
-    await seedUser("member@example.com");
-    const res = await apiFetch("/api/me", {
-      as: "member@example.com",
-      token: { audience: "another-application" },
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 for a wrong issuer", async () => {
-    await seedUser("member@example.com");
-    const res = await apiFetch("/api/me", {
-      as: "member@example.com",
-      token: { issuer: "https://other-team.cloudflareaccess.com" },
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 for a token signed by another key", async () => {
-    await seedUser("member@example.com");
-    const { privateKey } = await generateKeyPair("RS256");
-    const res = await apiFetch("/api/me", { as: "member@example.com", token: { key: privateKey } });
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 for a malformed token", async () => {
-    const res = await apiFetch("/api/me", {
-      headers: { "cf-access-jwt-assertion": "not-a-jwt" },
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 403 for a valid token with an unknown email", async () => {
-    await seedUser("member@example.com");
-    const res = await apiFetch("/api/me", { as: "stranger@example.com" });
+  it("returns 403 not_a_member for an invited user", async () => {
+    await seedUser("invited@example.com", "member", { status: "invited" });
+    const res = await apiFetch("/api/me", { as: "invited@example.com" });
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ code: "not_a_member" });
   });
 
-  it("returns 401 for an unauthenticated /render/:revisionId request", async () => {
+  it("refreshes a session that is older than the update age", async () => {
+    const user = await seedUser("member@example.com");
+    const token = await createSession(user.id);
+    // Two days old: the update age (one day) has passed.
+    const twoDaysOld = Date.now() + (SESSION_EXPIRES_IN_SECONDS - 2 * 24 * 60 * 60) * 1000;
+    await env.DB.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?")
+      .bind(twoDaysOld, token)
+      .run();
+    const res = await me(await sessionCookie(token));
+    expect(res.status).toBe(200);
+    const name = await sessionCookieName();
+    expect(res.headers.getSetCookie().some((c) => c.startsWith(`${name}=`))).toBe(true);
+    const row = await env.DB.prepare("SELECT expires_at AS e FROM sessions WHERE token = ?")
+      .bind(token)
+      .first<{ e: number }>();
+    expect(row?.e).toBeGreaterThan(twoDaysOld);
+  });
+
+  it("does not send a cookie when the session needs no refresh", async () => {
+    await seedUser("member@example.com");
+    const res = await apiFetch("/api/me", { as: "member@example.com" });
+    expect(res.status).toBe(200);
+    expect(res.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("returns 401 for an unauthenticated /render request", async () => {
     const res = await apiFetch("/render/rev_123");
     expect(res.status).toBe(401);
   });
@@ -134,18 +146,22 @@ describe("Access JWT verification", () => {
     expect(res.status).toBe(404);
   });
 
-  it("checks the JWT on every /api/* path except under /api/webhooks/", async () => {
+  it("checks the session on every /api/* path except the exempt prefixes", async () => {
     const paths = [
       "/api/health",
       "/api/me",
       "/api/nope",
       "/api/webhooks",
+      "/api/setup",
+      "/api/invites",
       "/api/webhooksx/email/primary",
       "/api/Webhooks/email/primary",
       "/api/%77ebhooks/email/primary",
       "/api/webhooks%2Femail/primary",
       "/api/webhooks/../me",
       "/api/webhooks/%2e%2e/me",
+      "/api/setup/../me",
+      "/api/invites/%2e%2e/me",
     ];
     for (const path of paths) {
       for (const method of ["GET", "POST"]) {
@@ -158,8 +174,11 @@ describe("Access JWT verification", () => {
     const exempt = await apiFetch("/api/webhooks/email/primary", { method: "POST" });
     expect(exempt.status).toBe(401);
     expect(await exempt.json()).toMatchObject({ code: "invalid_signature" });
-    const unknown = await apiFetch("/api/webhooks/nope", { method: "POST" });
-    expect(unknown.status).toBe(404);
+    // Setup and invite routes need no session. U9 and U10 add them, so these are 404 now.
+    for (const path of ["/api/setup/status", "/api/invites/abc"]) {
+      const res = await apiFetch(path);
+      expect(res.status, path).toBe(404);
+    }
   });
 
   it("does not run on /p/* public links", async () => {
@@ -175,6 +194,36 @@ describe("Access JWT verification", () => {
   });
 });
 
+describe("member removal (AE4)", () => {
+  it("ends every session of the removed member at once", async () => {
+    await seedUser("owner@example.com", "owner");
+    const member = await seedUser("member@example.com");
+    const laptop = await signInAs("member@example.com");
+    const phone = await signInAs("member@example.com");
+    expect((await me(laptop)).status).toBe(200);
+    expect(await sessionCount(member.id)).toBe(2);
+
+    const removed = await apiFetch(`/api/team/${member.id}`, {
+      as: "owner@example.com",
+      method: "DELETE",
+    });
+    expect(removed.status).toBe(204);
+    expect(await sessionCount(member.id)).toBe(0);
+    for (const cookie of [laptop, phone]) {
+      const res = await me(cookie);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: "unauthenticated" });
+    }
+  });
+
+  it("keeps the sessions when the last-Owner guard refuses the removal", async () => {
+    const owner = await seedUser("owner@example.com", "owner");
+    const cookie = await signInAs("owner@example.com");
+    await expect(removeUser(db, owner.id)).rejects.toMatchObject({ code: "last_owner" });
+    expect((await me(cookie)).status).toBe(200);
+  });
+});
+
 describe("cross-site writes", () => {
   const OWNER = "owner@example.com";
   const APP_ORIGIN = new URL(env.APP_URL).origin;
@@ -185,7 +234,7 @@ describe("cross-site writes", () => {
     await seedUser(OWNER, "owner");
   });
 
-  it("refuses a write marked cross-site or from another origin", async () => {
+  it("refuses a write with a valid session when it is cross-site or from another origin", async () => {
     const cases: Record<string, string>[] = [
       { "sec-fetch-site": "cross-site" },
       { origin: "https://evil.example" },
@@ -203,6 +252,18 @@ describe("cross-site writes", () => {
       headers: { origin: "https://evil.example" },
     });
     expect(bodiless.status).toBe(403);
+  });
+
+  it("refuses a cross-site write to the session-exempt setup, invite, and auth routes", async () => {
+    for (const path of ["/api/setup/claim", "/api/invites/accept", "/api/auth/sign-out"]) {
+      const res = await apiFetch(path, {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+        json: {},
+      });
+      expect(res.status, path).toBe(403);
+      expect(await res.json()).toMatchObject({ code: "cross_site_request" });
+    }
   });
 
   it("allows a same-origin write and a write with no Origin header", async () => {
@@ -242,19 +303,19 @@ describe("cross-site writes", () => {
   });
 
   it("allows the local origin only in development", async () => {
-    await seedUser("dev@example.com", "owner");
-    const dev = { APP_ENV: "development", DEV_USER_EMAIL: "dev@example.com" };
+    const cookie = await signInAs(OWNER);
+    const dev = { APP_ENV: "development" };
     const post = (origin: string) =>
       new Request("http://localhost:5173/api/team", {
         method: "POST",
-        headers: { origin, "content-type": "application/json" },
+        headers: { origin, cookie, "content-type": "application/json" },
         body: JSON.stringify({ email: `x${crypto.randomUUID()}@example.com` }),
       });
     expect((await fetchWith(dev, post("http://localhost:5173"))).status).toBe(201);
-    expect((await fetchWith({ ...dev, APP_URL: "" }, post("http://localhost:5173"))).status).toBe(
-      201,
-    );
     expect((await fetchWith(dev, post("http://localhost:9999"))).status).toBe(403);
+    expect((await fetchWith({ APP_ENV: "production" }, post("http://localhost:5173"))).status).toBe(
+      403,
+    );
   });
 
   it("refuses browser writes when APP_URL is not set outside development", async () => {
@@ -271,45 +332,10 @@ describe("cross-site writes", () => {
   });
 });
 
-describe("first Owner bootstrap", () => {
-  it("creates OWNER_EMAIL as Owner when the users table is empty", async () => {
-    const res = await apiFetch("/api/me", { as: env.OWNER_EMAIL.toUpperCase() });
-    expect(res.status).toBe(200);
-    const body = await res.json<{ user: { email: string; role: string } }>();
-    expect(body.user).toMatchObject({ email: env.OWNER_EMAIL, role: "owner" });
-    const again = await apiFetch("/api/me", { as: env.OWNER_EMAIL });
-    expect(again.status).toBe(200);
-    const { results } = await env.DB.prepare("SELECT role FROM users").all();
-    expect(results).toEqual([{ role: "owner" }]);
-  });
-
-  it("does not bootstrap any other email", async () => {
-    const res = await apiFetch("/api/me", { as: "someone@example.com" });
-    expect(res.status).toBe(403);
-  });
-
-  it("does not bootstrap OWNER_EMAIL once the team has members", async () => {
-    await seedUser("member@example.com");
-    const res = await apiFetch("/api/me", { as: env.OWNER_EMAIL });
-    expect(res.status).toBe(403);
-  });
-
-  it("creates one Owner when two first requests race", async () => {
-    const results = await Promise.all([
-      resolveUser(db, env, env.OWNER_EMAIL),
-      resolveUser(db, env, env.OWNER_EMAIL),
-    ]);
-    const { results: rows } = await env.DB.prepare("SELECT count(*) AS n FROM users").all();
-    expect(rows).toEqual([{ n: 1 }]);
-    expect(results[0]?.role).toBe("owner");
-    expect(results[1]?.id).toBe(results[0]?.id);
-  });
-});
-
 describe("requireOwner", () => {
   const guarded = new Hono<AppEnv>();
   guarded.onError(handleError);
-  guarded.use("/api/*", accessAuth);
+  guarded.use("/api/*", sessionAuth);
   guarded.put("/api/settings/brand-kit", requireOwner, (c) => c.json({ ok: true }));
 
   it("returns 403 for a Member on an Owner-only route", async () => {
@@ -332,49 +358,13 @@ describe("requireOwner", () => {
     const res = await fetchWith({}, req, guarded);
     expect(res.status).toBe(200);
   });
-});
 
-describe("dev bypass", () => {
-  const dev = { APP_ENV: "development", DEV_USER_EMAIL: "dev@example.com" };
-
-  it("accepts DEV_USER_EMAIL on localhost when APP_ENV is development", async () => {
-    await seedUser("dev@example.com", "owner");
-    for (const host of ["http://localhost:5173", "http://127.0.0.1:8787"]) {
-      const res = await fetchWith(dev, new Request(`${host}/api/me`));
-      expect(res.status, host).toBe(200);
-      expect(await res.json()).toMatchObject({ user: { email: "dev@example.com" } });
-    }
-  });
-
-  it("is ignored when APP_ENV is production, missing, or another value", async () => {
-    await seedUser("dev@example.com", "owner");
-    for (const APP_ENV of ["production", undefined, "", "Development", "dev", "development "]) {
-      const res = await fetchWith(
-        { ...dev, APP_ENV: APP_ENV as string },
-        new Request("http://localhost:5173/api/me"),
-      );
-      expect(res.status, String(APP_ENV)).toBe(401);
-    }
-  });
-
-  it("is ignored when the host is not localhost", async () => {
-    await seedUser("dev@example.com", "owner");
-    for (const host of [
-      "https://app.example.com",
-      "http://localhost.example.com",
-      "http://10.0.0.2",
-    ]) {
-      const res = await fetchWith(dev, new Request(`${host}/api/me`));
-      expect(res.status, host).toBe(401);
-    }
-  });
-
-  it("is ignored when DEV_USER_EMAIL is not set", async () => {
-    const res = await fetchWith(
-      { APP_ENV: "development", DEV_USER_EMAIL: undefined },
-      new Request("http://localhost:5173/api/me"),
-    );
-    expect(res.status).toBe(401);
+  it("refuses a Member on the team routes of the app", async () => {
+    await seedUser("boss@example.com", "owner");
+    await seedUser("member@example.com", "member");
+    const res = await apiFetch("/api/team", { as: "member@example.com" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "owner_required" });
   });
 });
 
@@ -425,30 +415,23 @@ describe("last Owner guard", () => {
 });
 
 describe("CPU budget", () => {
-  it("verifies a JWT and looks up the user well within 10 ms", async () => {
-    await seedUser("member@example.com");
-    const token = await accessToken("member@example.com");
-    const config = { teamDomain: env.ACCESS_TEAM_DOMAIN, audience: env.ACCESS_AUD };
-    // Warm the JWKS cache and the code paths.
-    await verifyAccessJwt(token, config);
+  it("builds the auth instance and reads the session well within 10 ms", async () => {
+    const cookie = await signInAs("member@example.com");
+    const request = new Request(`${env.APP_URL}/api/me`, { headers: { cookie } });
+    // Warm the code paths.
+    await createAuth(env, request).api.getSession({ headers: request.headers });
 
-    const iterations = 200;
-    let verifyMs = 0;
+    const iterations = 100;
     let totalMs = 0;
     for (let i = 0; i < iterations; i++) {
       const start = performance.now();
-      const { email } = await verifyAccessJwt(token, config);
-      const verified = performance.now();
-      const user = await resolveUser(db, env, email);
-      const end = performance.now();
-      expect(user).not.toBeNull();
-      verifyMs += verified - start;
-      totalMs += end - start;
+      const session = await createAuth(env, request).api.getSession({ headers: request.headers });
+      totalMs += performance.now() - start;
+      expect(session?.user.email).toBe("member@example.com");
     }
-    const perVerify = verifyMs / iterations;
     const perRequest = totalMs / iterations;
     console.log(
-      `auth benchmark: verify ${perVerify.toFixed(3)} ms, verify + D1 lookup ${perRequest.toFixed(3)} ms (wall time, mean of ${iterations})`,
+      `auth benchmark: auth instance + session read ${perRequest.toFixed(3)} ms (wall time, mean of ${iterations})`,
     );
     // Wall time includes local D1 I/O, so it is an upper bound on CPU time.
     expect(perRequest).toBeLessThan(10);

@@ -5,7 +5,7 @@ import { schema } from "../db/client";
 import type { AuthUser } from "../env";
 import { AppError } from "../errors";
 
-const { users } = schema;
+const { sessions, users } = schema;
 
 export const LAST_OWNER_MESSAGE =
   "The workspace needs at least one Owner. Make another member an Owner first.";
@@ -36,11 +36,17 @@ export async function setUserRole(db: Db, userId: string, role: UserRole): Promi
   return updated ?? failMissingOrLastOwner(db, userId);
 }
 
-/** Removes a member. Removing the last Owner fails with 409 `last_owner`. */
+/**
+ * Removes a member and ends their sessions at once. Removing the last Owner fails with
+ * 409 `last_owner`.
+ */
 export async function removeUser(db: Db, userId: string): Promise<void> {
   const [deleted] = await db
     .delete(users)
     .where(and(eq(users.id, userId), keepsAnOwner))
     .returning({ id: users.id });
   if (!deleted) await failMissingOrLastOwner(db, userId);
+  // The foreign key cascade already deletes the sessions. This statement makes sure that
+  // a removed member is signed out even if the cascade does not run.
+  await db.delete(sessions).where(eq(sessions.userId, userId));
 }

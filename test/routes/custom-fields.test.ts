@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildSnapshot, getRevision, loadDocument } from "../../src/worker/services/documents";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { db, draft, NOW, resetDocuments, seedClient, sentInvoice } from "../helpers/documents";
 
 const OWNER = "owner@custom-fields.test";
@@ -31,7 +31,6 @@ async function errorCode(res: Response): Promise<string> {
 }
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser(OWNER, "owner");
   await seedUser(MEMBER, "member");

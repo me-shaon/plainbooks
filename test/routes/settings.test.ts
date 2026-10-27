@@ -1,10 +1,10 @@
 import { env, exports } from "cloudflare:workers";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { BrandKit, TeamMember, WorkspaceSettings } from "../../src/shared/schemas/settings";
 import type { TaxRate } from "../../src/shared/schemas/tax-rate";
 import { createDb, schema } from "../../src/worker/db/client";
 import { getBrandKit } from "../../src/worker/services/settings";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 
 const db = createDb(env.DB);
 const OWNER = "owner@settings.test";
@@ -43,8 +43,6 @@ async function resetWorkspace() {
     ),
   ]);
 }
-
-beforeAll(installAccessKeys);
 
 beforeEach(async () => {
   await clearUsers();
@@ -223,7 +221,7 @@ describe("logo upload", () => {
     expect(kit.logoKey).toMatch(/^logos\/[a-f0-9]{64}\.png$/);
     expect(kit.logoUrl).toBe(`/p/assets/logo/${kit.logoKey?.slice("logos/".length)}`);
 
-    // No Access token: the route is public.
+    // No session: the route is public.
     const logo = await exports.default.fetch(`https://app.test${kit.logoUrl}`);
     expect(logo.status).toBe(200);
     expect(logo.headers.get("content-type")).toBe("image/png");

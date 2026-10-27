@@ -19,9 +19,6 @@ export default defineConfig(async () => {
                 bindings: {
                   TEST_MIGRATIONS: migrations,
                   RESEND_API_KEY: "re_test_key",
-                  ACCESS_TEAM_DOMAIN: "your-team.cloudflareaccess.com",
-                  ACCESS_AUD: "replace-with-access-application-aud",
-                  OWNER_EMAIL: "owner@example.com",
                   APP_URL: "https://invoices.example.com",
                   // 32 bytes as base64. Tests that change the key pass their own value.
                   ENCRYPTION_KEY: btoa("test-encryption-key-0123456789ab"),
@@ -42,7 +39,7 @@ export default defineConfig(async () => {
             name: "worker",
             include: ["test/**/*.test.ts"],
             setupFiles: ["./test/apply-migrations.ts"],
-            // Route tests sign real JWTs and hit local D1; under machine load they can pass 5 s.
+            // Route tests create real sessions and hit local D1; under machine load they can pass 5 s.
             testTimeout: 15_000,
           },
         },

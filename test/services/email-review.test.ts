@@ -14,7 +14,7 @@ import {
 import { markReviewedSent, sendReviewedAgain } from "../../src/worker/services/email-review";
 import { claimJobs, enqueue, runJobById } from "../../src/worker/services/jobs";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { db, draft, NOW, noFetch, resetDocuments, seedClient } from "../helpers/documents";
 import {
   type FakeEmail,
@@ -134,7 +134,6 @@ async function settle(jobId: string): Promise<JobRow | null> {
 const post = (path: string, as = OWNER) => apiFetch(path, { as, method: "POST", json: {} });
 
 beforeAll(() => {
-  installAccessKeys();
   registerEmailJobHandlers();
 });
 

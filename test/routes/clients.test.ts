@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { ClientDetail, ClientSummary } from "../../src/shared/schemas/client";
 import { createDb, schema } from "../../src/worker/db/client";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 
 const db = createDb(env.DB);
 const OWNER = "owner@clients.test";
@@ -41,7 +41,6 @@ async function insertInvoice(
 }
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser(OWNER, "owner");
   await seedUser(MEMBER, "member");

@@ -1,11 +1,10 @@
 import { exports } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "./helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "./helpers/auth";
 
 const worker = exports.default;
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser("health@example.com", "member");
 });

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { OutgoingMessage, ProviderAdapter, SendContext, VerifyResult } from "mailswitch";
 import { type FakeProvider, fakeProvider } from "mailswitch/testing";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   EmailProviderView,
   EmailSettings,
@@ -16,7 +16,7 @@ import {
 } from "../../src/worker/email/mailer";
 import { AppError } from "../../src/worker/errors";
 import { VERIFY_TIMEOUT_MS } from "../../src/worker/routes/email-settings";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { fillDailyCap, resetEmailState } from "../helpers/email";
 
 const db = createDb(env.DB);
@@ -58,8 +58,6 @@ async function getSettings(): Promise<EmailSettings> {
   expect(res.status).toBe(200);
   return (await res.json()) as EmailSettings;
 }
-
-beforeAll(installAccessKeys);
 
 beforeEach(async () => {
   await resetEmailState();

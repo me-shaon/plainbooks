@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { isBotUserAgent, QUOTE_DECISION_JOB, VIEW_WINDOW_MS } from "../../src/worker/routes/public";
 import { finalize, markSent, voidDocument } from "../../src/worker/services/documents";
 import { recordPayment } from "../../src/worker/services/payments";
-import { clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { clearUsers, seedUser } from "../helpers/auth";
 import {
   db,
   draft,
@@ -84,7 +84,6 @@ async function sentQuote(): Promise<{ id: string; token: string }> {
 }
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   ownerId = (await seedUser("owner@public.test", "owner")).id;
   senderId = (await seedUser("sender@public.test", "member")).id;
@@ -129,7 +128,7 @@ describe("GET /p/:token", () => {
     expect(html).toContain(`<style nonce="${nonce}">`);
   });
 
-  it("references only /p/ assets, and each loads without an Access session", async () => {
+  it("references only /p/ assets, and each loads without a session", async () => {
     const token = await tokenOf(await sentInvoice({ clientId }));
     const html = await (await visit(`/p/${token}`)).text();
     const urls = [

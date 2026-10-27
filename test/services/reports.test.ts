@@ -10,7 +10,7 @@ import {
 import type { Fetcher } from "../../src/worker/services/fx";
 import { recordPayment, writeOffRemainder } from "../../src/worker/services/payments";
 import { agingReport, csvCell, incomeReport, taxSummary } from "../../src/worker/services/reports";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import {
   db,
   draft,
@@ -29,7 +29,6 @@ let vat15: string;
 let vat5: string;
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser(MEMBER, "member");
 });

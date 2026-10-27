@@ -17,7 +17,7 @@ import {
 } from "../../src/worker/services/recurring";
 import { registerReminderJobs } from "../../src/worker/services/reminders";
 import { runTick } from "../../src/worker/services/scheduler";
-import { buildRequest, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { buildRequest, clearUsers, seedUser } from "../helpers/auth";
 import { countingEnv, queryPlan, type RecordedQuery } from "../helpers/d1";
 import {
   db,
@@ -41,7 +41,6 @@ let token: string;
 const TICK = Date.parse("2026-11-02T04:00:00Z");
 
 beforeAll(async () => {
-  installAccessKeys();
   resetJobRegistryForTesting();
   registerEmailJobHandlers();
   registerRecurringJobs();
@@ -173,15 +172,16 @@ const pathFor = (template: string) =>
 
 describe("statements per request", () => {
   // Measured budgets. A change that adds statements to a hot path must raise these on
-  // purpose. All stay far under the 50-query limit.
+  // purpose. All stay far under the 50-query limit. The session read uses 2 statements on
+  // every signed-in route: better-auth reads the session, then its user.
   it.each([
-    ["/api/dashboard", 18],
-    ["/api/documents?kind=invoice", 4],
-    ["/api/documents/:sent", 7],
-    ["/api/reports/tax-summary?period=year", 3],
-    ["/api/reports/income?period=year", 3],
-    ["/api/reports/aging", 3],
-    ["/api/clients/:client", 8],
+    ["/api/dashboard", 19],
+    ["/api/documents?kind=invoice", 5],
+    ["/api/documents/:sent", 8],
+    ["/api/reports/tax-summary?period=year", 4],
+    ["/api/reports/income?period=year", 4],
+    ["/api/reports/aging", 4],
+    ["/api/clients/:client", 9],
     ["/p/:token", 3],
   ])("%s uses at most %i statements", async (path, budget) => {
     const result = await measure(pathFor(path));

@@ -183,7 +183,7 @@ function Notice({ tone, children }: { tone: "success" | "danger"; children: stri
 }
 
 /**
- * Public document links, mounted at /p. No sign-in: Cloudflare Access bypasses /p/*.
+ * Public document links, mounted at /p. No sign-in: `sessionAuth` does not cover /p/*.
  * Unknown tokens get a 404 page with no detail.
  */
 export const publicRoutes = new Hono<AppEnv>()

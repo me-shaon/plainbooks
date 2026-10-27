@@ -115,7 +115,7 @@ export const brandKitInput = z
   .partial();
 export type BrandKitInput = z.input<typeof brandKitInput>;
 
-/** POST /api/team. Owner only. The person still needs Cloudflare Access permission. */
+/** POST /api/team. Owner only. */
 export const teamMemberInput = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address")),
   name: optionalText(120),

@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { documentUpdateInput } from "../../src/shared/schemas/document";
 import { finalize, revise } from "../../src/worker/services/documents";
 import {
@@ -9,7 +9,7 @@ import {
   pdfKey,
   setPdfRendererForTesting,
 } from "../../src/worker/services/pdf";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import {
   db,
   draft,
@@ -31,8 +31,6 @@ async function currentRevision(id: string): Promise<string> {
 
 let clientId: string;
 let renderer: ReturnType<typeof stubRenderer>;
-
-beforeAll(installAccessKeys);
 
 beforeEach(async () => {
   await resetDocuments();

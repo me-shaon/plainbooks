@@ -1,16 +1,26 @@
-import { eq } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
-import { createRequestDb, type Db, schema } from "../db/client";
+import { createRequestDb } from "../db/client";
 import type { AppEnv, AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
-import { ACCESS_JWT_HEADER, AccessTokenError, verifyAccessJwt } from "./access";
+import { createAuth } from "./auth";
 
 /**
- * The `/api/*` path prefixes that skip Access and the cross-site guard in `accessAuth`.
- * Each webhook route checks the signature of its provider instead. The better-auth handler
- * runs the cross-site guard itself (app.ts).
+ * The `/api/*` path prefixes that need no session. better-auth signs people in, setup
+ * creates the first Owner, and invite links set a first password. Each webhook route
+ * checks the signature of its provider instead.
  */
-export const AUTH_EXEMPT_PREFIXES: readonly string[] = ["/api/auth/", "/api/webhooks/"];
+export const SESSION_EXEMPT_PREFIXES: readonly string[] = [
+  "/api/auth/",
+  "/api/setup/",
+  "/api/invites/",
+  "/api/webhooks/",
+];
+
+/**
+ * The `/api/*` path prefixes that skip the cross-site guard. Providers post webhooks from
+ * their own servers, so these requests are cross-site by design.
+ */
+export const CSRF_EXEMPT_PREFIXES: readonly string[] = ["/api/webhooks/"];
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
@@ -18,12 +28,22 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
- * True when the request path starts with an exempt prefix. The check uses the path as
- * sent (after dot-segment removal), so a percent-encoded variant still needs Access.
+ * True when the request path starts with one of the prefixes. The check uses the path as
+ * sent (after dot-segment removal), so a percent-encoded variant is not exempt.
  */
-export function isAuthExempt(url: string): boolean {
+function startsWithAny(url: string, prefixes: readonly string[]): boolean {
   const path = new URL(url).pathname;
-  return AUTH_EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
+  return prefixes.some((prefix) => path.startsWith(prefix));
+}
+
+/** True when the request needs no session. */
+export function isSessionExempt(url: string): boolean {
+  return startsWithAny(url, SESSION_EXEMPT_PREFIXES);
+}
+
+/** True when the request skips the cross-site guard. */
+export function isCsrfExempt(url: string): boolean {
+  return startsWithAny(url, CSRF_EXEMPT_PREFIXES);
 }
 
 /**
@@ -62,99 +82,68 @@ export function assertSameOriginWrite(request: Request, env: Bindings): void {
 }
 
 /**
- * The dev bypass applies only when APP_ENV is exactly "development", the request host is
- * local, and DEV_USER_EMAIL is set.
+ * Reads the better-auth session for the request and returns the signed-in member. Returns
+ * null when the cookie is missing, tampered, or expired, or when the session is gone.
+ * `headers` gets the Set-Cookie headers of a session refresh.
  */
-export function devBypassEmail(env: Bindings, url: string): string | null {
-  if (env.APP_ENV !== "development") return null;
-  if (!LOCAL_HOSTS.has(new URL(url).hostname)) return null;
-  const email = env.DEV_USER_EMAIL?.trim().toLowerCase();
-  return email ? email : null;
+async function readSession(
+  env: Bindings,
+  request: Request,
+): Promise<{ user: SessionUser | null; headers: Headers }> {
+  const auth = createAuth(env, request);
+  const { headers, response } = await auth.api.getSession({
+    headers: request.headers,
+    returnHeaders: true,
+  });
+  if (!response) return { user: null, headers };
+  const user = response.user as typeof response.user & { role?: unknown; status?: unknown };
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name ?? null,
+      role: user.role === "owner" ? "owner" : user.role === "member" ? "member" : null,
+      status: typeof user.status === "string" ? user.status : null,
+    },
+    headers,
+  };
 }
 
-const userColumns = {
-  id: schema.users.id,
-  email: schema.users.email,
-  name: schema.users.name,
-  role: schema.users.role,
-};
-
-/**
- * Finds the team member by email. When the users table is empty and the email is
- * OWNER_EMAIL, creates that user as the first Owner. Returns null for anyone else.
- */
-export async function resolveUser(db: Db, env: Bindings, email: string): Promise<AuthUser | null> {
-  const user = await findUser(db, email);
-  if (user) return user;
-
-  if (email !== env.OWNER_EMAIL?.trim().toLowerCase()) return null;
-  // One statement, so two first requests cannot both create an Owner.
-  const created = await env.DB.prepare(
-    `INSERT INTO users (id, email, role)
-     SELECT ?1, ?2, 'owner' WHERE NOT EXISTS (SELECT 1 FROM users)
-     ON CONFLICT DO NOTHING
-     RETURNING id, email, name, role`,
-  )
-    .bind(crypto.randomUUID(), email)
-    .first<AuthUser>();
-  if (created) return created;
-  // A concurrent first request may have created the Owner a moment ago.
-  return findUser(db, email);
-}
-
-async function findUser(db: Db, email: string): Promise<AuthUser | null> {
-  const [user] = await db
-    .select(userColumns)
-    .from(schema.users)
-    .where(eq(schema.users.email, email))
-    .limit(1);
-  return user ?? null;
+interface SessionUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: AuthUser["role"] | null;
+  status: string | null;
 }
 
 /**
- * Verifies the Access JWT on `/api/*` and `/render/*` and sets `c.var.user` and `c.var.db`.
- * Cross-site writes get 403 first. Missing or invalid tokens get 401. Valid tokens for
- * unknown emails get 403.
+ * Reads the better-auth session on `/api/*` and `/render/*` and sets `c.var.user` and
+ * `c.var.db`. Cross-site writes get 403 first. A missing, expired, or tampered session
+ * gets 401. A user who is not an active member (status `invited`, or no known role) gets
+ * 403.
  */
-export const accessAuth = createMiddleware<AppEnv>(async (c, next) => {
-  if (isAuthExempt(c.req.url)) return next();
-  assertSameOriginWrite(c.req.raw, c.env);
+export const sessionAuth = createMiddleware<AppEnv>(async (c, next) => {
+  if (!isCsrfExempt(c.req.url)) assertSameOriginWrite(c.req.raw, c.env);
+  if (isSessionExempt(c.req.url)) return next();
 
-  let email = devBypassEmail(c.env, c.req.url);
-  if (!email) {
-    const token = c.req.header(ACCESS_JWT_HEADER);
-    if (!token) throw new AppError(401, "unauthenticated", "Sign in through Cloudflare Access");
-    const teamDomain = c.env.ACCESS_TEAM_DOMAIN?.trim();
-    const audience = c.env.ACCESS_AUD?.trim();
-    if (!teamDomain || !audience) {
-      console.error("ACCESS_TEAM_DOMAIN or ACCESS_AUD is not set. See docs/setup.md step 4.");
-      throw new AppError(401, "unauthenticated", "Your sign-in is not valid. Sign in again.");
-    }
-    try {
-      ({ email } = await verifyAccessJwt(token, { teamDomain, audience }));
-    } catch (err) {
-      if (err instanceof AccessTokenError) {
-        throw new AppError(401, "unauthenticated", "Your sign-in is not valid. Sign in again.");
-      }
-      throw err;
-    }
-  }
-
-  const db = createRequestDb(c.env.DB);
-  const user = await resolveUser(db, c.env, email);
-  if (!user) {
+  const { user, headers } = await readSession(c.env, c.req.raw);
+  if (!user) throw new AppError(401, "unauthenticated", "Sign in to continue.");
+  if (user.status !== "active" || !user.role) {
     throw new AppError(
       403,
       "not_a_member",
       "This email is not on the team. Ask an Owner to add it.",
     );
   }
-  c.set("db", db);
-  c.set("user", user);
-  return next();
+  c.set("db", createRequestDb(c.env.DB));
+  c.set("user", { id: user.id, email: user.email, name: user.name, role: user.role });
+  await next();
+  // A session refresh sends a new cookie with a later expiry.
+  for (const cookie of headers.getSetCookie()) c.res.headers.append("set-cookie", cookie);
 });
 
-/** Allows only Owners. Use after `accessAuth` (it runs on every `/api/*` route). */
+/** Allows only Owners. Use after `sessionAuth` (it runs on every `/api/*` route). */
 export const requireOwner = createMiddleware<AppEnv>(async (c, next) => {
   if (c.var.user?.role !== "owner") {
     throw new AppError(403, "owner_required", "Only an Owner can do this");

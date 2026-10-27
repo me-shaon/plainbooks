@@ -253,8 +253,9 @@ async function confirmSubscription(
 }
 
 /**
- * Provider webhooks, mounted at /api/webhooks. Access and the cross-site guard skip
- * `/api/webhooks/` (AUTH_EXEMPT_PREFIXES). The provider signature authenticates each
+ * Provider webhooks, mounted at /api/webhooks. The session check and the cross-site guard
+ * skip `/api/webhooks/` (SESSION_EXEMPT_PREFIXES and CSRF_EXEMPT_PREFIXES). The provider
+ * signature authenticates each
  * request instead, with the webhook secret that the Owner saved for the role.
  */
 export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) => {

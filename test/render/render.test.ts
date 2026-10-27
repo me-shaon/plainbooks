@@ -11,7 +11,7 @@ import type { TemplateDetail } from "../../src/shared/schemas/template";
 import { type RenderState, renderDocument, renderDocumentHtml } from "../../src/worker/render";
 import { sampleSnapshot } from "../../src/worker/render/sample";
 import { voidDocument } from "../../src/worker/services/documents";
-import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
+import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
 import { db, NOW, resetDocuments, seedClient, sentInvoice, TODAY } from "../helpers/documents";
 
 const OWNER = "owner@render.test";
@@ -78,7 +78,6 @@ function sectionHtml(html: string, id: TemplateSection): string {
 }
 
 beforeAll(async () => {
-  installAccessKeys();
   await clearUsers();
   await seedUser(OWNER, "owner");
   await seedUser(MEMBER, "member");
@@ -233,7 +232,7 @@ describe("renderDocumentHtml", () => {
 });
 
 describe("/render routes", () => {
-  it("rejects a request without an Access token", async () => {
+  it("rejects a request without a session", async () => {
     for (const path of ["/render/x", "/render/draft/x"]) {
       expect((await apiFetch(path)).status).toBe(401);
     }
