@@ -11,7 +11,7 @@ Open an issue on GitHub. Include:
 - What happened. Add the error text or a screenshot.
 - Your browser, and whether you run the app locally or on Cloudflare.
 
-Do not put client data, API keys, or Access tokens in an issue.
+Do not put client data, API keys, passwords, or setup tokens in an issue.
 
 ## Report a security problem
 
