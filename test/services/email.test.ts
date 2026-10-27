@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import type { OutgoingMessage } from "mailswitch";
+import type { OutgoingMessage, ProviderAdapter } from "mailswitch";
 import { fakeProvider } from "mailswitch/testing";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { documentUpdateInput } from "../../src/shared/schemas/document";
@@ -10,7 +10,10 @@ import { decideQuote, revise, voidDocument } from "../../src/worker/services/doc
 import {
   CAPACITY_RECHECK_MS,
   defaultRecipients,
+  EmailSendError,
+  emailJobOutcome,
   markSentManually,
+  ownerEmails,
   registerEmailJobHandlers,
   SEND_DOCUMENT_JOB,
   SEND_EMAIL_JOB,
@@ -257,6 +260,43 @@ describe("sendDocument", () => {
     });
     expect(email.primary.sends).toHaveLength(1);
     expect((await docRow(id))?.status).toBe("finalized");
+  });
+
+  it("answers 409 for a parallel manual send, with no review job, while the first send succeeds", async () => {
+    // The first send waits inside the provider call, so it holds the mailswitch claim.
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = () => {};
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const fake = email.primary;
+    const slow: ProviderAdapter = {
+      ...fake,
+      send: async (message, ctx) => {
+        entered();
+        await gate;
+        return fake.send(message, ctx);
+      },
+    };
+    setMailerEntriesForTesting(() => ({ adapter: slow, credentials: { apiKey: "fk_test" } }));
+    const id = await draft({ clientId });
+    const first = sendDocument(env, db, id, { now: NOW, fetcher: noFetch });
+    await reached;
+
+    await expect(sendDocument(env, db, id, { now: NOW, fetcher: noFetch })).rejects.toMatchObject({
+      status: 409,
+      code: "email_send_in_progress",
+    });
+    release();
+    expect((await first).document.status).toBe("sent");
+    expect(fake.sends).toHaveLength(1);
+    expect(await env.DB.prepare("SELECT count(*) AS n FROM jobs").first("n")).toBe(0);
+    expect(await notificationTypes()).toEqual([]);
+    expect((await emailLogRows()).map((r) => r.status)).toEqual(["sent"]);
+    expect(await activityTypes(id)).toEqual(["created", "finalized", "sent"]);
   });
 
   it("AE6: a primary at its daily cap sends through the fallback", async () => {
@@ -607,6 +647,18 @@ describe("email jobs", () => {
     expect(await jobRow(job.id)).toMatchObject({ status: "pending", attempts: 1 });
   });
 
+  it("a not_sent network error retries with backoff instead of failing the job", async () => {
+    email = await useFakeEmail({
+      primary: {
+        outcomes: [{ status: "not_sent", reason: "network", message: "The connection failed." }],
+      },
+    });
+    const job = await sendNote("note-network");
+    expect(await runJobById(env, job.id, NOW)).toBe("retry");
+    expect(await jobRow(job.id)).toMatchObject({ status: "pending", attempts: 1 });
+    expect(await notificationTypes()).toEqual([]);
+  });
+
   it("send_email with no saved provider fails like before and retries", async () => {
     await resetEmailState();
     const job = await sendNote("note-none");
@@ -619,6 +671,8 @@ describe("email jobs", () => {
     const owner2 = await seedUser("owner2@studio.test", "owner");
     const sender = await seedUser("sender@studio.test", "member");
     await seedUser("bystander@studio.test", "member");
+    // An Owner who has not joined yet gets no email.
+    const invited = await seedUser("invited@studio.test", "owner", { status: "invited" });
     const id = await draft({ clientId, kind: "quote" });
     await sendDocument(env, db, id, {
       now: NOW,
@@ -639,7 +693,7 @@ describe("email jobs", () => {
         payload: {
           documentId: id,
           decision: "accepted",
-          recipientUserIds: [sender.id, owner.id, owner2.id],
+          recipientUserIds: [sender.id, owner.id, owner2.id, invited.id],
         },
         idempotencyKey: `${QUOTE_DECISION_JOB}:${id}`,
       },
@@ -776,5 +830,49 @@ describe("send routes", () => {
     expect(res.status).toBe(200);
     expect((await docRow(id))?.status).toBe("sent");
     expect(email.primary.sends).toHaveLength(0);
+  });
+});
+
+describe("emailJobOutcome", () => {
+  const notSent = (reason: string, extra: Record<string, number> = {}) =>
+    new EmailSendError({
+      status: "not_sent",
+      reason: reason as never,
+      message: "Refused.",
+      provider: "tosend",
+      ...extra,
+    });
+
+  it("fails the job at once for a permanent reason", () => {
+    for (const reason of ["auth", "rejected", "invalid_message", "unsupported"]) {
+      expect(emailJobOutcome(notSent(reason), NOW)).toEqual({
+        fail: { message: `tosend not_sent/${reason}: Refused.` },
+      });
+    }
+  });
+
+  it("lets runJob retry a transient reason with its backoff", () => {
+    for (const reason of ["network", "timeout", "provider_error", "store_error", "in_flight"]) {
+      expect(emailJobOutcome(notSent(reason), NOW)).toBeNull();
+    }
+  });
+
+  it("reschedules a cap or a limit at resetAt or after retryAfterMs", () => {
+    expect(emailJobOutcome(notSent("daily_cap", { resetAt: NOW + 5000 }), NOW)).toEqual({
+      defer: { runAfter: NOW + 5000, reason: "daily_cap" },
+    });
+    expect(emailJobOutcome(notSent("rate_limited", { retryAfterMs: 30_000 }), NOW)).toEqual({
+      defer: { runAfter: NOW + 30_000, reason: "rate_limited" },
+    });
+    expect(emailJobOutcome(notSent("credits"), NOW)).toBeNull();
+  });
+});
+
+describe("ownerEmails", () => {
+  it("leaves out an invited Owner, who has not joined", async () => {
+    await seedUser("owner@studio.test", "owner");
+    await seedUser("invited@studio.test", "owner", { status: "invited" });
+    await seedUser("member@studio.test", "member");
+    expect(await ownerEmails(db)).toEqual(["owner@studio.test"]);
   });
 });

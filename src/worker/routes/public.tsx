@@ -71,7 +71,7 @@ async function recordView(db: Db, doc: Document, now: number): Promise<void> {
   ).run();
 }
 
-/** The user who sent the quote and every Owner, without duplicates. */
+/** The user who sent the quote and every active Owner, without duplicates. */
 async function decisionRecipients(db: Db, doc: Document): Promise<string[]> {
   const rows = await db.$client
     .prepare(
@@ -79,7 +79,7 @@ async function decisionRecipients(db: Db, doc: Document): Promise<string[]> {
          SELECT actor_user_id FROM activity
          WHERE document_id = ? AND type = 'sent' AND actor_user_id IS NOT NULL
          ORDER BY created_at DESC LIMIT 1)
-       UNION SELECT id FROM users WHERE role = 'owner'`,
+       UNION SELECT id FROM users WHERE role = 'owner' AND status = 'active'`,
     )
     .bind(doc.id)
     .all<{ id: string }>();

@@ -203,6 +203,22 @@ describe("a manual send that ends unknown", () => {
     expect(email.primary.sends).toHaveLength(1);
   });
 
+  it("a second send with other content answers 409 and keeps the first job values", async () => {
+    const { id, job } = await unclearManualSend();
+    const res = await apiFetch(`/api/documents/${id}/send`, {
+      as: OWNER,
+      method: "POST",
+      json: { subject: "A different subject", message: "Other text" },
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "email_review_pending" });
+    expect(await jobRows()).toEqual([job]);
+    expect(await notifications()).toHaveLength(1);
+    expect(email.primary.sends).toHaveLength(1);
+    const logs = await env.DB.prepare("SELECT status FROM email_log").all<{ status: string }>();
+    expect(logs.results).toEqual([{ status: "unknown" }]);
+  });
+
   it("is never claimed by the scheduler", async () => {
     const { job } = await unclearManualSend();
     expect(await runJobById(env, job.id, NOW + 24 * 60 * 60_000)).toBeNull();

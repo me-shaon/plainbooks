@@ -97,11 +97,14 @@ export interface DeliverOptions {
   workspace?: Workspace;
   /** The providers, when the caller already loaded them. */
   providers?: readonly ReadyEmailProvider[];
+  /** Returns false for a result that gets no email_log row. Defaults to a row for each. */
+  logResult?: (result: SendResult) => boolean;
 }
 
 export interface DeliveryOutcome {
   result: SendResult;
-  logId: string;
+  /** The email_log row, or null when `logResult` skipped it. */
+  logId: string | null;
 }
 
 /**
@@ -138,8 +141,15 @@ export async function deliverEmail(
     ...(email.idempotencyKey ? { idempotencyKey: email.idempotencyKey } : {}),
   });
 
-  const logId = crypto.randomUUID();
   const sent = result.status === "sent";
+  if (!sent) {
+    console.error(
+      "email send failed",
+      JSON.stringify({ status: result.status, reason: result.reason, provider: result.provider }),
+    );
+  }
+  if (opts.logResult && !opts.logResult(result)) return { result, logId: null };
+  const logId = crypto.randomUUID();
   await db.insert(emailLog).values({
     id: logId,
     day: todayIn(ws.timezone, opts.now),
@@ -157,12 +167,6 @@ export async function deliverEmail(
     error: sent ? null : `${result.reason}: ${result.message}`.slice(0, 1000),
     createdAt: opts.now,
   });
-  if (!sent) {
-    console.error(
-      "email send failed",
-      JSON.stringify({ status: result.status, reason: result.reason, provider: result.provider }),
-    );
-  }
   return { result, logId };
 }
 
@@ -177,13 +181,28 @@ const RETRYABLE_REASONS: ReadonlySet<string> = new Set([
   "quota",
   "credits",
 ]);
-/** `not_sent` reasons that mean the provider refused this email or these keys. */
+/**
+ * `not_sent` reasons that mean the provider refused this email or these keys. A retry gets
+ * the same answer, so a job fails at once.
+ */
 const REJECTED_REASONS: ReadonlySet<string> = new Set([
   "auth",
   "rejected",
   "invalid_message",
   "unsupported",
 ]);
+
+/**
+ * `unknown` reasons where mailswitch refused the key before any provider call: another
+ * request holds it now (`in_flight`), or an earlier send with other content still holds
+ * it (`idempotency_conflict`). This send made no attempt of its own.
+ */
+const KEY_REFUSALS: ReadonlySet<string> = new Set(["in_flight", "idempotency_conflict"]);
+
+/** True for a result where mailswitch refused the key before any provider call. */
+function isKeyRefusal(result: SendResult): boolean {
+  return result.status === "unknown" && KEY_REFUSALS.has(result.reason);
+}
 
 /** A send that ended `not_sent` or `unknown`. It keeps the mailswitch result for jobs. */
 export class EmailSendError extends AppError {
@@ -231,16 +250,22 @@ export function reviewDetail(result: UnknownResult): ReviewDetail {
 /**
  * The job outcome for an email error, or null when the error is not about the send:
  * - `unknown`: needs review. The email may have gone out, so it is never retried.
- * - `not_sent` that a retry can fix: back to pending at `resetAt`, after `retryAfterMs`,
- *   or (with neither) a normal failed attempt with backoff.
- * - any other `not_sent`: the job fails now and the owner gets a notification.
+ * - `not_sent` for a permanent reason (REJECTED_REASONS): the job fails now and the owner
+ *   gets a notification. A retry would get the same answer.
+ * - `not_sent` for a cap or a limit (RETRYABLE_REASONS): back to pending at `resetAt`,
+ *   after `retryAfterMs`, or (with neither) a normal failed attempt with backoff.
+ * - any other `not_sent` (for example `network`, `provider_error`, or `store_error`): null,
+ *   so the job retries with the backoff and the attempt limit of runJob.
  * - every provider at its cap before the send: back to pending after CAPACITY_RECHECK_MS.
  */
 export function emailJobOutcome(err: unknown, now: number): JobOutcome | null {
   if (err instanceof EmailSendError) {
     const { result } = err;
-    const detail = `${result.provider ?? "email"} ${result.status}/${result.reason}: ${result.message}`;
     if (result.status === "unknown") return { review: reviewDetail(result) };
+    if (REJECTED_REASONS.has(result.reason)) {
+      const detail = `${result.provider ?? "email"} ${result.status}/${result.reason}: ${result.message}`;
+      return { fail: { message: detail } };
+    }
     if (RETRYABLE_REASONS.has(result.reason)) {
       if (result.resetAt !== undefined) {
         return { defer: { runAfter: Math.max(now, result.resetAt), reason: result.reason } };
@@ -248,9 +273,8 @@ export function emailJobOutcome(err: unknown, now: number): JobOutcome | null {
       if (result.retryAfterMs !== undefined) {
         return { defer: { runAfter: now + result.retryAfterMs, reason: result.reason } };
       }
-      return null;
     }
-    return { fail: { message: detail } };
+    return null;
   }
   if (err instanceof AppError && err.code === "daily_email_limit") {
     return { defer: { runAfter: now + CAPACITY_RECHECK_MS, reason: "daily_email_limit" } };
@@ -419,6 +443,9 @@ function emailInput(
  * document stays `finalized` with its number, an activity `send_failed` is written, and an
  * AppError is thrown: 503 pdf_pending, 502 pdf_render_failed, or an EmailSendError (422
  * email_rejected, 429 daily_email_limit, 502 email_send_failed, 502 email_needs_review).
+ * A manual send whose key mailswitch refused throws 409 email_send_in_progress (another
+ * request sends it now) or 409 email_review_pending (an earlier unclear send of this
+ * document still needs review). Those two write no email_log row, job, or notification.
  * Without a provider it throws 422 email_not_configured, and when every provider is at its
  * daily cap it throws 429 daily_email_limit, both before any number is used.
  *
@@ -501,6 +528,7 @@ export async function sendDocument(
 
   const revision = known ?? (await getRevision(db, revisionId));
   const content = documentEmail(emailInput(env, current, revision.snapshot, ws, opts));
+  const manual = !opts.idempotencyKey;
   const key = opts.idempotencyKey ?? (await manualSendKey(db, documentId));
   // getPdf returns the R2 object of the revision (or the bytes it just stored there), so a
   // retry with the same key sends the same bytes.
@@ -519,9 +547,29 @@ export async function sendDocument(
       attachments: [{ filename: pdf.filename, content: pdf.bytes }],
       idempotencyKey: key,
     },
-    { now: opts.now, workspace: ws, providers },
+    {
+      now: opts.now,
+      workspace: ws,
+      providers,
+      // A refused key is not a send attempt, so a manual send logs nothing for it.
+      ...(manual ? { logResult: (r: SendResult) => !isKeyRefusal(r) } : {}),
+    },
   );
-  if (result.status === "unknown" && !opts.idempotencyKey) {
+  if (manual && result.status === "unknown" && result.reason === "in_flight") {
+    throw new AppError(
+      409,
+      "email_send_in_progress",
+      "This document is being sent now. Wait a moment, then reload the page to see the result.",
+    );
+  }
+  if (manual && result.status === "unknown" && result.reason === "idempotency_conflict") {
+    throw new AppError(
+      409,
+      "email_review_pending",
+      "An earlier send of this document still needs review. Mark it as sent or send it again from the review notice first.",
+    );
+  }
+  if (manual && result.status === "unknown") {
     // A manual send has no job yet. Make one, so the Owner can resolve it.
     await holdForReview(db, result, {
       documentId,
@@ -560,8 +608,10 @@ export interface ManualSendJobPayload {
 /**
  * Creates the needs_review `document_send` job of a manual send that ended `unknown`, and
  * notifies the Owner. The job key is `review:<send key>`, so a second unclear click on the
- * same send reuses the row and adds no second notification. A row that a "Send again"
- * queued (pending or running) is left alone.
+ * same send adds no second row or notification. A needs_review row keeps the payload and
+ * the error of the first unclear send. A row that a "Send again" queued (pending or
+ * running) is left alone. Only a finished row (for example a failed "Send again") gets
+ * the new values.
  */
 async function holdForReview(
   db: Db,
@@ -574,7 +624,13 @@ async function holdForReview(
     .select({ status: jobs.status })
     .from(jobs)
     .where(eq(jobs.idempotencyKey, jobKey));
-  if (existing?.status === "pending" || existing?.status === "running") return;
+  if (
+    existing?.status === "pending" ||
+    existing?.status === "running" ||
+    existing?.status === "needs_review"
+  ) {
+    return;
+  }
   const detail = reviewDetail(result);
   const lastError = reviewError(detail);
   const upsert = db
@@ -603,12 +659,9 @@ async function holdForReview(
         leaseUntil: null,
         updatedAt: now,
       },
-      setWhere: notInArray(jobs.status, ["pending", "running"]),
+      // Keeps the first row when a parallel request wrote it after the read above.
+      setWhere: notInArray(jobs.status, ["pending", "running", "needs_review"]),
     });
-  if (existing?.status === "needs_review") {
-    await upsert;
-    return;
-  }
   await db.batch([upsert, reviewNotification(db, { documentId: payload.documentId, detail, now })]);
 }
 
@@ -722,8 +775,12 @@ export async function markSentManually(
 // Owners
 // ---------------------------------------------------------------------------
 
+/** The emails of the active Owners. An invited Owner has not joined, so gets no notices. */
 export async function ownerEmails(db: Db): Promise<string[]> {
-  const rows = await db.select({ email: users.email }).from(users).where(eq(users.role, "owner"));
+  const rows = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(and(eq(users.role, "owner"), eq(users.status, "active")));
   return rows.map((r) => r.email);
 }
 
@@ -750,8 +807,8 @@ export interface SendEmailJobPayload {
 }
 
 /**
- * The outcome of a job that sent one plain email. A retryable `not_sent` with no wait time
- * throws, so the job retries with backoff and then fails.
+ * The outcome of a job that sent one plain email. A `not_sent` that is not permanent and
+ * has no wait time throws, so the job retries with backoff and then fails.
  */
 export function sendJobOutcome(result: SendResult, now: number): JobOutcome {
   if (result.status === "sent") return undefined;
@@ -888,9 +945,12 @@ export function registerEmailJobHandlers(): void {
 
       const ids = payload.recipientUserIds;
       const recipients = ids.length
-        ? (await db.select({ email: users.email }).from(users).where(inArray(users.id, ids))).map(
-            (r) => r.email,
-          )
+        ? (
+            await db
+              .select({ email: users.email })
+              .from(users)
+              .where(and(inArray(users.id, ids), eq(users.status, "active")))
+          ).map((r) => r.email)
         : await ownerEmails(db);
       if (recipients.length === 0) return undefined;
       const { result } = await deliverEmail(

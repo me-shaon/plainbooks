@@ -24,6 +24,12 @@ const RETRYABLE = new Set([
   "email_send_failed",
 ]);
 
+/**
+ * Errors where the key of this send is busy: another request sends the document now, or an
+ * earlier unclear send still needs review. A second click cannot help, so Send is hidden.
+ */
+const KEY_BUSY = new Set(["email_send_in_progress", "email_review_pending"]);
+
 type Phase =
   | { name: "idle" }
   | { name: "sending"; step: number }
@@ -188,7 +194,8 @@ function SendDialogBody({
           </Button>
           {phase.name === "error" && RETRYABLE.has(phase.code ?? "") ? (
             <Button onPress={() => void doSend()}>Retry</Button>
-          ) : phase.name === "error" && phase.status === 429 ? null : (
+          ) : phase.name === "error" &&
+            (phase.status === 429 || KEY_BUSY.has(phase.code ?? "")) ? null : (
             <Button
               isPending={busy}
               isDisabled={!data || (blocked && willEmail)}
@@ -334,7 +341,11 @@ function SendError({ phase, kind }: { phase: Extract<Phase, { name: "error" }>; 
         ? "The PDF could not be created"
         : phase.code === "email_rejected" || phase.code === "email_send_failed"
           ? "The email provider did not accept the email"
-          : "The send failed";
+          : phase.code === "email_send_in_progress"
+            ? "This document is being sent now"
+            : phase.code === "email_review_pending"
+              ? "An earlier send needs review"
+              : "The send failed";
   return (
     <Notice tone="danger">
       <strong className="font-medium">{title}</strong>
@@ -343,6 +354,13 @@ function SendError({ phase, kind }: { phase: Extract<Phase, { name: "error" }>; 
         <span>
           The {kind} keeps its number and stays Ready to send. Nothing was emailed. Retry when you
           are ready.
+        </span>
+      ) : phase.code === "email_send_in_progress" ? (
+        <span>Do not send it again. Close this dialog and reload the page to see the result.</span>
+      ) : phase.code === "email_review_pending" ? (
+        <span>
+          The earlier email may have gone out. Open the Needs review notice on this {kind}, then
+          mark it as sent or send it again.
         </span>
       ) : phase.code === "fx_rate_required" ? (
         <span>Edit the {kind} and enter a manual exchange rate, then send again.</span>

@@ -240,6 +240,8 @@ describe("GET /p/:token", () => {
 
 describe("POST /p/:token/decision", () => {
   it("AE6: accepting a sent quote records the decision and queues a notification", async () => {
+    // An Owner who has not joined yet is not a recipient.
+    await seedUser("invited-owner@studio.test", "owner", { status: "invited" });
     const quote = await sentQuote();
     const page = await (await visit(`/p/${quote.token}`)).text();
     expect(page).toContain('value="accept"');
