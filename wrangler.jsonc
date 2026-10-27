@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
-  // The Worker runs only on its custom domain. Access needs a custom domain (docs/setup.md).
+  // The Worker runs only on its custom domain, so APP_URL and the sign-in cookies match one host.
   // No routes here: `pnpm run ship` adds your host, or you add it in the dashboard.
   "observability": { "enabled": true },
   "assets": {
@@ -33,9 +33,11 @@
     "bindings": [{ "name": "AUTH_RATE_LIMITER", "class_name": "AuthRateLimiter" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AuthRateLimiter"] }],
-  // Secrets (set with `wrangler secret put`): RESEND_API_KEY, RESEND_WEBHOOK_SECRET,
-  // ACCESS_TEAM_DOMAIN, ACCESS_AUD, OWNER_EMAIL, APP_URL. They are secrets, not vars, so a
-  // deploy keeps them: `wrangler deploy` replaces every var with the values in this file.
+  // Secrets (set with `wrangler secret put` or `pnpm run ship`): SETUP_TOKEN, AUTH_SECRET,
+  // ENCRYPTION_KEY, APP_URL, and the optional GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+  // They are secrets, not vars, so a deploy keeps them: `wrangler deploy` replaces every var
+  // with the values in this file. Email provider keys are saved in Settings, not here.
+  // Optional var: PBKDF2_ITERATIONS (default 100000, the Workers maximum).
   "vars": {
     "APP_ENV": "production"
   }

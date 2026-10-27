@@ -33,7 +33,7 @@ export type Bindings = Env & {
    * A sign-in rehashes a password that uses another count.
    */
   PBKDF2_ITERATIONS?: string;
-  /** Local development only. "1" swaps Resend, Frankfurter, and Browser Run for fakes. */
+  /** Local development only. "1" swaps the email provider, Frankfurter, and Browser Run for fakes. */
   FAKE_EXTERNALS?: string;
 };
 

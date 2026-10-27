@@ -10,23 +10,23 @@
   },
   "cloudflare": {
     "bindings": {
-      "RESEND_API_KEY": {
-        "description": "Resend API key with **Sending access**. Use a placeholder now and change it later. See [the setup guide](https://github.com/me-shaon/plainbooks/blob/main/docs/setup.md#10-set-up-resend)."
+      "SETUP_TOKEN": {
+        "description": "Opens the setup screen at `/setup`, where you create the first Owner. Use 32 random characters or more. To make one, run `openssl rand -base64 32`. Keep it for the setup screen. See [the setup guide](https://github.com/me-shaon/plainbooks/blob/main/docs/setup.md)."
       },
-      "RESEND_WEBHOOK_SECRET": {
-        "description": "Signing secret of the Resend webhook. It starts with `whsec_`. Use a placeholder now and change it later."
+      "AUTH_SECRET": {
+        "description": "Signs the sign-in sessions. Use 32 random characters or more. To make one, run `openssl rand -base64 32`. A new value later signs everyone out."
       },
-      "ACCESS_TEAM_DOMAIN": {
-        "description": "Your Zero Trust team domain, for example `your-team.cloudflareaccess.com`. Use a placeholder now and change it later."
-      },
-      "ACCESS_AUD": {
-        "description": "The **Application Audience (AUD) Tag** of the Access application for the whole app. Use a placeholder now and change it later."
-      },
-      "OWNER_EMAIL": {
-        "description": "Email of the first Owner, in lowercase."
+      "ENCRYPTION_KEY": {
+        "description": "Encrypts the email provider keys that you save in Settings. Use 32 random bytes as base64. To make one, run `openssl rand -base64 32`. A new value later means you must enter the provider keys again."
       },
       "APP_URL": {
         "description": "Public origin of the app, for example `https://invoices.example.com`. No trailing slash."
+      },
+      "GOOGLE_CLIENT_ID": {
+        "description": "Optional. The client ID of your Google OAuth client. Google sign-in shows only when this value and `GOOGLE_CLIENT_SECRET` are set. See [the setup guide](https://github.com/me-shaon/plainbooks/blob/main/docs/setup.md#7-optional-turn-on-google-sign-in)."
+      },
+      "GOOGLE_CLIENT_SECRET": {
+        "description": "Optional. The client secret of your Google OAuth client."
       },
       "APP_ENV": {
         "description": "Keep `production`."

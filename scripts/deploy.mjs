@@ -2,36 +2,30 @@
 /**
  * `pnpm run ship`: deploys PlainBooks from this machine in one command.
  *
- * The first run asks for your host and Access values, then creates the D1 database and the
- * R2 bucket. It saves the answers in `.deploy.env` and writes `wrangler.production.jsonc`.
- * Both files are git-ignored, so the tracked `wrangler.jsonc` stays a template.
- * Each run then builds, applies the remote D1 migrations, deploys, and sets OWNER_EMAIL,
- * APP_URL, and the Access values as Worker secrets. They are secrets, not vars, so a later
+ * The first run asks for your host, then creates the D1 database and the R2 bucket. It saves
+ * the answers in `.deploy.env` and writes `wrangler.production.jsonc`. Both files are
+ * git-ignored, so the tracked `wrangler.jsonc` stays a template.
+ * Each run then builds, applies the remote D1 migrations, deploys, and sets APP_URL as a
+ * Worker secret. When SETUP_TOKEN, AUTH_SECRET, or ENCRYPTION_KEY is not set, the script
+ * makes a random value and sets it. It never replaces a secret that exists. It prints a new
+ * setup token once, with the /setup URL, and records SETUP_TOKEN_ISSUED=1 in `.deploy.env`.
+ * After that, it does not make a new setup token, so you can delete the secret after setup. These values are secrets, not vars, so a later
  * deploy from another machine or from Git does not reset them.
  *
  * Values in the environment win over `.deploy.env`. Set them to run without prompts in CI.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 
 const SETTINGS_FILE = ".deploy.env";
 const PROD_CONFIG = "wrangler.production.jsonc";
-const SECRETS = ["RESEND_API_KEY", "RESEND_WEBHOOK_SECRET"];
+/** Secrets that the script makes when they are missing: 32 random bytes as base64. */
+const GENERATED_SECRETS = ["SETUP_TOKEN", "AUTH_SECRET", "ENCRYPTION_KEY"];
 
 const PROMPTS = [
   { key: "APP_HOST", question: "Host for the app, for example invoices.example.com" },
-  { key: "OWNER_EMAIL", question: "Email of the first Owner" },
-  {
-    key: "ACCESS_TEAM_DOMAIN",
-    question: "Zero Trust team domain (empty to skip until docs/setup.md step 3)",
-    optional: true,
-  },
-  {
-    key: "ACCESS_AUD",
-    question: "Access application AUD tag (empty to skip until docs/setup.md step 4)",
-    optional: true,
-  },
 ];
 
 function fail(message) {
@@ -127,17 +121,9 @@ async function askMissing(settings) {
       answer = (await rl.question(`${prompt.question}: `)).trim();
       if (prompt.optional) break;
     }
-    settings[prompt.key] = prompt.key === "OWNER_EMAIL" ? answer.toLowerCase() : answer;
+    settings[prompt.key] = answer;
   }
   rl.close();
-}
-
-async function confirm(question) {
-  if (!process.stdin.isTTY) return false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = (await rl.question(`${question} [Y/n] `)).trim().toLowerCase();
-  rl.close();
-  return answer === "" || answer === "y" || answer === "yes";
 }
 
 function ensureLogin() {
@@ -184,31 +170,34 @@ function writeProductionConfig(template, settings) {
   );
 }
 
-/** Sets the values from `.deploy.env` as Worker secrets. Skips empty Access values. */
-function syncConfigSecrets(settings) {
-  const values = {
-    OWNER_EMAIL: settings.OWNER_EMAIL,
-    APP_URL: `https://${settings.APP_HOST}`,
-    ...(settings.ACCESS_TEAM_DOMAIN && { ACCESS_TEAM_DOMAIN: settings.ACCESS_TEAM_DOMAIN }),
-    ...(settings.ACCESS_AUD && { ACCESS_AUD: settings.ACCESS_AUD }),
-  };
+/** The names of the Worker secrets that exist. Stops the script when it cannot read them. */
+function existingSecrets() {
+  const list = wrangler(["secret", "list", "--format", "json", "-c", PROD_CONFIG]);
+  if (list === null) fail("Could not list the Worker secrets. No secret was changed.");
+  return new Set(JSON.parse(list).map((secret) => secret.name));
+}
+
+/**
+ * Sets APP_URL, and a random value for each generated secret that is missing. Returns the
+ * names of the secrets that it made and the new setup token, if it made one.
+ */
+function syncSecrets(settings) {
+  const existing = existingSecrets();
+  const values = { APP_URL: `https://${settings.APP_HOST}` };
+  const created = [];
+  for (const name of GENERATED_SECRETS) {
+    if (existing.has(name)) continue;
+    // A deleted setup token stays deleted. For Owner recovery, set a new one by hand.
+    if (name === "SETUP_TOKEN" && settings.SETUP_TOKEN_ISSUED === "1") continue;
+    values[name] = randomBytes(32).toString("base64");
+    created.push(name);
+  }
   const result = spawnSync("pnpm", ["exec", "wrangler", "secret", "bulk", "-c", PROD_CONFIG], {
     input: JSON.stringify(values),
     stdio: ["pipe", "inherit", "inherit"],
   });
   if (result.status !== 0) fail("Could not set the Worker secrets.");
-}
-
-async function ensureSecrets() {
-  const list = wrangler(["secret", "list", "--format", "json", "-c", PROD_CONFIG]);
-  const existing = new Set(list ? JSON.parse(list).map((secret) => secret.name) : []);
-  for (const name of SECRETS.filter((secret) => !existing.has(secret))) {
-    if (await confirm(`${name} is not set. Set it now? (A placeholder is fine for now.)`)) {
-      runWrangler(["secret", "put", name, "-c", PROD_CONFIG]);
-    } else {
-      console.log(`  Skipped. Run: pnpm exec wrangler secret put ${name} -c ${PROD_CONFIG}`);
-    }
-  }
+  return { created, setupToken: values.SETUP_TOKEN };
 }
 
 async function main() {
@@ -232,16 +221,20 @@ async function main() {
   step("Deploying the Worker");
   runWrangler(["deploy"]);
 
-  step("Setting OWNER_EMAIL, APP_URL, and the Access values");
-  syncConfigSecrets(settings);
-
-  await ensureSecrets();
+  step("Setting APP_URL and the missing secrets");
+  const { created, setupToken } = syncSecrets(settings);
+  if (created.length) console.log(`  Made and set ${created.join(", ")}.`);
+  if (setupToken) {
+    settings.SETUP_TOKEN_ISSUED = "1";
+    writeSettings(settings);
+  }
 
   console.log(`\n✔ Deployed to https://${settings.APP_HOST}`);
-  if (!settings.ACCESS_TEAM_DOMAIN || !settings.ACCESS_AUD) {
+  if (setupToken) {
     console.log(
-      `  Cloudflare Access is not set up. Every API request gets a 401 error until it is.\n` +
-        `  Follow docs/setup.md steps 3 and 4, add the values to ${SETTINGS_FILE}, and run pnpm run ship again.`,
+      `\n  Setup token (shown once, not saved on this computer):\n\n    ${setupToken}\n\n` +
+        `  Open https://${settings.APP_HOST}/setup and enter it to create the first Owner.\n` +
+        `  After setup, delete the secret: pnpm exec wrangler secret delete SETUP_TOKEN -c ${PROD_CONFIG}`,
     );
   }
 }

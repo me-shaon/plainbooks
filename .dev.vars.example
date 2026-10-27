@@ -1,20 +1,19 @@
-# Secrets. The Deploy to Cloudflare button asks for each value in this file.
-RESEND_API_KEY=re_replace_me
-RESEND_WEBHOOK_SECRET=whsec_replace_me
-# Zero Trust team domain and Access application AUD tag (docs/setup.md steps 3 and 4).
-ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
-ACCESS_AUD=replace-with-access-application-aud
-# Email of the first Owner, in lowercase.
-OWNER_EMAIL=owner@example.com
-# Public origin of the app, with no trailing slash.
+# Secrets. The Deploy to Cloudflare button asks for the same values, except FAKE_EXTERNALS.
+# To make a random value, run:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# Public origin of the app, with no trailing slash. For `pnpm dev`, use the URL that Vite
+# prints, for example http://localhost:5173.
 APP_URL=https://invoices.example.com
-# Local only. `pnpm dev` sets APP_ENV=development. For `pnpm dev`, set APP_URL above to
-# the URL that Vite prints, for example http://localhost:5173.
-# Session signing secret, 32 characters or more.
+# Session signing secret, 32 characters or more. A new value signs everyone out.
 AUTH_SECRET=replace-with-32-or-more-random-characters
-# Encrypts the saved email provider keys. 32 random bytes as base64.
+# Encrypts the saved email provider keys. 32 random bytes as base64. A new value means
+# you must enter the provider keys again in Settings > Email.
 ENCRYPTION_KEY=replace-with-32-random-bytes-as-base64
 # Opens the setup screen that creates the first Owner. 32 characters or more.
 SETUP_TOKEN=replace-with-32-or-more-random-characters
+# Optional. Google sign-in shows only when both values are set.
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+# Local only. `pnpm dev` sets APP_ENV=development.
 # "1" swaps the email provider, Frankfurter, and Browser Run for fakes.
 # FAKE_EXTERNALS=1
