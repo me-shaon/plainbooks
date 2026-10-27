@@ -57,6 +57,17 @@ function entryFactory(env: Bindings): MailerEntryFactory {
   });
 }
 
+/**
+ * The adapter and credentials of one stored or candidate provider. Settings uses it for
+ * `verify()` and test sends, so tests and FAKE_EXTERNALS swap the same adapters as sends.
+ */
+export function mailerEntry(env: Bindings, provider: ReadyEmailProvider): MailerEntry {
+  return entryFactory(env)(provider);
+}
+
+/** `connect` for direct adapter calls, such as an SMTP `verify()` in Settings. */
+export const smtpConnect: SocketConnect = socketConnect;
+
 /** The primary that FAKE_EXTERNALS uses when no provider is saved, so local sends work. */
 const FAKE_PRIMARY: ReadyEmailProvider = {
   role: "primary",

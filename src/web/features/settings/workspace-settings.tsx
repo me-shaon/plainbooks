@@ -262,7 +262,7 @@ export function WorkspaceSettingsForm({
           <TextField
             label="Sender email"
             type="email"
-            description="Use an address on a domain you verified in Resend."
+            description="Use an address on a domain you verified with your email provider."
             isDisabled={disabled}
             value={values.emailFromAddress ?? ""}
             onChange={(text) => set("emailFromAddress", text)}

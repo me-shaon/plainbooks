@@ -24,6 +24,7 @@ import { Route as RecurringIndexRouteImport } from './routes/recurring/index'
 import { Route as RecurringScheduleIdRouteImport } from './routes/recurring/$scheduleId'
 import { Route as ReportsIndexRouteImport } from './routes/reports/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as SettingsEmailRouteImport } from './routes/settings/email'
 import { Route as SettingsRemindersRouteImport } from './routes/settings/reminders'
 import { Route as SettingsTaxRatesRouteImport } from './routes/settings/tax-rates'
 import { Route as SettingsTeamRouteImport } from './routes/settings/team'
@@ -109,6 +110,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
+const SettingsEmailRoute = SettingsEmailRouteImport.update({
+  id: '/email',
+  path: '/email',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
 const SettingsRemindersRoute = SettingsRemindersRouteImport.update({
   id: '/reminders',
   path: '/reminders',
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
+  '/settings/email': typeof SettingsEmailRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
+  '/settings/email': typeof SettingsEmailRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -215,6 +223,7 @@ export interface FileRoutesById {
   '/invoices/new': typeof InvoicesNewRoute
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
+  '/settings/email': typeof SettingsEmailRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -243,6 +252,7 @@ export interface FileRouteTypes {
     | '/invoices/new'
     | '/quotes/new'
     | '/recurring/$scheduleId'
+    | '/settings/email'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -268,6 +278,7 @@ export interface FileRouteTypes {
     | '/invoices/new'
     | '/quotes/new'
     | '/recurring/$scheduleId'
+    | '/settings/email'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -294,6 +305,7 @@ export interface FileRouteTypes {
     | '/invoices/new'
     | '/quotes/new'
     | '/recurring/$scheduleId'
+    | '/settings/email'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -443,6 +455,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
+    '/settings/email': {
+      id: '/settings/email'
+      path: '/email'
+      fullPath: '/settings/email'
+      preLoaderRoute: typeof SettingsEmailRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
     '/settings/reminders': {
       id: '/settings/reminders'
       path: '/reminders'
@@ -510,6 +529,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface SettingsRouteRouteChildren {
+  SettingsEmailRoute: typeof SettingsEmailRoute
   SettingsRemindersRoute: typeof SettingsRemindersRoute
   SettingsTaxRatesRoute: typeof SettingsTaxRatesRoute
   SettingsTeamRoute: typeof SettingsTeamRoute
@@ -517,6 +537,7 @@ interface SettingsRouteRouteChildren {
 }
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
+  SettingsEmailRoute: SettingsEmailRoute,
   SettingsRemindersRoute: SettingsRemindersRoute,
   SettingsTaxRatesRoute: SettingsTaxRatesRoute,
   SettingsTeamRoute: SettingsTeamRoute,

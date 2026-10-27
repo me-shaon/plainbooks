@@ -4,6 +4,7 @@ import { clientRoutes } from "./clients";
 import { customFieldRoutes } from "./custom-fields";
 import { dashboardRoutes, jobRoutes, notificationRoutes } from "./dashboard";
 import { documentRoutes } from "./documents";
+import { emailSettingsRoutes } from "./email-settings";
 import { fxRoutes } from "./fx";
 import { meRoutes } from "./me";
 import { recurringRoutes } from "./recurring";
@@ -35,6 +36,7 @@ export const api = new Hono<AppEnv>()
   .route("/tax-rates", taxRateRoutes)
   .route("/templates", templateRoutes)
   .route("/custom-fields", customFieldRoutes)
+  .route("/settings/email", emailSettingsRoutes)
   .route("/settings", settingsRoutes)
   .route("/team", teamRoutes)
   .route("/webhooks", webhookRoutes);

@@ -297,16 +297,35 @@ function keepSavedSecrets(
   return merged;
 }
 
+/** Input that passed `parseCredentials`, before it is encrypted and saved. */
+export interface CheckedEmailProvider {
+  role: EmailProviderRole;
+  providerId: EmailProviderId;
+  presetId: string | null;
+  /** The parsed keys, with preset values and field defaults applied. */
+  credentials: Readonly<Record<string, string>>;
+  dailyCap: number | null;
+}
+
+export interface SaveEmailProviderOptions {
+  /**
+   * Runs after `parseCredentials` and before the keys are encrypted, for example a live
+   * `verify()`. Throw an AppError to stop the save. `stored` holds both saved roles.
+   */
+  check?: (candidate: CheckedEmailProvider, stored: StoredEmailProviders) => Promise<void>;
+}
+
 /**
  * Checks the input with `parseCredentials`, encrypts the keys, and saves the role. It
- * replaces any provider the role had. The caller runs `verify()` first when it wants a
- * live check. Returns the masked view.
+ * replaces any provider the role had. Pass `options.check` for a live check before the
+ * save. Returns the masked view.
  */
 export async function saveEmailProvider(
   db: Db,
   encryptionKey: string | undefined,
   role: EmailProviderRole,
   input: EmailProviderInput,
+  options: SaveEmailProviderOptions = {},
 ): Promise<EmailProviderView> {
   const ring = requireKeyRing(encryptionKey);
   const meta = emailProviderMeta(input.providerId);
@@ -322,7 +341,8 @@ export async function saveEmailProvider(
     throw new AppError(400, "invalid_daily_cap", "The daily cap must be a whole number above 0");
   }
 
-  const saved = (await loadEmailProviders(db, encryptionKey))[role];
+  const stored = await loadEmailProviders(db, encryptionKey);
+  const saved = stored[role];
   const parsed = parseCredentials(
     meta,
     keepSavedSecrets(meta, input.credentials, saved),
@@ -337,6 +357,17 @@ export async function saveEmailProvider(
       credentialIssues(parsed.errors),
     );
   }
+
+  await options.check?.(
+    {
+      role,
+      providerId: meta.id as EmailProviderId,
+      presetId,
+      credentials: parsed.values,
+      dailyCap,
+    },
+    stored,
+  );
 
   let webhookSecretText = input.webhookSecret?.trim() || null;
   if (input.webhookSecret === undefined) {

@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { UserRole } from "../../../shared/domain";
+import type { EmailProviderRole, UserRole } from "../../../shared/domain";
+import type {
+  EmailProviderInput,
+  EmailProviderView,
+  EmailSettings,
+  TestEmailResult,
+} from "../../../shared/schemas/email-settings";
 import type {
   BrandKit,
   BrandKitInput,
@@ -121,5 +127,61 @@ export function useRemoveMember() {
   return useMutation({
     mutationFn: (id: string) => api<null>(`/team/${id}`, { method: "DELETE" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.team.all }),
+  });
+}
+
+/** The email provider list and the masked settings. Owner only. */
+export function useEmailSettings(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.settings.email,
+    queryFn: () => api<EmailSettings>("/settings/email"),
+    enabled,
+  });
+}
+
+function setEmailRole(
+  current: EmailSettings | undefined,
+  role: EmailProviderRole,
+  view: EmailProviderView | null,
+): EmailSettings | undefined {
+  return current ? { ...current, settings: { ...current.settings, [role]: view } } : current;
+}
+
+/** Checks the keys with the provider, then saves them. Errors come back to the form. */
+export function useSaveEmailProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ role, input }: { role: EmailProviderRole; input: EmailProviderInput }) =>
+      api<EmailProviderView>(`/settings/email/${role}`, {
+        method: "PUT",
+        json: input,
+        toastOnError: false,
+      }),
+    onSuccess: (view, { role }) =>
+      queryClient.setQueryData<EmailSettings>(queryKeys.settings.email, (current) =>
+        setEmailRole(current, role, view),
+      ),
+  });
+}
+
+export function useRemoveEmailFallback() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<null>("/settings/email/fallback", { method: "DELETE" }),
+    onSuccess: () =>
+      queryClient.setQueryData<EmailSettings>(queryKeys.settings.email, (current) =>
+        setEmailRole(current, "fallback", null),
+      ),
+  });
+}
+
+export function useSendTestEmail() {
+  return useMutation({
+    mutationFn: (role: EmailProviderRole) =>
+      api<TestEmailResult>("/settings/email/test", {
+        method: "POST",
+        json: { role },
+        toastOnError: false,
+      }),
   });
 }

@@ -13,6 +13,7 @@ import { smtp } from "mailswitch/smtp";
 import { smtp2go } from "mailswitch/smtp2go";
 import { tosend } from "mailswitch/tosend";
 import { zeptomail } from "mailswitch/zeptomail";
+import type { EmailProviderOption, WebhookSecretField } from "../../shared/schemas/email-settings";
 
 /**
  * The providers the Owner can pick in Settings, in the mailswitch catalog order. It is the
@@ -113,4 +114,76 @@ export function defaultDailyCap(id: string, presetId?: string | null): number | 
   const preset = presetId ? emailProviderMeta(id)?.presets?.find((p) => p.id === presetId) : null;
   if (preset?.defaultDailyCap !== undefined) return preset.defaultDailyCap;
   return isEmailProviderId(id) ? (DEFAULT_DAILY_CAPS[id] ?? null) : null;
+}
+
+/**
+ * How Settings asks for the webhook secret of each provider with webhooks. mailswitch
+ * 0.2.0 meta has `webhooks: true` but no field description, so the app keeps these labels.
+ * A provider with webhooks and no entry here gets the generic label.
+ */
+export const WEBHOOK_SECRET_FIELDS: Readonly<Partial<Record<EmailProviderId, WebhookSecretField>>> =
+  {
+    resend: {
+      label: "Signing secret",
+      hint: "Copy it from the webhook in Resend. It starts with whsec_.",
+      placeholder: "whsec_...",
+    },
+    tosend: {
+      label: "Webhook signing secret",
+      hint: "Copy it from the webhook in toSend.",
+    },
+    mailgun: {
+      label: "HTTP webhook signing key",
+      hint: "Copy it from the Webhooks page in Mailgun.",
+    },
+    postmark: {
+      label: "Webhook password",
+      hint: "Make a random value of at least 22 characters. Give it to Postmark as the Basic auth password of the webhook.",
+    },
+    brevo: {
+      label: "Webhook token",
+      hint: "Make a random value of at least 22 characters. Give it to Brevo as the bearer token of the webhook.",
+    },
+    mailersend: {
+      label: "Signing secret",
+      hint: "Copy it from the webhook in MailerSend.",
+    },
+    mailjet: {
+      label: "Webhook password",
+      hint: "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password.",
+    },
+    smtp2go: {
+      label: "Webhook secret",
+      hint: "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook.",
+    },
+    sendgrid: {
+      label: "Verification key",
+      hint: "The public key of the signed Event Webhook in SendGrid.",
+    },
+    ses: {
+      label: "SNS topic ARNs",
+      hint: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused.",
+      placeholder: "arn:aws:sns:us-east-1:123456789012:ses-events",
+    },
+  };
+
+const GENERIC_WEBHOOK_SECRET: WebhookSecretField = {
+  label: "Webhook secret",
+  hint: "The secret that signs the webhook requests of this provider.",
+};
+
+/** The provider list that Settings shows, from the catalog plus the app's own tables. */
+export function emailProviderOptions(): EmailProviderOption[] {
+  return emailProviderCatalog().map((meta) => {
+    const id = meta.id as EmailProviderId;
+    return {
+      id,
+      name: meta.name,
+      docsUrl: meta.docsUrl,
+      credentialFields: meta.credentialFields.map((field) => ({ ...field })),
+      presets: (meta.presets ?? []).map((preset) => ({ ...preset })),
+      webhookSecret: meta.webhooks ? (WEBHOOK_SECRET_FIELDS[id] ?? GENERIC_WEBHOOK_SECRET) : null,
+      defaultDailyCap: DEFAULT_DAILY_CAPS[id] ?? null,
+    };
+  });
 }
