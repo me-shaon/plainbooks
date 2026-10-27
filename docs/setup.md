@@ -1,5 +1,7 @@
 # Setup guide: first deploy
 
+> **The first public release is in progress.** This guide describes the current development version, which uses Cloudflare Access and Resend. The release version moves sign-in into the app and lets you choose an email provider. This guide changes when that work ships.
+
 This guide sets up the app on a new Cloudflare account. It uses the Workers Free plan, the Zero Trust Free plan, and the Resend free plan.
 
 In this guide, `invoices.example.com` is the host for the app and `example.com` is your domain. Replace both with your own values.

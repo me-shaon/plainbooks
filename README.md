@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/me-shaon/plainbooks)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 PlainBooks is a private invoicing app for one agency or freelancer. You send quotes and invoices, record payments, and see what clients owe you. It runs as one Cloudflare Worker on the free plans of Cloudflare and Resend. You do not need a server, a container, or a paid database.
 
@@ -14,7 +14,7 @@ PlainBooks is a private invoicing app for one agency or freelancer. You send quo
 ## Why PlainBooks
 
 - **It costs nothing to run.** The Workers Free plan, the Zero Trust Free plan, and the Resend free plan cover a small agency. The expected use is fewer than 100 invoices per month and fewer than 10 users.
-- **You deploy it in one step.** Select the **Deploy to Cloudflare** button, or run `pnpm run ship`. The first deploy creates the database and the file bucket for you.
+- **You deploy it in one step.** Run `pnpm run ship`. The first deploy creates the database and the file bucket for you.
 - **There is little to manage.** The app has one Worker, one D1 database, one R2 bucket, and one cron trigger. There are no servers to patch and no background workers to watch.
 - **Your data stays in your account.** Clients, documents, and PDFs are in your own Cloudflare account. You can export the database to a SQL file with one command.
 - **Clients need no account.** A client opens a quote or an invoice through a private link. They can accept or decline a quote on that page.
@@ -108,12 +108,9 @@ Local email, exchange rates, and PDFs call the real services. Put a real Resend 
 
 ## Deploy
 
-You can deploy in two ways:
+> **The first public release is in progress.** Sign-in is moving into the app, and email is moving to any provider you choose. The Deploy to Cloudflare button comes back when that work ships. Until then, the steps below describe the current development version.
 
-- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for your owner email, app URL, Access values, and Resend keys, and stores them as Worker secrets. To change one later, edit it in the dashboard, not in `wrangler.jsonc`. Each push to your copy deploys again and keeps the secrets.
-- **The script.** Run `pnpm run ship` on your computer. The first run asks for your host and owner email, creates the D1 database and the R2 bucket, and deploys. Later runs only build, migrate, and deploy.
-
-Both ways need Cloudflare Access and Resend set up by hand. Read [docs/setup.md](docs/setup.md) for each step.
+Run `pnpm run ship` on your computer. The first run asks for your host and owner email, creates the D1 database and the R2 bucket, and deploys. Later runs only build, migrate, and deploy. Read [docs/setup.md](docs/setup.md) for each step.
 
 On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command for the button's copy, where Cloudflare fills in the real database ID. On your computer it fails, because `wrangler.jsonc` has a placeholder database ID. Do not use `pnpm deploy`. It is a built-in pnpm command and does not run either script.
 
