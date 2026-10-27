@@ -24,6 +24,8 @@ export default defineConfig(async () => {
                   ACCESS_AUD: "replace-with-access-application-aud",
                   OWNER_EMAIL: "owner@example.com",
                   APP_URL: "https://invoices.example.com",
+                  // 32 bytes as base64. Tests that change the key pass their own value.
+                  ENCRYPTION_KEY: btoa("test-encryption-key-0123456789ab"),
                 },
                 assets: {
                   directory: fileURLToPath(new URL("./test/fixtures/assets", import.meta.url)),

@@ -8,5 +8,6 @@ declare namespace Cloudflare {
     ACCESS_AUD: string;
     OWNER_EMAIL: string;
     APP_URL: string;
+    ENCRYPTION_KEY: string;
   }
 }

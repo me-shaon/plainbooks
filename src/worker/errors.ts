@@ -13,6 +13,8 @@ export class AppError extends Error {
     readonly status: ContentfulStatusCode,
     readonly code: string,
     message: string,
+    /** Field problems, sent as `issues` like a validation error. */
+    readonly issues?: ErrorBody["issues"],
   ) {
     super(message);
     this.name = "AppError";
@@ -28,7 +30,9 @@ export interface ErrorBody {
 /** Hono `onError` handler. Known errors become 4xx JSON. Others become a generic 500. */
 export function handleError(err: Error, c: Context): Response {
   if (err instanceof AppError) {
-    return c.json<ErrorBody>({ error: err.message, code: err.code }, err.status);
+    const body: ErrorBody = { error: err.message, code: err.code };
+    if (err.issues) body.issues = err.issues;
+    return c.json<ErrorBody>(body, err.status);
   }
   if (err instanceof ZodError) {
     const issues = err.issues.map((issue) => ({

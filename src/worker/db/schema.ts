@@ -24,6 +24,7 @@ import {
   DOCUMENT_KINDS,
   DOCUMENT_STATUSES,
   EMAIL_KINDS,
+  EMAIL_PROVIDER_ROLES,
   EMAIL_STATUSES,
   FX_PROVIDERS,
   INVOICE_STATUSES,
@@ -529,7 +530,12 @@ export const emailLog = sqliteTable(
     recipients: text("recipients", { mode: "json" }).$type<string[]>().notNull(),
     subject: text("subject").notNull(),
     status: text("status", { enum: EMAIL_STATUSES }).notNull(),
+    /** The provider message ID. */
     providerId: text("provider_id"),
+    /** The mailswitch catalog ID of the provider that sent it, for example "tosend". */
+    emailProvider: text("email_provider"),
+    /** The key the send was claimed under, for example "job:<id>". */
+    idempotencyKey: text("idempotency_key"),
     error: text("error"),
     createdAt: createdAt(),
   },
@@ -537,6 +543,34 @@ export const emailLog = sqliteTable(
     index("email_log_day_idx").on(t.day, t.status),
     index("email_log_document_idx").on(t.documentId, t.kind, t.createdAt),
     index("email_log_provider_idx").on(t.providerId),
+  ],
+);
+
+/**
+ * The email provider settings: at most one primary and one fallback. `credentials` and
+ * `webhook_secret` hold `mailswitch/crypto` envelopes (src/worker/email/settings.ts).
+ * The mailswitch store tables (`mailswitch_*`) come from the package SQL in migration
+ * 0004 and are not part of this schema.
+ */
+export const emailProviders = sqliteTable(
+  "email_providers",
+  {
+    role: text("role", { enum: EMAIL_PROVIDER_ROLES }).primaryKey(),
+    /** A mailswitch catalog ID, for example "tosend" or "smtp". */
+    providerId: text("provider_id").notNull(),
+    /** A preset ID of the provider meta, for example "gmail" for SMTP. */
+    presetId: text("preset_id"),
+    /** The encrypted JSON of the parsed credentials. */
+    credentials: text("credentials").notNull(),
+    /** The encrypted webhook signing secret. */
+    webhookSecret: text("webhook_secret"),
+    /** Null means the default cap of the provider or preset. */
+    dailyCap: integer("daily_cap"),
+    updatedAt: updatedAt(),
+  },
+  () => [
+    check("email_providers_role", sql`role in (${inList(EMAIL_PROVIDER_ROLES)})`),
+    check("email_providers_daily_cap", sql`daily_cap is null or daily_cap > 0`),
   ],
 );
 
@@ -634,6 +668,8 @@ export type NewJob = typeof jobs.$inferInsert;
 export type Counter = typeof counters.$inferSelect;
 export type EmailLogEntry = typeof emailLog.$inferSelect;
 export type NewEmailLogEntry = typeof emailLog.$inferInsert;
+export type EmailProviderRow = typeof emailProviders.$inferSelect;
+export type NewEmailProviderRow = typeof emailProviders.$inferInsert;
 export type Activity = typeof activity.$inferSelect;
 export type NewActivity = typeof activity.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;

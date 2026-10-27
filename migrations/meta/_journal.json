@@ -29,6 +29,13 @@
       "when": 1792822438634,
       "tag": "0003_query_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793089024215,
+      "tag": "0004_mailswitch",
+      "breakpoints": true
     }
   ]
 }

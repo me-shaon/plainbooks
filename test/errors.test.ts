@@ -12,6 +12,11 @@ app.onError(handleError);
 app.get("/app-error", () => {
   throw new AppError(409, "conflict", "Already done");
 });
+app.get("/app-error-issues", () => {
+  throw new AppError(400, "invalid_credentials", "Check apiKey", [
+    { path: "apiKey", message: "required" },
+  ]);
+});
 app.get("/money", () => {
   throw new MoneyError("Unknown currency: XYZ");
 });
@@ -28,6 +33,11 @@ describe("JSON error handler", () => {
     expect(await (await app.request("/app-error")).json()).toEqual({
       error: "Already done",
       code: "conflict",
+    });
+    expect(await (await app.request("/app-error-issues")).json()).toEqual({
+      error: "Check apiKey",
+      code: "invalid_credentials",
+      issues: [{ path: "apiKey", message: "required" }],
     });
     const money = await app.request("/money");
     expect(money.status).toBe(400);

@@ -20,6 +20,11 @@ export type Bindings = Env & {
   OWNER_EMAIL?: string;
   /** Secret. The public origin of the app: "https://invoices.example.com". */
   APP_URL?: string;
+  /**
+   * Secret. At least 32 random bytes as base64 text. It encrypts the email provider keys
+   * in D1. A new value means the Owner must enter the provider keys again.
+   */
+  ENCRYPTION_KEY?: string;
   /** Local development only. "1" swaps Resend, Frankfurter, and Browser Run for fakes. */
   FAKE_EXTERNALS?: string;
 };

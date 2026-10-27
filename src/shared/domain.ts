@@ -108,6 +108,10 @@ export type EmailKind = (typeof EMAIL_KINDS)[number];
 export const EMAIL_STATUSES = ["sent", "failed", "bounced", "complained"] as const;
 export type EmailStatus = (typeof EMAIL_STATUSES)[number];
 
+/** The primary provider sends first. The fallback sends only after a `not_sent` result. */
+export const EMAIL_PROVIDER_ROLES = ["primary", "fallback"] as const;
+export type EmailProviderRole = (typeof EMAIL_PROVIDER_ROLES)[number];
+
 export const TRIGGERS = ["manual", "auto"] as const;
 export type Trigger = (typeof TRIGGERS)[number];
 
