@@ -1,6 +1,14 @@
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { createDb, schema } from "../db/client";
+import { type Context, Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { NormalizedEvent } from "mailswitch";
+import { snsConfirmAction } from "mailswitch/ses";
+import { D1DedupeStore } from "mailswitch/stores/d1";
+import { handleWebhook, type WebhookOutcome } from "mailswitch/webhooks";
+import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domain";
+import { createRequestDb, type Db, schema } from "../db/client";
+import { createAdapter } from "../email/catalog";
+import { loadEmailProvider, type ReadyEmailProvider } from "../email/settings";
 import { bounceEmail } from "../email/templates";
 import type { AppEnv } from "../env";
 import { guardedActivity } from "../services/activity";
@@ -13,130 +21,128 @@ import {
 } from "../services/email";
 import { enqueueStatement, runJobSoon } from "../services/jobs";
 
-/** Svix rejects messages whose timestamp is more than 5 minutes from now. */
-export const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
+/**
+ * The largest webhook body, in bytes. One provider event is a few KB. A larger body is
+ * refused before the webhook secret is read or decrypted.
+ */
+export const WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
 
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+/** How long the GET of an SNS `SubscribeURL` may take. */
+const SUBSCRIBE_TIMEOUT_MS = 10_000;
+
+/** Reads the body up to `max` bytes. Returns null when the body is larger. */
+async function readCappedBody(request: Request, max: number): Promise<Uint8Array | null> {
+  const length = request.headers.get("content-length");
+  if (length !== null && /^\d+$/.test(length.trim()) && Number(length) > max) return null;
+  if (request.body === null) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
-function bytesToBase64(bytes: ArrayBuffer): string {
-  let binary = "";
-  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-export interface SvixHeaders {
-  id: string | undefined;
-  timestamp: string | undefined;
-  signature: string | undefined;
+function isRole(value: string): value is EmailProviderRole {
+  return (EMAIL_PROVIDER_ROLES as readonly string[]).includes(value);
 }
 
 /**
- * Verifies a Svix signature (used by Resend webhooks): HMAC-SHA256 over
- * "<svix-id>.<svix-timestamp>.<raw body>" with the base64 key after "whsec_". The header
- * holds space-separated "v1,<base64>" entries; any match is valid.
+ * The one answer for every request that the app cannot authenticate: an unknown or
+ * unconfigured role, a role with no webhook secret, and a bad or stale signature. The
+ * same answer does not tell a caller which roles are set up.
  */
-export async function verifySvixSignature(
-  secret: string,
-  headers: SvixHeaders,
-  body: string,
-  nowMs: number,
-): Promise<boolean> {
-  const { id, timestamp, signature } = headers;
-  if (!id || !timestamp || !signature || !/^\d+$/.test(timestamp)) return false;
-  if (Math.abs(nowMs / 1000 - Number(timestamp)) > WEBHOOK_TOLERANCE_SECONDS) return false;
-  let keyBytes: Uint8Array;
-  try {
-    keyBytes = base64ToBytes(secret.startsWith("whsec_") ? secret.slice(6) : secret);
-  } catch {
-    return false;
+function unauthorized(c: Context<AppEnv>) {
+  return c.json({ error: "Invalid signature", code: "invalid_signature" }, 401);
+}
+
+/** The bounces or complaints of one message in one request. */
+interface EventGroup {
+  kind: "bounced" | "complained";
+  messageId: string;
+  /** The key of the first event. The job guard uses it, so a replay writes nothing. */
+  eventKey: string;
+  recipients: Set<string>;
+  bounce: "hard" | "soft" | null;
+}
+
+/** Groups the bounces and complaints by message, so one SES bounce of 3 recipients is one notice. */
+function groupEvents(events: readonly NormalizedEvent[]): EventGroup[] {
+  const groups = new Map<string, EventGroup>();
+  for (const event of events) {
+    if (event.type !== "bounced" && event.type !== "complained") continue;
+    // Without a message ID the app cannot find the email. Today's handler ignored these too.
+    const messageId = event.providerMessageId;
+    if (!messageId) continue;
+    const id = `${event.type}:${messageId}`;
+    let group = groups.get(id);
+    if (!group) {
+      group = {
+        kind: event.type,
+        messageId,
+        eventKey: event.eventKey,
+        recipients: new Set(),
+        bounce: null,
+      };
+      groups.set(id, group);
+    }
+    if (event.recipient) group.recipients.add(event.recipient);
+    if (event.bounce === "hard" || (event.bounce === "soft" && group.bounce === null)) {
+      group.bounce = event.bounce;
+    }
   }
-  const key = await crypto.subtle.importKey(
-    "raw",
-    keyBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const mac = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`${id}.${timestamp}.${body}`),
-  );
-  const expected = bytesToBase64(mac);
-  return signature
-    .split(" ")
-    .map((entry) => entry.split(","))
-    .some(
-      ([version, sig]) => version === "v1" && sig !== undefined && constantTimeEqual(sig, expected),
-    );
+  return [...groups.values()];
 }
 
-interface ResendEvent {
-  type?: string;
-  data?: {
-    email_id?: string;
-    to?: string[] | string;
-    subject?: string;
-    bounce?: { message?: string; type?: string };
-  };
+function bounceReason(bounce: EventGroup["bounce"]): string | null {
+  if (bounce === "hard") return "The address does not accept email (hard bounce)";
+  if (bounce === "soft") return "A temporary delivery failure (soft bounce)";
+  return null;
 }
 
-const HANDLED = {
-  "email.bounced": "bounced",
-  "email.complained": "complained",
-} as const;
+interface RecordContext {
+  c: Context<AppEnv>;
+  db: Db;
+  provider: ReadyEmailProvider;
+  now: number;
+  /** The owner emails, read once per request. */
+  owners: () => Promise<string[]>;
+}
 
 /**
- * Resend webhooks, mounted at /api/webhooks. Access does not cover /api/webhooks/resend
- * (AUTH_EXEMPT_PATHS); the Svix signature authenticates it instead.
+ * Writes one bounce or complaint: the activity row, the in-app notification, the
+ * email_log status, and an email job to the owners, in one D1 batch. Returns the job ID
+ * when the job must run soon.
  */
-export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
-  const secret = c.env.RESEND_WEBHOOK_SECRET;
-  if (!secret) return c.json({ error: "Webhook secret is not set" }, 500);
-  const body = await c.req.text();
-  const valid = await verifySvixSignature(
-    secret,
-    {
-      id: c.req.header("svix-id"),
-      timestamp: c.req.header("svix-timestamp"),
-      signature: c.req.header("svix-signature"),
-    },
-    body,
-    Date.now(),
-  );
-  if (!valid) return c.json({ error: "Invalid signature", code: "invalid_signature" }, 400);
-
-  let event: ResendEvent;
-  try {
-    event = JSON.parse(body) as ResendEvent;
-  } catch {
-    return c.json({ error: "Invalid JSON", code: "invalid_json" }, 400);
-  }
-  const kind = HANDLED[event.type as keyof typeof HANDLED];
-  const providerId = event.data?.email_id;
-  if (!kind || !providerId) return c.json({ ok: true, ignored: true });
-
-  const db = createDb(c.env.DB);
-  const now = Date.now();
-  const svixId = c.req.header("svix-id") as string;
-  const [log] = await db
+async function recordGroup(ctx: RecordContext, group: EventGroup): Promise<string | null> {
+  const { c, db, provider, now } = ctx;
+  const { kind, messageId } = group;
+  const logs = await db
     .select()
     .from(schema.emailLog)
-    .where(eq(schema.emailLog.providerId, providerId));
-  const recipients = log?.recipients ?? [event.data?.to ?? []].flat();
-  const subject = log?.subject ?? event.data?.subject ?? "";
+    .where(eq(schema.emailLog.providerId, messageId));
+  // Two providers can give the same message ID. A row from before the email_provider
+  // column has no provider and still matches.
+  const log = logs.find(
+    (row) => row.emailProvider === null || row.emailProvider === provider.providerId,
+  );
+  const recipients = group.recipients.size > 0 ? [...group.recipients] : (log?.recipients ?? []);
+  const subject = log?.subject ?? "";
+  const reason = bounceReason(group.bounce);
   const [doc] = log?.documentId
     ? await db.select().from(schema.documents).where(eq(schema.documents.id, log.documentId))
     : [];
@@ -150,15 +156,15 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
     recipients,
     subject,
     number: doc?.number ?? null,
-    reason: event.data?.bounce?.message ?? null,
+    reason,
   });
-  const jobKey = `email_${kind}:${svixId}`;
+  const jobKey = `email_${kind}:${provider.providerId}:${provider.role}:${group.eventKey}`;
   // A bounce on an owner notification must not email the owners again (a loop). It gets
   // the status and the in-app notification only. The job row with no recipients still
-  // marks this svix-id as handled.
+  // marks this event as handled.
   const ownerNotice = log?.kind === "notification";
   const payload: SendEmailJobPayload = {
-    to: ownerNotice ? [] : await ownerEmails(db),
+    to: ownerNotice ? [] : await ctx.owners(),
     subject: content.subject,
     html: content.html,
     text: content.text,
@@ -166,8 +172,10 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
     documentId: doc?.id ?? null,
   };
   const d1 = c.env.DB;
-  // The guard makes a replayed webhook (same svix-id) a no-op.
+  // The dedupe store stops a replay first. This guard also makes a second delivery of
+  // the same event a no-op, for example after the dedupe row expired.
   const fresh = "NOT EXISTS (SELECT 1 FROM jobs WHERE idempotency_key = ?)";
+  const activityType = kind === "bounced" ? "email_bounced" : "email_complained";
   const statements: D1PreparedStatement[] = [];
   if (doc && !ownerNotice) {
     statements.push(
@@ -176,8 +184,14 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
         {
           documentId: doc.id,
           clientId: doc.clientId,
-          type: kind === "bounced" ? "email_bounced" : "email_complained",
-          data: { providerId, recipients, reason: event.data?.bounce?.message ?? null },
+          type: activityType,
+          data: {
+            providerId: messageId,
+            provider: provider.providerId,
+            recipients,
+            bounce: group.bounce,
+            reason,
+          },
           now,
         },
         fresh,
@@ -193,7 +207,7 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
       )
       .bind(
         crypto.randomUUID(),
-        kind === "bounced" ? "email_bounced" : "email_complained",
+        activityType,
         content.subject,
         `To ${recipients.join(", ")}: ${subject}`,
         doc?.id ?? null,
@@ -212,7 +226,112 @@ export const webhookRoutes = new Hono<AppEnv>().post("/resend", async (c) => {
   statements.push(d1.prepare(`${insertJob.sql} RETURNING id`).bind(...insertJob.params));
   const results = await d1.batch(statements);
   const jobId = (results.at(-1)?.results[0] as { id?: string } | undefined)?.id;
-  if (jobId && payload.to.length) {
+  return jobId && payload.to.length ? jobId : null;
+}
+
+/**
+ * Confirms an SNS subscription: one GET of the `SubscribeURL`, then an activity row.
+ * mailswitch checked that the URL is an SNS host of an allowlisted topic. A failed GET
+ * throws, so the handler releases the event and SNS sends it again.
+ */
+async function confirmSubscription(
+  ctx: RecordContext,
+  action: { topicArn: string; subscribeUrl: string },
+): Promise<void> {
+  const res = await fetch(action.subscribeUrl, {
+    method: "GET",
+    redirect: "manual",
+    signal: AbortSignal.timeout(SUBSCRIBE_TIMEOUT_MS),
+  });
+  await res.body?.cancel();
+  if (!res.ok) throw new Error(`The SNS subscription was not confirmed: HTTP ${res.status}`);
+  await ctx.db.insert(schema.activity).values({
+    type: "email_webhook_confirmed",
+    data: { provider: ctx.provider.providerId, role: ctx.provider.role, topicArn: action.topicArn },
+    createdAt: ctx.now,
+  });
+}
+
+/**
+ * Provider webhooks, mounted at /api/webhooks. Access and the cross-site guard skip
+ * `/api/webhooks/` (AUTH_EXEMPT_PREFIXES). The provider signature authenticates each
+ * request instead, with the webhook secret that the Owner saved for the role.
+ */
+export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) => {
+  const body = await readCappedBody(c.req.raw, WEBHOOK_MAX_BODY_BYTES);
+  if (!body) return c.json({ error: "The request body is too large", code: "too_large" }, 413);
+
+  const role = c.req.param("role");
+  if (!isRole(role)) return unauthorized(c);
+  const db = createRequestDb(c.env.DB);
+  const provider = await loadEmailProvider(db, c.env.ENCRYPTION_KEY, role);
+  if (provider?.status !== "ready" || !provider.webhookSecret) return unauthorized(c);
+  // One adapter per isolate for SES, so its certificate cache lives between requests.
+  const adapter = createAdapter(provider.providerId);
+  if (!adapter.webhooks) return unauthorized(c);
+
+  let outcome: WebhookOutcome;
+  try {
+    outcome = await handleWebhook(
+      new Request(c.req.url, { method: "POST", headers: c.req.raw.headers, body }),
+      {
+        adapter,
+        secret: provider.webhookSecret,
+        dedupe: new D1DedupeStore(c.env.DB),
+        endpointId: role,
+        maxBodyBytes: WEBHOOK_MAX_BODY_BYTES,
+      },
+    );
+  } catch (err) {
+    // A TypeError means the saved secret does not fit the provider, for example a short
+    // Postmark password or a Resend secret that is not whsec_ base64. The message holds
+    // no secret. The Owner must save a new secret.
+    if (err instanceof TypeError) {
+      console.error(`The ${role} webhook secret is not valid`, err.message);
+      return unauthorized(c);
+    }
+    throw err;
+  }
+  if (!outcome.ok) {
+    if (outcome.status === 401) return unauthorized(c);
+    if (outcome.status === 200) return c.json({ ok: true });
+    return c.json(
+      { error: "The webhook was refused", code: outcome.rejection },
+      outcome.status as ContentfulStatusCode,
+    );
+  }
+
+  let ownerList: Promise<string[]> | undefined;
+  const ctx: RecordContext = {
+    c,
+    db,
+    provider,
+    now: Date.now(),
+    owners: () => {
+      ownerList ??= ownerEmails(db);
+      return ownerList;
+    },
+  };
+  const jobIds: string[] = [];
+  try {
+    for (const event of outcome.events) {
+      const action = snsConfirmAction(event);
+      if (action) await confirmSubscription(ctx, action);
+    }
+    for (const group of groupEvents(outcome.events)) {
+      const jobId = await recordGroup(ctx, group);
+      if (jobId) jobIds.push(jobId);
+    }
+  } catch (err) {
+    console.error(`The ${role} webhook events were not recorded`, err);
+    // Frees the events, so a provider that retries delivers them again.
+    await outcome.release().catch(() => undefined);
+    return c.json({ error: "The events were not recorded", code: "webhook_failed" }, 500);
+  }
+  // Only after the writes, so a failed write never marks an event as handled.
+  await outcome.ack();
+
+  for (const jobId of jobIds) {
     try {
       runJobSoon(c.executionCtx, c.env, jobId);
     } catch {

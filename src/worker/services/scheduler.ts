@@ -5,7 +5,9 @@
 // A heavy job (a document send uses about 48 queries) does not fit next to the enqueue
 // phase. So the :15, :30 and :45 ticks first claim one due heavy job and run only that
 // job. The :00 tick always runs the enqueue phase, so derived statuses and new jobs never
-// wait more than an hour behind a queue of heavy jobs.
+// wait more than an hour behind a queue of heavy jobs. It also purges the expired
+// mailswitch idempotency and webhook dedupe rows (2 statements).
+import { D1DedupeStore, D1IdempotencyStore } from "mailswitch/stores/d1";
 import { todayIn, WORKSPACE_TIMEZONE } from "../../shared/time";
 import { createRequestDb, type Db } from "../db/client";
 import type { Bindings } from "../env";
@@ -160,7 +162,17 @@ export async function runTick(
     console.error("Updating derived statuses failed", err);
   }
 
-  // 3 and 4. Claim and run light jobs one at a time, while the budget can pay for one more.
+  // 3. Purge expired mailswitch rows. Once an hour is enough, and a heavy tick has no
+  // room for it, so only the :00 tick runs it.
+  if (!isHeavySlot(nowMs)) {
+    try {
+      await purgeMailswitchStores(queries.d1, nowMs);
+    } catch (err) {
+      console.error("Purging the mailswitch stores failed", err);
+    }
+  }
+
+  // 4 and 5. Claim and run light jobs one at a time, while the budget can pay for one more.
   const limit = options.batchSize ?? JOB_BATCH_SIZE;
   const perJob = 1 + LIGHT_JOB_QUERIES + JOB_FAILURE_RESERVE;
   let claimed = 0;
@@ -172,6 +184,16 @@ export async function runTick(
   }
 
   return summary("normal", today, enqueued, claimed);
+}
+
+/**
+ * Deletes the expired rows of the mailswitch stores: finished idempotency keys past their
+ * TTL and webhook dedupe keys past their lease or TTL. One statement per store, and each
+ * one searches the `expires_at` index.
+ */
+export async function purgeMailswitchStores(d1: D1Database, now: number): Promise<void> {
+  await new D1IdempotencyStore(d1).purgeExpired(now);
+  await new D1DedupeStore(d1).purgeExpired(now);
 }
 
 /** A random UUID v4 string built in SQL, for INSERT ... SELECT. */

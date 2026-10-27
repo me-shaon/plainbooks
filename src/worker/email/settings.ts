@@ -178,6 +178,19 @@ export async function loadEmailProviders(
 }
 
 /**
+ * The stored provider of one role, decrypted, or undefined when the role has none. It
+ * decrypts only that role, so the webhook path does no work for the other role.
+ */
+export async function loadEmailProvider(
+  db: Db,
+  encryptionKey: string | undefined,
+  role: EmailProviderRole,
+): Promise<StoredEmailProvider | undefined> {
+  const row = (await readRows(db)).find((r) => r.role === role);
+  return row ? decryptRow(row, loadKeyRing(encryptionKey)) : undefined;
+}
+
+/**
  * The providers a send can use, primary first. A fallback that needs re-entry is left
  * out. Throws 422 `email_not_configured` when no primary is saved or its keys do not
  * decrypt, so nothing is sent.

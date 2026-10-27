@@ -8,8 +8,6 @@ import type { Db } from "./db/client";
 export type Bindings = Env & {
   /** Local development only. Used by the auth dev bypass. */
   DEV_USER_EMAIL?: string;
-  /** Secret. The Resend webhook signing secret ("whsec_..."). */
-  RESEND_WEBHOOK_SECRET?: string;
   /** Secret. The Zero Trust team domain: "team.cloudflareaccess.com". */
   ACCESS_TEAM_DOMAIN?: string;
   /** Secret. The Application Audience (AUD) tag of the Access application. */

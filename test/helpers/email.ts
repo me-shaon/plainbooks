@@ -83,6 +83,7 @@ export async function resetEmailState(): Promise<void> {
     env.DB.prepare("DELETE FROM email_providers"),
     env.DB.prepare("DELETE FROM mailswitch_idempotency"),
     env.DB.prepare("DELETE FROM mailswitch_daily_cap"),
+    env.DB.prepare("DELETE FROM mailswitch_webhook_dedupe"),
     env.DB.prepare(
       "UPDATE workspace SET email_from_address = 'billing@studio.test', email_from_name = 'Studio One', reply_to_email = 'hello@studio.test'",
     ),

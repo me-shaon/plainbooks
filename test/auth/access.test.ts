@@ -134,28 +134,32 @@ describe("Access JWT verification", () => {
     expect(res.status).toBe(404);
   });
 
-  it("checks the JWT on every /api/* path except exactly /api/webhooks/resend", async () => {
+  it("checks the JWT on every /api/* path except under /api/webhooks/", async () => {
     const paths = [
       "/api/health",
       "/api/me",
       "/api/nope",
       "/api/webhooks",
-      "/api/webhooks/resend/",
-      "/api/webhooks/resend/extra",
-      "/api/webhooks/resendx",
-      "/api/webhooks/Resend",
-      "/api/webhooks/%72esend",
-      "/api/webhooks/resend%2F",
+      "/api/webhooksx/email/primary",
+      "/api/Webhooks/email/primary",
+      "/api/%77ebhooks/email/primary",
+      "/api/webhooks%2Femail/primary",
+      "/api/webhooks/../me",
+      "/api/webhooks/%2e%2e/me",
     ];
     for (const path of paths) {
       for (const method of ["GET", "POST"]) {
         const res = await apiFetch(path, { method });
         expect(res.status, `${method} ${path}`).toBe(401);
+        expect(await res.json(), `${method} ${path}`).toMatchObject({ code: "unauthenticated" });
       }
     }
-    const exempt = await apiFetch("/api/webhooks/resend", { method: "POST" });
-    expect(exempt.status).not.toBe(401);
+    // The webhook route answers itself: no provider is saved, so the signature check fails.
+    const exempt = await apiFetch("/api/webhooks/email/primary", { method: "POST" });
+    expect(exempt.status).toBe(401);
     expect(await exempt.json()).toMatchObject({ code: "invalid_signature" });
+    const unknown = await apiFetch("/api/webhooks/nope", { method: "POST" });
+    expect(unknown.status).toBe(404);
   });
 
   it("does not run on /p/* public links", async () => {
@@ -227,13 +231,13 @@ describe("cross-site writes", () => {
     expect(await res.json()).toMatchObject({ code: "unsupported_media_type" });
   });
 
-  it("does not apply to the Resend webhook", async () => {
-    const res = await apiFetch("/api/webhooks/resend", {
+  it("does not apply to the email webhooks", async () => {
+    const res = await apiFetch("/api/webhooks/email/primary", {
       method: "POST",
       headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
       body: "{}",
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ code: "invalid_signature" });
   });
 

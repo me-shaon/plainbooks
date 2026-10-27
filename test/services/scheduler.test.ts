@@ -345,6 +345,45 @@ describe("runTick", () => {
       lastError: "daily email cap reached",
     });
   });
+
+  it("purges expired mailswitch rows on the :00 tick only", async () => {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM mailswitch_idempotency"),
+      env.DB.prepare("DELETE FROM mailswitch_webhook_dedupe"),
+    ]);
+    const idem = (key: string, state: string, expiresAt: number | null) =>
+      env.DB.prepare(
+        `INSERT INTO mailswitch_idempotency (key, payload_hash, state, claim_id, claimed_at, updated_at, expires_at)
+         VALUES (?, 'h', ?, 'c', 0, 0, ?)`,
+      ).bind(key, state, expiresAt);
+    const dedupe = (key: string, expiresAt: number) =>
+      env.DB.prepare(
+        "INSERT INTO mailswitch_webhook_dedupe (key, committed, expires_at, lease_id) VALUES (?, 1, ?, 'l')",
+      ).bind(key, expiresAt);
+    const seed = () =>
+      env.DB.batch([
+        idem("old-sent", "sent", NOW - MIN),
+        idem("old-unknown", "unknown", NOW - MIN),
+        idem("new-sent", "sent", NOW + MIN),
+        dedupe("old", NOW - MIN),
+        dedupe("new", NOW + MIN),
+      ]);
+    const keys = async (table: string) =>
+      (await env.DB.prepare(`SELECT key FROM ${table} ORDER BY key`).all<{ key: string }>()).results
+        .map((r) => r.key)
+        .join(",");
+    await seed();
+
+    // :15 does not purge.
+    await runTick(env, NOW + 15 * MIN);
+    expect(await keys("mailswitch_idempotency")).toBe("new-sent,old-sent,old-unknown");
+    expect(await keys("mailswitch_webhook_dedupe")).toBe("new,old");
+
+    // :00 purges finished expired keys. An unknown key stays for the Owner to resolve.
+    await runTick(env, NOW);
+    expect(await keys("mailswitch_idempotency")).toBe("new-sent,old-unknown");
+    expect(await keys("mailswitch_webhook_dedupe")).toBe("new");
+  });
 });
 
 describe("claimJobs", () => {

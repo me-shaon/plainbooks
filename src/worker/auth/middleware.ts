@@ -5,8 +5,11 @@ import type { AppEnv, AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
 import { ACCESS_JWT_HEADER, AccessTokenError, verifyAccessJwt } from "./access";
 
-/** The only `/api/*` path that skips Access. It verifies a Svix signature instead (U13). */
-export const AUTH_EXEMPT_PATHS: ReadonlySet<string> = new Set(["/api/webhooks/resend"]);
+/**
+ * The `/api/*` path prefixes that skip Access and the cross-site guard. Each webhook route
+ * checks the signature of its provider instead.
+ */
+export const AUTH_EXEMPT_PREFIXES: readonly string[] = ["/api/webhooks/"];
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
@@ -14,11 +17,12 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
- * True when the raw request path is exactly an exempt path. The check uses the path as
- * sent, so percent-encoded or trailing-slash variants still need Access.
+ * True when the request path starts with an exempt prefix. The check uses the path as
+ * sent (after dot-segment removal), so a percent-encoded variant still needs Access.
  */
 export function isAuthExempt(url: string): boolean {
-  return AUTH_EXEMPT_PATHS.has(new URL(url).pathname);
+  const path = new URL(url).pathname;
+  return AUTH_EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 /**
