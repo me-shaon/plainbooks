@@ -6,11 +6,16 @@ import { newPassword as newPasswordSchema } from "../../../shared/schemas/setup"
 import { Button, buttonStyles } from "../../components/ui/button";
 import { TextField } from "../../components/ui/text-field";
 import { ApiError, api } from "../../lib/api";
-import { FORGOT_PASSWORD_PATH, passwordErrorMessage, SIGN_IN_PATH } from "../../lib/auth";
+import {
+  FIX_FIELDS,
+  FORGOT_PASSWORD_PATH,
+  PASSWORDS_DIFFER,
+  passwordErrorMessage,
+  SIGN_IN_PATH,
+} from "../../lib/auth";
 import { type FieldErrors, fieldError } from "../../lib/form";
 import { setupStatusQuery } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
-import { FIX_FIELDS, PASSWORDS_DIFFER } from "./setup-form";
 
 const linkStyle = "font-medium text-accent underline underline-offset-2";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -1,16 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
+import { INVITE_PAGE_PATH } from "../../shared/domain";
 import type { SetupStatus } from "../../shared/schemas/setup";
 import { ApiError, api } from "./api";
-import { AUTH_PATHS, formatRetry, tooManyAttempts } from "./auth";
+import { AUTH_PATHS, tooManyAttempts } from "./auth";
 import { queryKeys } from "./query-keys";
-
-export { formatRetry };
 
 /** The Owner recovery page. The sign-in page links to it as "Locked out?". */
 export const RECOVER_PATH = "/recover";
 
 /** The invite and reset link page. The token follows in the path. */
-export const INVITE_PATH_PREFIX = "/invite/";
+export const INVITE_PATH_PREFIX = `${INVITE_PAGE_PATH}/`;
 
 /**
  * Pages that render without the app shell and need no session. An entry that ends with

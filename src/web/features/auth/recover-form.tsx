@@ -6,11 +6,10 @@ import { type RecoverOwnerInput, recoverOwnerInput } from "../../../shared/schem
 import { Button, buttonStyles } from "../../components/ui/button";
 import { TextField } from "../../components/ui/text-field";
 import { api, issuesByPath } from "../../lib/api";
-import { SIGN_IN_PATH } from "../../lib/auth";
+import { FIX_FIELDS, PASSWORDS_DIFFER, SIGN_IN_PATH } from "../../lib/auth";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { setupErrorMessage } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
-import { FIX_FIELDS, PASSWORDS_DIFFER } from "./setup-form";
 
 /**
  * Owner recovery: a new, unused setup token sets a new password for an Owner email and

@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { TextField } from "../../components/ui/text-field";
 import { api } from "../../lib/api";
 import {
+  FIX_FIELDS,
   FORGOT_PASSWORD_PATH,
   googleErrorMessage,
   passwordErrorMessage,
@@ -17,7 +18,6 @@ import { type FieldErrors, fieldError } from "../../lib/form";
 import { queryKeys } from "../../lib/query-keys";
 import { RECOVER_PATH, setupStatusQuery } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
-import { FIX_FIELDS } from "./setup-form";
 
 const linkStyle = "font-medium text-accent underline underline-offset-2";
 

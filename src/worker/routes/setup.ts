@@ -1,14 +1,15 @@
 import { type Context, Hono } from "hono";
-import { setSignedCookie } from "hono/cookie";
 import {
   recoverOwnerInput,
   SETUP_TOKEN_MIN_LENGTH,
   type SetupStatus,
   setupOwnerInput,
 } from "../../shared/schemas/setup";
-import { createAuth, googleEnabled, SESSION_EXPIRES_IN_SECONDS } from "../auth/auth";
+import { googleEnabled } from "../auth/auth";
+import { constantTimeEqual, sha256Hex } from "../auth/crypto";
 import { createPasswordHasher, resolveIterations } from "../auth/pbkdf2";
 import { assertRateLimits, clientIp, RATE_RULES, rateKeys } from "../auth/rate-limit";
+import { startSession } from "../auth/session";
 import { createDb } from "../db/client";
 import { mailProviders } from "../email/mailer";
 import { ownerRecoveredEmail } from "../email/templates";
@@ -27,22 +28,6 @@ function configuredToken(env: Bindings): string | null {
   return token.length >= SETUP_TOKEN_MIN_LENGTH ? token : null;
 }
 
-async function sha256(text: string): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
-}
-
-function toHex(bytes: Uint8Array): string {
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/** Compares two digests of the same length in constant time. */
-function sameDigest(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
-  return diff === 0;
-}
-
 /**
  * Turns the routes off without a usable token (404), then counts the attempt per IP and
  * for the whole deployment. A counter failure refuses the attempt (fail closed).
@@ -59,8 +44,8 @@ async function guardAttempt(c: Context<AppEnv>): Promise<string> {
 
 /** The SHA-256 of the submitted token, as hex, when it matches SETUP_TOKEN. Else null. */
 async function matchingTokenHash(submitted: string, configured: string): Promise<string | null> {
-  const [given, expected] = await Promise.all([sha256(submitted), sha256(configured)]);
-  return sameDigest(given, expected) ? toHex(given) : null;
+  const [given, expected] = await Promise.all([sha256Hex(submitted), sha256Hex(configured)]);
+  return constantTimeEqual(given, expected) ? given : null;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -84,24 +69,6 @@ async function emailConfigured(env: Bindings): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Creates a better-auth session for the user and sets the signed session cookie. */
-async function signIn(c: Context<AppEnv>, userId: string): Promise<void> {
-  const ctx = await createAuth(c.env, c.req.raw).$context;
-  const session = await ctx.internalAdapter.createSession(userId, false, {
-    ipAddress: clientIp(c.req.raw),
-    userAgent: c.req.header("user-agent") ?? "",
-  });
-  const cookie = ctx.authCookies.sessionToken;
-  const secret = c.env.AUTH_SECRET?.trim() ?? "";
-  await setSignedCookie(c, cookie.name, session.token, secret, {
-    path: cookie.attributes.path ?? "/",
-    httpOnly: cookie.attributes.httpOnly ?? true,
-    secure: cookie.attributes.secure ?? false,
-    sameSite: cookie.attributes.sameSite ?? "lax",
-    maxAge: SESSION_EXPIRES_IN_SECONDS,
-  });
 }
 
 /** Emails every Owner about a recovery. Errors are logged, so the recovery still succeeds. */
@@ -200,7 +167,7 @@ export const setupRoutes = new Hono<AppEnv>()
     }
     if ((results[1]?.meta.changes ?? 0) === 0) throw SETUP_CLOSED();
 
-    await signIn(c, userId);
+    await startSession(c, userId);
     return c.json(
       { user: { id: userId, email: input.email, name: input.name, role: "owner" as const } },
       201,

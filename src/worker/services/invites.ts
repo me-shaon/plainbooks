@@ -1,4 +1,5 @@
-import type { InviteKind } from "../../shared/domain";
+import { INVITE_PAGE_PATH, type InviteKind } from "../../shared/domain";
+import { sha256Hex } from "../auth/crypto";
 import { createPasswordHasher, resolveIterations } from "../auth/pbkdf2";
 import type { Bindings } from "../env";
 import { AppError } from "../errors";
@@ -10,9 +11,6 @@ import { AppError } from "../errors";
 
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const RESET_TTL_MS = 24 * 60 * 60 * 1000;
-
-/** The web page that an invite or reset link opens. */
-export const INVITE_PAGE_PATH = "/invite";
 
 const TTL_BY_KIND: Record<InviteKind, number> = { invite: INVITE_TTL_MS, reset: RESET_TTL_MS };
 
@@ -29,9 +27,8 @@ export function newLinkToken(): string {
 }
 
 /** The SHA-256 of a token, as hex. The table stores only this value. */
-export async function hashLinkToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+export function hashLinkToken(token: string): Promise<string> {
+  return sha256Hex(token);
 }
 
 /** The link that the Owner copies or the invite email holds. */

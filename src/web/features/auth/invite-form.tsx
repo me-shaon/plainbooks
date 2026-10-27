@@ -8,12 +8,11 @@ import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { TextField } from "../../components/ui/text-field";
 import { ApiError, api } from "../../lib/api";
-import { passwordErrorMessage, SIGN_IN_PATH } from "../../lib/auth";
+import { FIX_FIELDS, PASSWORDS_DIFFER, passwordErrorMessage, SIGN_IN_PATH } from "../../lib/auth";
 import { type FieldErrors, fieldError } from "../../lib/form";
 import { queryKeys } from "../../lib/query-keys";
 import { setupStatusQuery } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
-import { FIX_FIELDS, PASSWORDS_DIFFER } from "./setup-form";
 
 const linkStyle = "font-medium text-accent underline underline-offset-2";
 

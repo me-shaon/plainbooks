@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { RESET_PASSWORD_PATH } from "../../shared/domain";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../../shared/schemas/setup";
 import { createDb, schema } from "../db/client";
 import { passwordResetEmail } from "../email/templates";
@@ -29,8 +30,6 @@ export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH };
 export const SESSION_EXPIRES_IN_SECONDS = 30 * 24 * 60 * 60;
 export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 export const RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
-/** The web page that sets a new password. The reset email links to it with the token. */
-export const RESET_PASSWORD_PATH = "/reset-password";
 
 /**
  * The reset link in the email. It opens the web page directly, so the token reaches the

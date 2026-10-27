@@ -1,10 +1,14 @@
 import type { AnyRouter } from "@tanstack/react-router";
+import { RESET_PASSWORD_PATH } from "../../shared/domain";
 import { ApiError } from "./api";
 
 export const SIGN_IN_PATH = "/sign-in";
 export const FORGOT_PASSWORD_PATH = "/forgot-password";
 /** The page that the reset email links to. The Worker builds the link with the same path. */
-export const RESET_PASSWORD_PATH = "/reset-password";
+export { RESET_PASSWORD_PATH };
+
+export const PASSWORDS_DIFFER = "The passwords do not match";
+export const FIX_FIELDS = "Fix the marked fields, then try again.";
 
 /** The sign-in and password pages. They need no session. */
 export const AUTH_PATHS: readonly string[] = [

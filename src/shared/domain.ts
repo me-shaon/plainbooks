@@ -54,6 +54,12 @@ export type UserStatus = (typeof USER_STATUSES)[number];
 export const INVITE_KINDS = ["invite", "reset"] as const;
 export type InviteKind = (typeof INVITE_KINDS)[number];
 
+/** The web page that an invite or Owner reset link opens. The token follows in the path. */
+export const INVITE_PAGE_PATH = "/invite";
+
+/** The web page that the self-service reset email links to, with `?token=`. */
+export const RESET_PASSWORD_PATH = "/reset-password";
+
 /** What a setup token was used for: the first Owner, or an Owner recovery. */
 export const SETUP_TOKEN_USES = ["setup", "recover"] as const;
 export type SetupTokenUse = (typeof SETUP_TOKEN_USES)[number];

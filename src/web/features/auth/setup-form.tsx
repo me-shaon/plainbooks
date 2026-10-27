@@ -10,14 +10,12 @@ import {
 import { Button } from "../../components/ui/button";
 import { TextField } from "../../components/ui/text-field";
 import { api, issuesByPath } from "../../lib/api";
+import { FIX_FIELDS, PASSWORDS_DIFFER } from "../../lib/auth";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { queryKeys } from "../../lib/query-keys";
 import type { Me } from "../../lib/session";
 import { setupErrorMessage } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
-
-export const PASSWORDS_DIFFER = "The passwords do not match";
-export const FIX_FIELDS = "Fix the marked fields, then try again.";
 
 /** The first-run screen: claims a fresh deploy with the setup token and creates the Owner. */
 export function SetupPage() {

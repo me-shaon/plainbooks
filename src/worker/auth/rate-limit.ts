@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Bindings } from "../env";
 import { RateLimitedError } from "../errors";
+import { sha256Hex } from "./crypto";
 
 // Attempt counters for sign-in, password reset, setup, recovery, and token links. One
 // Durable Object instance holds one counter, for example `sign-in:ip:198.51.100.7`. A
@@ -124,11 +125,6 @@ export const RATE_RULES = {
 
 /** The action part of a counter key. */
 export type RateAction = "sign-in" | "password-reset" | "setup" | "token-link" | "token-lookup";
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 /** Counter keys. */
 export const rateKeys = {
