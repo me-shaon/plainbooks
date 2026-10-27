@@ -25,6 +25,8 @@ export default defineConfig(async () => {
                   APP_URL: "https://invoices.example.com",
                   // 32 bytes as base64. Tests that change the key pass their own value.
                   ENCRYPTION_KEY: btoa("test-encryption-key-0123456789ab"),
+                  AUTH_SECRET: "test-auth-secret-0123456789abcdef0123456789",
+                  PBKDF2_ITERATIONS: "100000",
                   // A local .dev.vars may turn the fakes on. Tests install their own stubs.
                   FAKE_EXTERNALS: "0",
                 },

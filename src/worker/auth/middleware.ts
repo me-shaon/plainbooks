@@ -6,10 +6,11 @@ import { AppError } from "../errors";
 import { ACCESS_JWT_HEADER, AccessTokenError, verifyAccessJwt } from "./access";
 
 /**
- * The `/api/*` path prefixes that skip Access and the cross-site guard. Each webhook route
- * checks the signature of its provider instead.
+ * The `/api/*` path prefixes that skip Access and the cross-site guard in `accessAuth`.
+ * Each webhook route checks the signature of its provider instead. The better-auth handler
+ * runs the cross-site guard itself (app.ts).
  */
-export const AUTH_EXEMPT_PREFIXES: readonly string[] = ["/api/webhooks/"];
+export const AUTH_EXEMPT_PREFIXES: readonly string[] = ["/api/auth/", "/api/webhooks/"];
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 

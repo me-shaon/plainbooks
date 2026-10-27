@@ -21,6 +21,20 @@ export type Bindings = Env & {
    * in D1. A new value means the Owner must enter the provider keys again.
    */
   ENCRYPTION_KEY?: string;
+  /**
+   * Secret. At least 32 random characters. better-auth signs session cookies and tokens
+   * with it. A new value signs everyone out.
+   */
+  AUTH_SECRET?: string;
+  /** Secret. The Google OAuth client ID. Google sign-in shows only when both are set. */
+  GOOGLE_CLIENT_ID?: string;
+  /** Secret. The Google OAuth client secret. */
+  GOOGLE_CLIENT_SECRET?: string;
+  /**
+   * PBKDF2 iterations for new password hashes. The default is 100000, the Workers maximum.
+   * A sign-in rehashes a password that uses another count.
+   */
+  PBKDF2_ITERATIONS?: string;
   /** Local development only. "1" swaps Resend, Frankfurter, and Browser Run for fakes. */
   FAKE_EXTERNALS?: string;
 };

@@ -1,4 +1,4 @@
-// Owner notification emails. Every value is escaped, including client comments.
+// Owner notification and team member emails. Every value is escaped, including client comments.
 import { html, multiline } from "../html";
 import { type EmailContent, layout } from "./layout";
 
@@ -110,5 +110,20 @@ export function fxRateNeededEmail(
     ],
     null,
     "Enter the rate",
+  );
+}
+
+/** The self-service password reset link for a team member. */
+export function passwordResetEmail(input: OwnerBase & { expiresInMinutes: number }): EmailContent {
+  return ownerEmail(
+    input,
+    `Reset your ${input.workspace} password`,
+    [
+      "Someone asked to reset the password for your account. Use the link to set a new password.",
+      `The link works once and expires in ${input.expiresInMinutes} minutes.`,
+      "If you did not ask for this, ignore this email. Your password stays the same.",
+    ],
+    null,
+    "Set a new password",
   );
 }

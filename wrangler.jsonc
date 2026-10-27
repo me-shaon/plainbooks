@@ -28,6 +28,11 @@
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "plainbooks-files" }],
   "browser": { "binding": "BROWSER" },
   "triggers": { "crons": ["*/15 * * * *"] },
+  // Sign-in and setup attempt counters (src/worker/auth/rate-limit.ts).
+  "durable_objects": {
+    "bindings": [{ "name": "AUTH_RATE_LIMITER", "class_name": "AuthRateLimiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AuthRateLimiter"] }],
   // Secrets (set with `wrangler secret put`): RESEND_API_KEY, RESEND_WEBHOOK_SECRET,
   // ACCESS_TEAM_DOMAIN, ACCESS_AUD, OWNER_EMAIL, APP_URL. They are secrets, not vars, so a
   // deploy keeps them: `wrangler deploy` replaces every var with the values in this file.

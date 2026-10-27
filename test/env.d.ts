@@ -8,5 +8,7 @@ declare namespace Cloudflare {
     OWNER_EMAIL: string;
     APP_URL: string;
     ENCRYPTION_KEY: string;
+    AUTH_SECRET: string;
+    PBKDF2_ITERATIONS: string;
   }
 }

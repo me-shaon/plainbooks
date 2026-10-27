@@ -21,10 +21,20 @@ export class AppError extends Error {
   }
 }
 
+/** Too many attempts. The error handler adds a Retry-After header. */
+export class RateLimitedError extends AppError {
+  constructor(readonly retryAfterSeconds: number) {
+    super(429, "rate_limited", "Too many attempts. Try again later.");
+    this.name = "RateLimitedError";
+  }
+}
+
 export interface ErrorBody {
   error: string;
   code?: string;
   issues?: { path: string; message: string }[];
+  /** Seconds until a rate-limited request can be tried again. */
+  retryAfter?: number;
 }
 
 /** Hono `onError` handler. Known errors become 4xx JSON. Others become a generic 500. */
@@ -32,6 +42,10 @@ export function handleError(err: Error, c: Context): Response {
   if (err instanceof AppError) {
     const body: ErrorBody = { error: err.message, code: err.code };
     if (err.issues) body.issues = err.issues;
+    if (err instanceof RateLimitedError) {
+      body.retryAfter = err.retryAfterSeconds;
+      c.header("Retry-After", String(err.retryAfterSeconds));
+    }
     return c.json<ErrorBody>(body, err.status);
   }
   if (err instanceof ZodError) {
