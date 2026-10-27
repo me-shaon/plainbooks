@@ -12,6 +12,8 @@ export class ApiError extends Error {
     message: string,
     readonly code?: string,
     readonly issues: ApiIssue[] = [],
+    /** Seconds until a rate-limited call (429) can be tried again. */
+    readonly retryAfter?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -92,12 +94,18 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   const data: unknown = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) {
-    const info = (data ?? {}) as { error?: string; code?: string; issues?: ApiIssue[] };
+    const info = (data ?? {}) as {
+      error?: string;
+      code?: string;
+      issues?: ApiIssue[];
+      retryAfter?: number;
+    };
     const error = new ApiError(
       res.status,
       info.error ?? `Request failed (${res.status})`,
       info.code,
       info.issues ?? [],
+      typeof info.retryAfter === "number" ? info.retryAfter : undefined,
     );
     if (toastOnError) toastError(error, "Could not save");
     throw error;

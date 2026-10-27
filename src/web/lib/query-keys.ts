@@ -7,6 +7,8 @@ import type { DocumentListQuery } from "../../shared/schemas/document";
  */
 export const queryKeys = {
   me: ["me"] as const,
+  /** First-run state from GET /api/setup/status. It needs no session. */
+  setupStatus: ["setup-status"] as const,
   clients: {
     all: ["clients"] as const,
     list: (filters: { q?: string; archived: ClientArchiveFilter }) =>
