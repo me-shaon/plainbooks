@@ -10,6 +10,7 @@ import {
   type UserRole,
 } from "../domain";
 import { currencyCode, paymentTermsDays } from "./client";
+import { newPassword } from "./setup";
 
 const optionalText = (max: number) =>
   z
@@ -126,6 +127,23 @@ export type TeamMemberInput = z.input<typeof teamMemberInput>;
 /** PATCH /api/team/:id. Owner only. */
 export const teamRoleInput = z.object({ role: z.enum(USER_ROLES) });
 
+/** An invite or reset link token from the link path. */
+const linkToken = z.string().trim().min(1, "The link is missing its token").max(256);
+
+/** POST /api/invites/lookup. Reads a link without using it. */
+export const inviteLookupInput = z.object({ token: linkToken });
+
+/**
+ * POST /api/invites/accept. Uses an invite or reset link. The name applies only to an
+ * invite. A reset keeps the current name.
+ */
+export const acceptInviteInput = z.object({
+  token: linkToken,
+  name: optionalText(120),
+  password: newPassword,
+});
+export type AcceptInviteInput = z.input<typeof acceptInviteInput>;
+
 // ---------------------------------------------------------------------------
 // Logos
 // ---------------------------------------------------------------------------
@@ -189,13 +207,45 @@ export interface BrandKit {
   footerText: string | null;
 }
 
+/**
+ * The sign-in state of a team member. `invited`: the invite link is open. `expired`: the
+ * invite link expired, so the Owner must send a new one. `reset_pending`: an Owner reset
+ * the sign-in and the reset link was not used yet.
+ */
+export const MEMBER_STATES = ["active", "invited", "expired", "reset_pending"] as const;
+export type MemberState = (typeof MEMBER_STATES)[number];
+
 /** One row of GET /api/team. */
 export interface TeamMember {
   id: string;
   email: string;
   name: string | null;
   role: UserRole;
+  state: MemberState;
+  /** The expiry of the open invite or reset link (epoch ms), or null. */
+  linkExpiresAt: number | null;
   createdAt: number;
+}
+
+/**
+ * The answer to adding a member, resending an invite, and resetting a sign-in. The link
+ * shows once. The server keeps only its hash.
+ */
+export interface MemberLink {
+  member: TeamMember;
+  link: string;
+  kind: "invite" | "reset";
+  expiresAt: number;
+  /** True when the invite email went out. False when email is not configured or failed. */
+  emailSent: boolean;
+}
+
+/** POST /api/invites/lookup */
+export interface InviteLinkInfo {
+  kind: "invite" | "reset";
+  email: string;
+  name: string | null;
+  expiresAt: number;
 }
 
 /** "INV-0042" style example for the numbering preview. */

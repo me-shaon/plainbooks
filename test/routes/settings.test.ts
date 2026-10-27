@@ -381,8 +381,9 @@ describe("team", () => {
       json: { email: "New@Settings.test", role: "member" },
     });
     expect(added.status).toBe(201);
-    const member = (await added.json()) as TeamMember;
+    const { member } = (await added.json()) as { member: TeamMember };
     expect(member.email).toBe("new@settings.test");
+    expect(member.state).toBe("invited");
 
     const duplicate = await apiFetch("/api/team", {
       as: OWNER,

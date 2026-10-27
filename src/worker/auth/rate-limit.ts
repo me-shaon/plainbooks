@@ -118,10 +118,12 @@ export const RATE_RULES = {
   setupGlobal: { limit: 20, windowMs: FIFTEEN_MINUTES },
   /** Invite and Owner-reset link use from one IP. */
   tokenLinkIp: { limit: 5, windowMs: FIFTEEN_MINUTES },
+  /** Invite page loads from one IP. A lookup reads a link and does not use it. */
+  tokenLookupIp: { limit: 30, windowMs: FIFTEEN_MINUTES },
 } as const satisfies Record<string, RateRule>;
 
 /** The action part of a counter key. */
-export type RateAction = "sign-in" | "password-reset" | "setup" | "token-link";
+export type RateAction = "sign-in" | "password-reset" | "setup" | "token-link" | "token-lookup";
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));

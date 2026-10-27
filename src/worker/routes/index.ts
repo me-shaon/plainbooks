@@ -6,6 +6,7 @@ import { dashboardRoutes, jobRoutes, notificationRoutes } from "./dashboard";
 import { documentRoutes } from "./documents";
 import { emailSettingsRoutes } from "./email-settings";
 import { fxRoutes } from "./fx";
+import { inviteRoutes } from "./invites";
 import { meRoutes } from "./me";
 import { recurringRoutes } from "./recurring";
 import { reminderDocumentRoutes, reminderRoutes } from "./reminders";
@@ -25,6 +26,7 @@ export const api = new Hono<AppEnv>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/me", meRoutes)
   .route("/setup", setupRoutes)
+  .route("/invites", inviteRoutes)
   .route("/dashboard", dashboardRoutes)
   .route("/notifications", notificationRoutes)
   .route("/jobs", jobRoutes)

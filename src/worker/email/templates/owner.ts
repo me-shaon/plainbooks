@@ -144,3 +144,20 @@ export function ownerRecoveredEmail(
     "Open the app",
   );
 }
+
+/** The invite link for a new team member. */
+export function inviteEmail(
+  input: OwnerBase & { inviter: string; role: string; expiresInDays: number },
+): EmailContent {
+  return ownerEmail(
+    input,
+    `You are invited to ${input.workspace}`,
+    [
+      `${input.inviter} added you to ${input.workspace} on PlainBooks as ${input.role}.`,
+      "Use the link to set your name and password, or to sign in with Google.",
+      `The link works once and expires in ${input.expiresInDays} days. If it expires, ask your Owner for a new link.`,
+    ],
+    null,
+    "Accept the invite",
+  );
+}
