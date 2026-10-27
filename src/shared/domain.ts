@@ -46,6 +46,18 @@ export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 export const USER_ROLES = ["owner", "member"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
+/** "invited" until the person accepts an invite. Only "active" users can use the app. */
+export const USER_STATUSES = ["invited", "active"] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+/** An invite link for a new member, or a sign-in reset link that an Owner issued. */
+export const INVITE_KINDS = ["invite", "reset"] as const;
+export type InviteKind = (typeof INVITE_KINDS)[number];
+
+/** What a setup token was used for: the first Owner, or an Owner recovery. */
+export const SETUP_TOKEN_USES = ["setup", "recover"] as const;
+export type SetupTokenUse = (typeof SETUP_TOKEN_USES)[number];
+
 /** Reminder mode on the workspace. Clients and documents add "inherit". */
 export const REMINDER_MODES = ["suggest", "auto_send", "off"] as const;
 export type ReminderMode = (typeof REMINDER_MODES)[number];

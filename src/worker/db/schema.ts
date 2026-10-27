@@ -27,6 +27,7 @@ import {
   EMAIL_PROVIDER_ROLES,
   EMAIL_STATUSES,
   FX_PROVIDERS,
+  INVITE_KINDS,
   INVOICE_STATUSES,
   JOB_STATUSES,
   OVERDUE_REMINDER_CAP,
@@ -39,11 +40,13 @@ import {
   type ReminderStep,
   SEND_MODE_SETTINGS,
   SEND_MODES,
+  SETUP_TOKEN_USES,
   TEMPLATE_LAYOUTS,
   TEMPLATE_SECTIONS,
   type TemplateConfig,
   TRIGGERS,
   USER_ROLES,
+  USER_STATUSES,
 } from "../../shared/domain";
 
 const id = () =>
@@ -60,6 +63,16 @@ const updatedAt = () =>
     .$onUpdateFn(() => Date.now());
 
 const bool = (name: string) => integer(name, { mode: "boolean" });
+
+// better-auth reads and writes `Date` values. These columns store the same epoch ms
+// integers as the columns above, but Drizzle maps them to `Date`.
+const dateMs = (name: string) => integer(name, { mode: "timestamp_ms" });
+const createdAtDate = () => dateMs("created_at").notNull().default(nowMs);
+const updatedAtDate = () =>
+  dateMs("updated_at")
+    .notNull()
+    .default(nowMs)
+    .$onUpdateFn(() => new Date());
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(", "));
 // CHECK and partial-index SQL uses bare column names. Table-qualified names break when
@@ -110,15 +123,125 @@ export const workspace = sqliteTable(
   () => [check("workspace_singleton", sql`id = 1`)],
 );
 
-/** Team list. Emails are stored lowercase. */
+/**
+ * Team list, and the better-auth user model (src/worker/auth/auth.ts). Emails are stored
+ * lowercase. `created_at` and `updated_at` hold epoch ms, read as `Date`.
+ */
 export const users = sqliteTable("users", {
   id: id(),
   email: text("email").notNull().unique(),
+  /**
+   * better-auth requires a name. Migration 0005 fills it for old rows. The column stays
+   * nullable, because making it NOT NULL needs a table rebuild, and dropping `users`
+   * would run the ON DELETE actions of every table that points at it.
+   */
   name: text("name"),
   role: text("role", { enum: USER_ROLES }).notNull().default("member"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
+  status: text("status", { enum: USER_STATUSES }).notNull().default("active"),
+  emailVerified: bool("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: createdAtDate(),
+  updatedAt: updatedAtDate(),
 });
+
+// ---------------------------------------------------------------------------
+// Auth (better-auth tables, invites, and setup tokens)
+// ---------------------------------------------------------------------------
+
+/** better-auth sessions. Removing a user removes its sessions. */
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The session token. The cookie holds it with an HMAC signature. */
+    token: text("token").notNull().unique(),
+    expiresAt: dateMs("expires_at").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: createdAtDate(),
+    updatedAt: updatedAtDate(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
+/**
+ * better-auth accounts: one row per sign-in method of a user. `provider_id` is
+ * "credential" for the password (in `password`) or "google".
+ */
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: dateMs("access_token_expires_at"),
+    refreshTokenExpiresAt: dateMs("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: createdAtDate(),
+    updatedAt: updatedAtDate(),
+  },
+  (t) => [index("accounts_user_idx").on(t.userId)],
+);
+
+/** better-auth verification values, for example password reset tokens and OAuth state. */
+export const verifications = sqliteTable(
+  "verifications",
+  {
+    id: id(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: dateMs("expires_at").notNull(),
+    createdAt: createdAtDate(),
+    updatedAt: updatedAtDate(),
+  },
+  (t) => [index("verifications_identifier_idx").on(t.identifier)],
+);
+
+/**
+ * Invite links for new members and sign-in reset links that an Owner issued. The token
+ * is 32 random bytes. Only its SHA-256 (hex) is stored. A link works once, until
+ * `expires_at`.
+ */
+export const invites = sqliteTable(
+  "invites",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: INVITE_KINDS }).notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: integer("expires_at").notNull(),
+    usedAt: integer("used_at"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("invites_user_idx").on(t.userId, t.kind),
+    check("invites_kind", sql`kind in (${inList(INVITE_KINDS)})`),
+  ],
+);
+
+/** The SHA-256 (hex) of every setup token that was used. A used token never works again. */
+export const setupTokenUses = sqliteTable(
+  "setup_token_uses",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    kind: text("kind", { enum: SETUP_TOKEN_USES }).notNull(),
+    usedAt: integer("used_at").notNull().default(nowMs),
+  },
+  () => [check("setup_token_uses_kind", sql`kind in (${inList(SETUP_TOKEN_USES)})`)],
+);
 
 export const taxRates = sqliteTable("tax_rates", {
   id: id(),
@@ -637,6 +760,10 @@ export type Workspace = typeof workspace.$inferSelect;
 export type NewWorkspace = typeof workspace.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type Session = typeof sessions.$inferSelect;
+export type Account = typeof accounts.$inferSelect;
+export type Invite = typeof invites.$inferSelect;
+export type NewInvite = typeof invites.$inferInsert;
 export type TaxRate = typeof taxRates.$inferSelect;
 export type NewTaxRate = typeof taxRates.$inferInsert;
 export type Template = typeof templates.$inferSelect;

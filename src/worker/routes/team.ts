@@ -18,6 +18,11 @@ const memberColumns = {
   createdAt: users.createdAt,
 };
 
+/** `users.created_at` reads as a `Date`. The API sends epoch ms. */
+function toTeamMember(row: Omit<TeamMember, "createdAt"> & { createdAt: Date }): TeamMember {
+  return { ...row, createdAt: row.createdAt.getTime() };
+}
+
 /**
  * The team list, mounted at /api/team. Owner only. Adding a member only adds the row.
  * The person also needs permission in the Cloudflare Access application.
@@ -25,10 +30,8 @@ const memberColumns = {
 export const teamRoutes = new Hono<AppEnv>()
   .use(requireOwner)
   .get("/", async (c) => {
-    const items: TeamMember[] = await c.var.db
-      .select(memberColumns)
-      .from(users)
-      .orderBy(asc(users.email));
+    const rows = await c.var.db.select(memberColumns).from(users).orderBy(asc(users.email));
+    const items: TeamMember[] = rows.map(toTeamMember);
     return c.json({ items });
   })
   .post("/", async (c) => {
@@ -41,7 +44,7 @@ export const teamRoutes = new Hono<AppEnv>()
     if (!created) {
       throw new AppError(409, "member_exists", "This email is already on the team");
     }
-    return c.json(created, 201);
+    return c.json(toTeamMember(created), 201);
   })
   .patch("/:id", async (c) => {
     const { role } = await parseJson(c, teamRoleInput);

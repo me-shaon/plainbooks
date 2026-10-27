@@ -30,7 +30,7 @@ export async function setUserRole(db: Db, userId: string, role: UserRole): Promi
   const guard = role === "owner" ? undefined : keepsAnOwner;
   const [updated] = await db
     .update(users)
-    .set({ role, updatedAt: Date.now() })
+    .set({ role, updatedAt: new Date() })
     .where(and(eq(users.id, userId), guard))
     .returning(columns);
   return updated ?? failMissingOrLastOwner(db, userId);
