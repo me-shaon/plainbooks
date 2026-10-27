@@ -119,7 +119,9 @@ export function defaultDailyCap(id: string, presetId?: string | null): number | 
 /**
  * How Settings asks for the webhook secret of each provider with webhooks. mailswitch
  * 0.2.0 meta has `webhooks: true` but no field description, so the app keeps these labels.
- * A provider with webhooks and no entry here gets the generic label.
+ * A provider with webhooks and no entry here gets the generic label. A hint asks the Owner
+ * to select only the events that the app records, so a batch of events stays under the
+ * D1 query limit of one request.
  */
 export const WEBHOOK_SECRET_FIELDS: Readonly<Partial<Record<EmailProviderId, WebhookSecretField>>> =
   {
@@ -142,27 +144,27 @@ export const WEBHOOK_SECRET_FIELDS: Readonly<Partial<Record<EmailProviderId, Web
     },
     brevo: {
       label: "Webhook token",
-      hint: "Make a random value of at least 22 characters. Give it to Brevo as the bearer token of the webhook.",
+      hint: "Make a random value of at least 22 characters. Give it to Brevo as the bearer token of the webhook. Select only the hard bounce, soft bounce, invalid email, and spam events.",
     },
     mailersend: {
       label: "Signing secret",
-      hint: "Copy it from the webhook in MailerSend.",
+      hint: "Copy it from the webhook in MailerSend. Select only the activity.hard_bounced, activity.soft_bounced, and activity.spam_complaint events.",
     },
     mailjet: {
       label: "Webhook password",
-      hint: "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password.",
+      hint: "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password. Add the URL only for the bounce and spam events, and turn off event grouping.",
     },
     smtp2go: {
       label: "Webhook secret",
-      hint: "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook.",
+      hint: "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook. Select only the bounce and spam events.",
     },
     sendgrid: {
       label: "Verification key",
-      hint: "The public key of the signed Event Webhook in SendGrid.",
+      hint: "The public key of the signed Event Webhook in SendGrid. Select only the bounced and spam report events.",
     },
     ses: {
       label: "SNS topic ARNs",
-      hint: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused.",
+      hint: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused. Send only the bounce and complaint events to these topics.",
       placeholder: "arn:aws:sns:us-east-1:123456789012:ses-events",
     },
   };

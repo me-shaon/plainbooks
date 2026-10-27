@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { NormalizedEvent } from "mailswitch";
+import type { NormalizedEvent, ProviderAdapter } from "mailswitch";
 import { snsConfirmAction } from "mailswitch/ses";
 import { D1DedupeStore } from "mailswitch/stores/d1";
 import { handleWebhook, type WebhookOutcome } from "mailswitch/webhooks";
@@ -19,7 +19,7 @@ import {
   SEND_EMAIL_JOB,
   type SendEmailJobPayload,
 } from "../services/email";
-import { enqueueStatement, runJobSoon } from "../services/jobs";
+import { enqueueStatement, runJobSoon, TICK_QUERY_BUDGET } from "../services/jobs";
 
 /**
  * The largest webhook body, in bytes. One provider event is a few KB. A larger body is
@@ -55,6 +55,51 @@ async function readCappedBody(request: Request, max: number): Promise<Uint8Array
     offset += chunk.byteLength;
   }
   return body;
+}
+
+/**
+ * The D1 statements of one webhook request, for the 50 statement limit of Workers Free:
+ * - before the events: the provider row, the workspace, and the owner emails (3);
+ * - per event key: the dedupe claim batch (2) and the commit (1), twice for an adapter
+ *   with body-bound keys (Mailgun);
+ * - per bounce or complaint group: the email_log read, the document read, and a batch of
+ *   up to 4 writes (6);
+ * - per SNS subscription: the activity row (1).
+ */
+const WEBHOOK_FIXED_STATEMENTS = 3;
+const WEBHOOK_EVENT_STATEMENTS = 3;
+const WEBHOOK_GROUP_STATEMENTS = 6;
+
+/**
+ * The most D1 statements that a request with these events can use. It counts every
+ * event, because mailswitch claims every event key, also the types that the app ignores.
+ */
+function webhookStatements(adapter: ProviderAdapter, events: NormalizedEvent[]): number {
+  const perEvent =
+    (adapter as { bodyBoundKeys?: boolean }).bodyBoundKeys === true
+      ? 2 * WEBHOOK_EVENT_STATEMENTS
+      : WEBHOOK_EVENT_STATEMENTS;
+  const keys = new Set(events.map((event) => event.eventKey));
+  const confirms = events.filter((event) => snsConfirmAction(event) !== null).length;
+  return (
+    WEBHOOK_FIXED_STATEMENTS +
+    keys.size * perEvent +
+    groupEvents(events).length * WEBHOOK_GROUP_STATEMENTS +
+    confirms
+  );
+}
+
+/** Parses the body for the statement count. Null when the parser throws. */
+function parseForCount(
+  adapter: ProviderAdapter,
+  body: Uint8Array,
+  headers: Headers,
+): NormalizedEvent[] | null {
+  try {
+    return adapter.webhooks?.parse(body, headers) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function isRole(value: string): value is EmailProviderRole {
@@ -273,6 +318,28 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
 
   let outcome: WebhookOutcome;
   try {
+    // A request that would pass the D1 statement limit fails part way, after some events
+    // are claimed or written. Refuse it before any write. Only a verified request gets the
+    // 500, so an unsigned request still gets the 401 below.
+    const parsed = parseForCount(adapter, body, c.req.raw.headers);
+    const statements = parsed ? webhookStatements(adapter, parsed) : 0;
+    if (statements > TICK_QUERY_BUDGET) {
+      const verified = await adapter.webhooks.verify({
+        headers: c.req.raw.headers,
+        body,
+        secret: provider.webhookSecret,
+        now: Date.now(),
+      });
+      if (verified.ok) {
+        console.error(
+          `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
+            `which needs up to ${statements} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
+            "Nothing was recorded. In the provider webhook settings, select only the bounce " +
+            "and spam complaint events, and turn off event grouping where the provider has it.",
+        );
+        return c.json({ error: "The webhook has too many events", code: "too_many_events" }, 500);
+      }
+    }
     outcome = await handleWebhook(
       new Request(c.req.url, { method: "POST", headers: c.req.raw.headers, body }),
       {

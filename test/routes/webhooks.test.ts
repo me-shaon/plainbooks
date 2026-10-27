@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { createSnsSigner, type SnsMessage } from "mailswitch/conformance";
+import { mailjetWebhookAuthorization } from "mailswitch/mailjet";
 import { postmarkWebhookAuthorization } from "mailswitch/postmark";
 import { svixSignedPayload } from "mailswitch/resend";
 import { toSendSignature } from "mailswitch/tosend";
@@ -31,6 +32,7 @@ import { resetPdfState, stubRenderer } from "../helpers/pdf";
 const TOSEND_SECRET = "tosend-webhook-secret-0123456789";
 const RESEND_SECRET = `whsec_${btoa("resend-webhook-secret-0123456789")}`;
 const POSTMARK_SECRET = "postmark-webhook-password-0123456789";
+const MAILJET_SECRET = "mailjet-webhook-password-0123456789";
 const TOPIC_ARN = "arn:aws:sns:us-east-1:123456789012:ses-events";
 const CERT_URL = "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-plainbooks.pem";
 const SUBSCRIBE_URL =
@@ -40,6 +42,7 @@ const CREDENTIALS: Record<string, Record<string, string>> = {
   tosend: { apiKey: "tsend_test_key" },
   resend: { apiKey: "re_test_key" },
   postmark: { serverToken: "POSTMARK_API_TEST" },
+  mailjet: { apiKey: "mailjetapikey0000000001", secretKey: "mailjetsecretkey00000001" },
   ses: { region: "us-east-1", accessKeyId: "AKIAEXAMPLEKEY000001", secretAccessKey: "secret" },
 };
 
@@ -491,5 +494,74 @@ describe("POST /api/webhooks/email/:role with Amazon SES", () => {
     expect(notes.results).toEqual([
       { body: "To a@northwind.test, b@x.test: Invoice INV-0001 from Studio One" },
     ]);
+  });
+});
+
+describe("POST /api/webhooks/email/:role with a batch of events", () => {
+  /** Mailjet bounces with grouping on: one list of `count` events, each for its own message. */
+  const mailjetBounces = (count: number) =>
+    JSON.stringify(
+      Array.from({ length: count }, (_, i) => ({
+        event: "bounce",
+        time: 1761200000 + i,
+        MessageID: 1000 + i,
+        Message_GUID: `mj-guid-${i}`,
+        email: "ap@northwind.test",
+        hard_bounce: true,
+      })),
+    );
+
+  async function mailjetPost(body: string) {
+    const { env: counted, counter } = countingEnv();
+    const res = await app.fetch(
+      await buildRequest("/api/webhooks/email/primary", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: mailjetWebhookAuthorization(MAILJET_SECRET),
+        },
+        body,
+      }),
+      counted,
+    );
+    return { res, counter };
+  }
+
+  beforeEach(async () => {
+    await saveProvider("primary", "mailjet", MAILJET_SECRET);
+  });
+
+  it("answers 500 before any write when the batch would pass the D1 query limit", async () => {
+    await insertLog("mj-guid-0", "mailjet");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { res, counter } = await mailjetPost(mailjetBounces(20));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ code: "too_many_events" });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("select only the bounce"));
+    // Only reads ran: no claim, no commit, and no event write.
+    const writes = counter.queries.filter((q) => !/^\s*SELECT/i.test(q.sql));
+    expect(writes).toEqual([]);
+    expect(await count("mailswitch_webhook_dedupe")).toBe(0);
+    expect(await count("notifications")).toBe(0);
+    expect(await count("jobs WHERE type = 'send_email'")).toBe(0);
+    expect(await logStatus("mj-guid-0")).toBe("sent");
+  });
+
+  it("records a small batch in fewer than 50 statements", async () => {
+    await insertLog("mj-guid-0", "mailjet");
+    await insertLog("mj-guid-1", "mailjet");
+    const { res, counter } = await mailjetPost(mailjetBounces(3));
+    expect(res.status).toBe(200);
+    expect(await count("notifications")).toBe(3);
+    expect(await logStatus("mj-guid-0")).toBe("bounced");
+    expect(await logStatus("mj-guid-1")).toBe("bounced");
+    expect(counter.statements).toBeLessThan(50);
+  });
+
+  it("refuses an unsigned large batch with 401, not 500", async () => {
+    const res = await post("primary", mailjetBounces(20), {
+      authorization: mailjetWebhookAuthorization("another-password-0123456789"),
+    });
+    expect(res.status).toBe(401);
   });
 });
