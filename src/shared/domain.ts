@@ -73,7 +73,11 @@ export type RecurringFrequency = (typeof RECURRING_FREQUENCIES)[number];
 export const RECURRING_STATUSES = ["active", "paused", "ended"] as const;
 export type RecurringStatus = (typeof RECURRING_STATUSES)[number];
 
-export const JOB_STATUSES = ["pending", "running", "done", "failed"] as const;
+/**
+ * `needs_review`: an email job whose send ended `unknown`. The email may have gone out, so
+ * the scheduler never claims it again. A person decides.
+ */
+export const JOB_STATUSES = ["pending", "running", "done", "failed", "needs_review"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const TEMPLATE_LAYOUTS = ["classic", "minimal", "bold"] as const;
@@ -105,7 +109,11 @@ export type CustomFieldScope = (typeof CUSTOM_FIELD_SCOPES)[number];
 export const EMAIL_KINDS = ["document", "reminder", "notification"] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];
 
-export const EMAIL_STATUSES = ["sent", "failed", "bounced", "complained"] as const;
+/**
+ * `failed`: the provider did not send it (`not_sent`). `unknown`: the email may have gone
+ * out, so it counts like a sent email and is never retried automatically.
+ */
+export const EMAIL_STATUSES = ["sent", "failed", "unknown", "bounced", "complained"] as const;
 export type EmailStatus = (typeof EMAIL_STATUSES)[number];
 
 /** The primary provider sends first. The fallback sends only after a `not_sent` result. */

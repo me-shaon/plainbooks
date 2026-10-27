@@ -96,7 +96,7 @@ function SendDialogBody({
 
   const label = documentTitle(doc);
   const kind = kindLabel(doc.kind).toLowerCase();
-  const limitReached = data ? data.emailsSentToday >= data.dailyLimit : false;
+  const limitReached = data?.dailyLimit != null ? data.emailsSentToday >= data.dailyLimit : false;
   const fxMissing = data?.fx?.status === "manual_required";
   const willEmail = !revise || emailIt;
   const blocked = willEmail && (!data?.emailConfigured || limitReached || fxMissing);
@@ -292,9 +292,9 @@ function SendDialogBody({
               </dd>
             </div>
           </dl>
-          {willEmail ? (
+          {willEmail && data.dailyLimit !== null ? (
             <p className="m-0 text-xs text-muted-foreground">
-              {data.emailsSentToday} of {data.dailyLimit} emails sent today.
+              {data.emailsSentToday} of {data.dailyLimit} emails sent in the last 24 hours.
             </p>
           ) : null}
         </div>
@@ -364,9 +364,9 @@ function Blockers({
     return (
       <Notice tone="danger">
         <span>
-          Set the sender email in{" "}
+          Set the sender email and an email provider in{" "}
           <Link to="/settings" className="font-medium underline">
-            workspace settings
+            settings
           </Link>{" "}
           before you send email. You can also download the PDF and mark the document as sent.
         </span>
@@ -378,7 +378,7 @@ function Blockers({
       <Notice tone="danger">
         <strong className="font-medium">Daily email limit reached</strong>
         <span>
-          The app sent {data.dailyLimit} emails today. Send again tomorrow, or download the PDF and
+          Every email provider reached its daily limit. Send again later, or download the PDF and
           mark the document as sent.
         </span>
       </Notice>
@@ -395,10 +395,10 @@ function Blockers({
       </Notice>
     );
   }
-  if (data.dailyLimit - data.emailsSentToday <= 10) {
+  if (data.dailyLimit !== null && data.dailyLimit - data.emailsSentToday <= 10) {
     return (
       <Notice tone="neutral">
-        Only {data.dailyLimit - data.emailsSentToday} emails are left for today.
+        Only {data.dailyLimit - data.emailsSentToday} emails are left in the daily limit.
       </Notice>
     );
   }

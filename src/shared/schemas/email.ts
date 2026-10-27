@@ -16,6 +16,3 @@ export const sendDocumentInput = z.object({
   message: z.string().trim().max(5000, "Use 5000 characters or fewer").nullish(),
 });
 export type SendDocumentInput = z.output<typeof sendDocumentInput>;
-
-/** The Resend free tier allows 100 emails per day. */
-export const DAILY_EMAIL_LIMIT = 100;

@@ -6,10 +6,7 @@ import { env } from "cloudflare:workers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "../../src/worker/app";
 import type { Bindings } from "../../src/worker/env";
-import {
-  registerEmailJobHandlers,
-  setResendFetchForTesting,
-} from "../../src/worker/services/email";
+import { registerEmailJobHandlers } from "../../src/worker/services/email";
 import { resetJobRegistryForTesting } from "../../src/worker/services/jobs";
 import { recordPayment } from "../../src/worker/services/payments";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
@@ -31,7 +28,7 @@ import {
   seedClient,
   sentInvoice,
 } from "../helpers/documents";
-import { resetEmailState, stubResend } from "../helpers/email";
+import { resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
 import { resetPdfState, stubRenderer } from "../helpers/pdf";
 
 const OWNER = "owner@plans.test";
@@ -59,7 +56,7 @@ beforeAll(async () => {
   ).run();
   const owner = await seedUser(OWNER, "owner");
   setPdfRendererForTesting(stubRenderer());
-  setResendFetchForTesting(stubResend());
+  await useFakeEmail();
   setRecurringFetcherForTesting(noFetch);
 
   const northwind = await seedClient({ name: "Northwind" });
@@ -91,7 +88,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   setPdfRendererForTesting(null);
-  setResendFetchForTesting(null);
+  restoreEmail();
   setRecurringFetcherForTesting(null);
   resetJobRegistryForTesting();
 });
@@ -192,10 +189,13 @@ describe("statements per request", () => {
     expect(result.statements).toBeLessThanOrEqual(budget);
   });
 
-  it("sends a draft in at most 30 statements, the route's detail read included", async () => {
+  it("sends a draft in at most 38 statements, the route's detail read included", async () => {
     const result = await measure(`/api/documents/${draftId}/send`, { method: "POST", json: {} });
     expect(result.status).toBe(200);
-    expect(result.statements).toBeLessThanOrEqual(30);
+    // mailswitch adds 6: the idempotency claim (a batch of 4), one heartbeat, and the
+    // final record. The provider row and the send-key count add one each.
+    expect(result.statements).toBeLessThanOrEqual(38);
+    expect(result.queries.filter((q) => /from "email_providers"/.test(q.sql))).toHaveLength(1);
     // The workspace row is read once per request.
     expect(result.queries.filter((q) => /from "workspace"/.test(q.sql))).toHaveLength(1);
   });

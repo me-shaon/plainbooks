@@ -22,6 +22,7 @@ import {
   usableEmailProviders,
 } from "../../src/worker/email/settings";
 import { AppError } from "../../src/worker/errors";
+import { countingEnv } from "../helpers/d1";
 
 const db = createDb(env.DB);
 const KEY = env.ENCRYPTION_KEY;
@@ -365,5 +366,32 @@ describe("email provider settings", () => {
     expect((await loadEmailProviders(requestDb, KEY)).primary?.status).toBe("ready");
     await deleteEmailProvider(requestDb, "primary");
     expect((await loadEmailProviders(requestDb, KEY)).primary).toBeUndefined();
+  });
+
+  it("runs one query for every read on a request handle", async () => {
+    await saveToSend();
+    const { env: counted, counter } = countingEnv();
+    const requestDb = createRequestDb(counted.DB);
+    await loadEmailProviders(requestDb, KEY);
+    await usableEmailProviders(requestDb, KEY);
+    await getEmailSettingsView(requestDb, KEY);
+    expect(counter.statements).toBe(1);
+  });
+
+  it("marks stored keys that fail the field rules for re-entry", async () => {
+    const ring = loadKeyRing(KEY);
+    if (!ring) throw new Error("no key ring");
+    const envelope = await encrypt(
+      ring,
+      JSON.stringify({ apiKey: "not-a-tosend-key" }),
+      secretScope("primary", "tosend", "credentials"),
+    );
+    await env.DB.prepare(
+      "INSERT INTO email_providers (role, provider_id, credentials) VALUES ('primary', 'tosend', ?)",
+    )
+      .bind(envelope)
+      .run();
+    expect((await loadEmailProviders(db, KEY)).primary?.status).toBe("needs_reentry");
+    await expectAppError(usableEmailProviders(db, KEY), 422, "email_not_configured");
   });
 });

@@ -1,6 +1,8 @@
-// The one place that picks real or fake adapters for the external services: Resend,
-// Frankfurter, and Browser Run. The fakes exist for the end-to-end tests. They are used
-// only when APP_ENV is exactly "development" and FAKE_EXTERNALS is "1".
+// The one place that picks real or fake adapters for the external services: the email
+// provider, Frankfurter, and Browser Run. The fakes exist for the end-to-end tests. They are
+// used only when APP_ENV is exactly "development" and FAKE_EXTERNALS is "1".
+import type { AddressInput, ProviderAdapter } from "mailswitch";
+import { type FakeProvider, fakeProvider } from "mailswitch/testing";
 import type { Bindings } from "./env";
 import type { Fetcher } from "./services/fx";
 import type { PdfRenderer, RenderOutcome } from "./services/pdf";
@@ -16,12 +18,16 @@ export interface FakeEmail {
   subject: string;
 }
 
-/** Emails the fake Resend accepted, newest last. In memory only. */
+/** Emails the fake email provider accepted, newest last. In memory only. */
 export const fakeOutbox: FakeEmail[] = [];
+
+/** The credentials that the fake email provider accepts. Stored keys are not used. */
+export const FAKE_EMAIL_CREDENTIALS: Readonly<Record<string, string>> = { apiKey: "fk_fake" };
 
 export interface FakeExternals {
   fxFetch: Fetcher;
-  resendFetch: Fetcher;
+  /** The fake adapter for a catalog provider ID. It records each email in `fakeOutbox`. */
+  emailAdapter: (providerId: string) => ProviderAdapter;
   pdfRenderer: PdfRenderer;
 }
 
@@ -33,7 +39,11 @@ export function fakeExternalsEnabled(env: ExternalsEnv): boolean {
 /** The fake adapters, or null when the real services apply. */
 export function fakeExternals(env: ExternalsEnv): FakeExternals | null {
   if (!fakeExternalsEnabled(env)) return null;
-  return { fxFetch: fakeFrankfurter, resendFetch: fakeResend, pdfRenderer: fakePdfRenderer };
+  return {
+    fxFetch: fakeFrankfurter,
+    emailAdapter: fakeEmailAdapter,
+    pdfRenderer: fakePdfRenderer,
+  };
 }
 
 const realFetch: Fetcher = (input, init) => fetch(input, init);
@@ -41,11 +51,6 @@ const realFetch: Fetcher = (input, init) => fetch(input, init);
 /** The fetch for Frankfurter exchange rates. */
 export function fxFetcher(env: ExternalsEnv): Fetcher {
   return fakeExternals(env)?.fxFetch ?? realFetch;
-}
-
-/** The fetch for the Resend API. */
-export function resendFetcher(env: ExternalsEnv): Fetcher {
-  return fakeExternals(env)?.resendFetch ?? realFetch;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,17 +65,33 @@ const fakeFrankfurter: Fetcher = async (input) => {
   return Response.json({ date, base: from, quote: to, rate: FAKE_FX_RATE });
 };
 
-const fakeResend: Fetcher = async (_input, init) => {
-  const body = JSON.parse(String(init?.body ?? "{}")) as { to?: string[]; subject?: string };
-  const email: FakeEmail = {
-    id: `fake_${crypto.randomUUID()}`,
-    to: body.to ?? [],
-    subject: body.subject ?? "",
-  };
-  fakeOutbox.push(email);
-  console.log("fake resend", JSON.stringify(email));
-  return Response.json({ id: email.id });
-};
+function addressText(input: AddressInput): string {
+  return typeof input === "string" ? input : input.email;
+}
+
+/** One `mailswitch/testing` fake per provider ID, kept for the life of the isolate. */
+const fakeEmailAdapters = new Map<string, FakeProvider>();
+
+function fakeEmailAdapter(providerId: string): ProviderAdapter {
+  let adapter = fakeEmailAdapters.get(providerId);
+  if (!adapter) {
+    adapter = fakeProvider({
+      id: providerId,
+      outcomes: (message) => {
+        const email: FakeEmail = {
+          id: `fake_${crypto.randomUUID()}`,
+          to: message.to.map(addressText),
+          subject: message.subject,
+        };
+        fakeOutbox.push(email);
+        console.log("fake email", JSON.stringify(email));
+        return { status: "sent", providerMessageId: email.id };
+      },
+    });
+    fakeEmailAdapters.set(providerId, adapter);
+  }
+  return adapter;
+}
 
 const fakePdfRenderer: PdfRenderer = {
   async render(): Promise<RenderOutcome> {

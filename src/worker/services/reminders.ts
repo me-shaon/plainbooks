@@ -1,8 +1,8 @@
 // Payment reminders (U16): mode precedence, the workspace step schedule, the overdue cap,
 // suggestions for the dashboard, manual sends, and the auto-send job.
 //
-// A reminder is an email_log row with kind "reminder" that Resend accepted (any status but
-// "failed"). Its reminder_offset_days is the day of the send relative to the due date, so
+// A reminder is an email_log row with kind "reminder" that the provider accepted or may
+// have accepted (any status but "failed"). Its reminder_offset_days is the day of the send relative to the due date, so
 // manual and automatic reminders count the same way:
 // - a step is done when a reminder went out on or after the step's day;
 // - the overdue cap counts reminders with an offset above 0 (R53). The before-due and
@@ -18,6 +18,7 @@ import type { ReminderStatus, ReminderSuggestion } from "../../shared/schemas/re
 import { todayIn } from "../../shared/time";
 import { type Db, schema } from "../db/client";
 import type { Document, Workspace } from "../db/schema";
+import { mailProviders } from "../email/mailer";
 import { reminderEmail } from "../email/templates";
 import type { AuthUser, Bindings } from "../env";
 import { AppError } from "../errors";
@@ -31,11 +32,12 @@ import {
 } from "./documents";
 import {
   appOrigin,
-  DAILY_EMAIL_LIMIT,
+  assertEmailCapacity,
   defaultRecipients,
   deliverEmail,
-  hasEmailCapacity,
-  nextEmailWindow,
+  EmailSendError,
+  emailJobOutcome,
+  senderAddress,
 } from "./email";
 import { registerEnqueueHook, registerJobHandler } from "./jobs";
 import { pdfFilename, pdfKey } from "./pdf";
@@ -367,8 +369,8 @@ export interface SendReminderOptions {
 /**
  * Sends one reminder with the reminder template, logs it (email_log kind "reminder" and
  * activity "reminder_sent"), and returns the offset it counted at. Throws 409
- * reminders_off, 409 reminder_cap_reached, 409 not_open, 429 daily_email_limit,
- * 422 no_recipients, 422 email_rejected, or 502 email_send_failed.
+ * reminders_off, 409 reminder_cap_reached, 409 not_open, 422 email_not_configured,
+ * 429 daily_email_limit, 422 no_recipients, or an EmailSendError.
  */
 export async function sendReminder(
   env: Bindings,
@@ -390,13 +392,13 @@ export async function sendReminder(
       reason ?? "This invoice cannot get a reminder",
     );
   }
-  if (!(await hasEmailCapacity(db, ws, opts.now))) {
-    throw new AppError(
-      429,
-      "daily_email_limit",
-      `The app sent ${DAILY_EMAIL_LIMIT} emails today, the daily limit. Send the reminder tomorrow.`,
-    );
-  }
+  senderAddress(ws);
+  const providers = await assertEmailCapacity(
+    db,
+    await mailProviders(env, db),
+    opts.now,
+    "The reminder",
+  );
   const recipients = await defaultRecipients(db, doc.clientId);
   if (recipients.length === 0) {
     throw new AppError(422, "no_recipients", "Give the client a primary or billing contact");
@@ -425,7 +427,7 @@ export async function sendReminder(
     ? [{ filename: pdfFilename(snapshot), content: new Uint8Array(await cached.arrayBuffer()) }]
     : undefined;
 
-  const outcome = await deliverEmail(
+  const { result } = await deliverEmail(
     env,
     db,
     {
@@ -441,17 +443,9 @@ export async function sendReminder(
       attachments,
       idempotencyKey: opts.idempotencyKey,
     },
-    opts.now,
-    ws,
+    { now: opts.now, workspace: ws, providers },
   );
-  if (!outcome.ok) {
-    const rejected = outcome.status >= 400 && outcome.status < 500 && outcome.status !== 429;
-    throw new AppError(
-      rejected ? 422 : 502,
-      rejected ? "email_rejected" : "email_send_failed",
-      `The reminder was not sent: ${outcome.message}`,
-    );
-  }
+  if (result.status !== "sent") throw new EmailSendError(result, "The reminder");
   await activityInsert(db, {
     documentId,
     clientId: doc.clientId,
@@ -499,9 +493,6 @@ export function registerReminderJobs(): void {
       const [candidate] = await loadCandidates(db, ws, now, [payload.documentId]);
       // Paid, voided, switched off, or reminded by hand since the job was queued.
       if (candidate?.mode !== "auto_send" || candidate.step === null) return undefined;
-      if (!(await hasEmailCapacity(db, ws, now))) {
-        return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
-      }
       try {
         await sendReminder(env, db, payload.documentId, {
           actor: null,
@@ -510,10 +501,9 @@ export function registerReminderJobs(): void {
           idempotencyKey: `job:${job.id}`,
         });
       } catch (err) {
+        const outcome = emailJobOutcome(err, now);
+        if (outcome) return outcome;
         if (err instanceof AppError) {
-          if (err.code === "daily_email_limit") {
-            return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
-          }
           if (SKIP_CODES.has(err.code)) {
             console.log("send_reminder skipped", JSON.stringify({ jobId: job.id, code: err.code }));
             return undefined;

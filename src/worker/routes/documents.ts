@@ -91,7 +91,7 @@ export const documentRoutes = new Hono<AppEnv>()
   })
   .get("/:id/send-preview", async (c) =>
     c.json(
-      await sendPreview(c.var.db, c.req.param("id"), {
+      await sendPreview(c.env, c.var.db, c.req.param("id"), {
         now: Date.now(),
         revise: c.req.query("revise") === "1",
         fetcher: fxFetcher(c.env),

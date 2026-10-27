@@ -2,7 +2,7 @@
 // Free gives a cron run 10 ms CPU and 50 D1 queries, so the tick counts every statement
 // and claims a job only when the rest of the budget can pay for it.
 //
-// A heavy job (a document send uses about 45 queries) does not fit next to the enqueue
+// A heavy job (a document send uses about 48 queries) does not fit next to the enqueue
 // phase. So the :15, :30 and :45 ticks first claim one due heavy job and run only that
 // job. The :00 tick always runs the enqueue phase, so derived statuses and new jobs never
 // wait more than an hour behind a queue of heavy jobs.
@@ -39,6 +39,8 @@ export interface TickSummary {
   retried: number;
   failed: number;
   deferred: number;
+  /** Email jobs whose send ended `unknown`. A person decides what happens next. */
+  needsReview: number;
   /** Jobs whose result could not be recorded. Their lease expires and they run again. */
   errors: number;
   /** D1 statements this tick prepared. */
@@ -91,6 +93,7 @@ export async function runTick(
     retry: 0,
     failed: 0,
     deferred: 0,
+    needs_review: 0,
     error: 0,
   };
   const run = async (job: ClaimedJob) => {
@@ -116,6 +119,7 @@ export async function runTick(
     retried: counts.retry,
     failed: counts.failed,
     deferred: counts.deferred,
+    needsReview: counts.needs_review,
     errors: counts.error,
     queries: queries.count(),
   });

@@ -126,7 +126,7 @@ export function useReviseDocument(id: string) {
 export interface SendResult {
   document: DocumentDetail;
   revisionId: string;
-  emailId: string;
+  emailId: string | null;
   recipients: string[];
 }
 

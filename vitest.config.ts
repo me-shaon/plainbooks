@@ -26,6 +26,8 @@ export default defineConfig(async () => {
                   APP_URL: "https://invoices.example.com",
                   // 32 bytes as base64. Tests that change the key pass their own value.
                   ENCRYPTION_KEY: btoa("test-encryption-key-0123456789ab"),
+                  // A local .dev.vars may turn the fakes on. Tests install their own stubs.
+                  FAKE_EXTERNALS: "0",
                 },
                 assets: {
                   directory: fileURLToPath(new URL("./test/fixtures/assets", import.meta.url)),

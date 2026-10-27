@@ -8,8 +8,6 @@ import type { Db } from "./db/client";
 export type Bindings = Env & {
   /** Local development only. Used by the auth dev bypass. */
   DEV_USER_EMAIL?: string;
-  /** Secret. The Resend API key ("re_..."). */
-  RESEND_API_KEY?: string;
   /** Secret. The Resend webhook signing secret ("whsec_..."). */
   RESEND_WEBHOOK_SECRET?: string;
   /** Secret. The Zero Trust team domain: "team.cloudflareaccess.com". */

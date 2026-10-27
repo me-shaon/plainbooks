@@ -19,8 +19,14 @@ export type BatchStatement = BatchItem<"sqlite">;
 export const JOB_BATCH_SIZE = 5;
 /** Workers Free allows 50 D1 queries per invocation. Every statement in a batch counts. */
 export const TICK_QUERY_BUDGET = 50;
-/** The most queries a light job (for example send_email) may use, its done marker included. */
-export const LIGHT_JOB_QUERIES = 10;
+/**
+ * The most queries a light job (for example send_email) may use, its done marker included.
+ * The worst email is a capped primary that takes a unit, answers `not_sent`, and falls
+ * back to a capped fallback: the workspace and provider reads (2), the mailswitch claim
+ * (4), two heartbeats (2), two cap reservations of 3 each (6), the refund (1), the final
+ * record (1), the email_log row (1), and the done marker (1).
+ */
+export const LIGHT_JOB_QUERIES = 18;
 /** Queries kept free for the retry or failure write after a job. */
 export const JOB_FAILURE_RESERVE = 2;
 /** A claimed job is leased for this long. After that, another tick can claim it again. */
@@ -55,12 +61,18 @@ export interface JobContext<P = unknown> {
  * - nothing: the job is marked done.
  * - `{ statements }`: the statements and the done marker run in one D1 batch.
  * - `{ defer }`: the job goes back to pending until `runAfter`. The attempt is not counted.
+ * - `{ fail }`: the job fails now, with no retry, and the owner gets a notification. Use it
+ *   when a retry cannot help, for example when the provider refused the keys.
+ * - `{ review }`: the job moves to `needs_review` and the owner gets a notification. Use it
+ *   when an email may have gone out. The scheduler never claims the job again.
  * Throw to fail the attempt. The job retries with backoff, then fails and notifies the owner.
  */
 export type JobOutcome =
   | undefined
   | { statements: BatchStatement[] }
-  | { defer: { runAfter: number; reason?: string } };
+  | { defer: { runAfter: number; reason?: string } }
+  | { fail: { message: string } }
+  | { review: { message: string } };
 
 export type JobHandler<P = unknown> = (ctx: JobContext<P>) => Promise<JobOutcome> | JobOutcome;
 
@@ -84,8 +96,9 @@ const heavyTypes = new Set<string>();
 
 export interface JobHandlerOptions {
   /**
-   * The job can use up to about 45 D1 queries (a document send: finalize, PDF, email,
-   * mark sent). The scheduler runs a heavy job only in a tick of its own.
+   * The job can use up to about 48 D1 queries (a document send: finalize, PDF, the
+   * mailswitch claim and cap statements, email, mark sent). The scheduler runs a heavy job
+   * only in a tick of its own.
    */
   heavy?: boolean;
 }
@@ -271,7 +284,7 @@ export function retryDelayMs(attempt: number): number {
   return Math.min(5 * 60 * 1000 * 3 ** Math.max(0, attempt - 1), 6 * 60 * 60 * 1000);
 }
 
-export type JobRunStatus = "done" | "retry" | "failed" | "deferred";
+export type JobRunStatus = "done" | "retry" | "failed" | "deferred" | "needs_review";
 
 const leaseHeld = (job: ClaimedJob) =>
   and(eq(jobs.id, job.id), eq(jobs.status, "running"), eq(jobs.leaseOwner, job.leaseOwner ?? ""));
@@ -311,6 +324,8 @@ export async function runJob(
       .where(leaseHeld(job));
     return "deferred";
   }
+  if (outcome && "fail" in outcome) return fail(db, job, now, errorMessage(outcome.fail.message));
+  if (outcome && "review" in outcome) return needsReview(db, job, now, outcome.review.message);
 
   const done = db
     .update(jobs)
@@ -373,6 +388,35 @@ async function fail(db: Db, job: ClaimedJob, now: number, message: string): Prom
     }),
   ]);
   return "failed";
+}
+
+/** Moves the job to needs_review and adds an owner notification, in one batch. */
+async function needsReview(
+  db: Db,
+  job: ClaimedJob,
+  now: number,
+  message: string,
+): Promise<JobRunStatus> {
+  await db.batch([
+    db
+      .update(jobs)
+      .set({
+        status: "needs_review",
+        lastError: errorMessage(message),
+        leaseOwner: null,
+        leaseUntil: null,
+        updatedAt: now,
+      })
+      .where(leaseHeld(job)),
+    db.insert(notifications).values({
+      type: "job_needs_review",
+      title: "An email needs review",
+      body: `${job.type}: ${message}`.slice(0, 1000),
+      documentId: documentIdOf(job.payload),
+      createdAt: now,
+    }),
+  ]);
+  return "needs_review";
 }
 
 function documentIdOf(payload: unknown): string | null {

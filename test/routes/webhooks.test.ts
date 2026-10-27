@@ -5,7 +5,6 @@ import {
   registerEmailJobHandlers,
   SEND_EMAIL_JOB,
   sendDocument,
-  setResendFetchForTesting,
 } from "../../src/worker/services/email";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
 import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
@@ -18,7 +17,7 @@ import {
   resetDocuments,
   seedClient,
 } from "../helpers/documents";
-import { resetEmailState, stubResend } from "../helpers/email";
+import { resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
 import { resetPdfState, stubRenderer } from "../helpers/pdf";
 
 const SECRET = env.RESEND_WEBHOOK_SECRET;
@@ -83,7 +82,9 @@ beforeEach(async () => {
   await clearUsers();
   await seedUser("owner@studio.test", "owner");
   setPdfRendererForTesting(stubRenderer());
-  setResendFetchForTesting(stubResend(() => Response.json({ id: "re_123" })));
+  await useFakeEmail({
+    primary: { providerId: "resend", outcomes: [{ status: "sent", providerMessageId: "re_123" }] },
+  });
   const clientId = (await seedClient()).id;
   docId = await draft({ clientId });
   await sendDocument(env, db, docId, { now: NOW, fetcher: noFetch });
@@ -91,7 +92,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   setPdfRendererForTesting(null);
-  setResendFetchForTesting(null);
+  restoreEmail();
 });
 
 describe("verifySvixSignature", () => {

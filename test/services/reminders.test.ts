@@ -6,10 +6,7 @@ import type { ReminderSuggestion } from "../../src/shared/schemas/reminder";
 import { addDays, todayIn } from "../../src/shared/time";
 import { schema } from "../../src/worker/db/client";
 import { revise } from "../../src/worker/services/documents";
-import {
-  registerEmailJobHandlers,
-  setResendFetchForTesting,
-} from "../../src/worker/services/email";
+import { registerEmailJobHandlers } from "../../src/worker/services/email";
 import { recordPayment } from "../../src/worker/services/payments";
 import { pdfKey } from "../../src/worker/services/pdf";
 import {
@@ -30,7 +27,7 @@ import {
   seedClient,
   sentInvoice,
 } from "../helpers/documents";
-import { resetEmailState, stubResend } from "../helpers/email";
+import { type FakeEmail, resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
 import { resetPdfState } from "../helpers/pdf";
 import { runHour } from "../helpers/scheduler";
 
@@ -40,7 +37,7 @@ const DUE = "2026-10-26";
 /** `days` from the due date, at 10:00 Dhaka. */
 const offset = (days: number) => at(addDays(DUE, days));
 
-let resend: ReturnType<typeof stubResend>;
+let email: FakeEmail;
 
 /** An invoice issued Oct 12 and due Oct 26 (14-day terms). */
 async function invoice(
@@ -82,12 +79,11 @@ beforeEach(async () => {
   ).run();
   await seedUser("owner@studio.test", "owner");
   await seedUser("member@studio.test", "member");
-  resend = stubResend();
-  setResendFetchForTesting(resend);
+  email = await useFakeEmail();
 });
 
 afterEach(() => {
-  setResendFetchForTesting(null);
+  restoreEmail();
 });
 
 describe("rules", () => {
@@ -125,7 +121,7 @@ describe("suggestions and manual reminders", () => {
     await runTick(env, offset(7));
     await runTick(env, offset(7) + 15 * 60_000);
     expect(await reminderJobs()).toEqual([]);
-    expect(resend.calls).toHaveLength(0);
+    expect(email.primary.sends).toHaveLength(0);
     expect(ids(await listSuggestions(db, offset(7)))).not.toContain(id);
 
     const res = await apiFetch(`/api/documents/${id}/remind`, {
@@ -152,10 +148,10 @@ describe("suggestions and manual reminders", () => {
     });
 
     await sendReminder(env, db, id, { now: offset(-3), trigger: "manual" });
-    expect(resend.calls).toHaveLength(1);
-    expect(resend.calls[0]?.body.subject).toContain("Reminder: invoice INV-0001");
-    expect(resend.calls[0]?.body.text).toContain("/p/");
-    expect(resend.calls[0]?.body.attachments).toBeUndefined();
+    expect(email.primary.sends).toHaveLength(1);
+    expect(email.primary.sends[0]?.message.subject).toContain("Reminder: invoice INV-0001");
+    expect(email.primary.sends[0]?.message.text).toContain("/p/");
+    expect(email.primary.sends[0]?.message.attachments).toBeUndefined();
     const [row] = await reminderRows(id);
     expect(row).toMatchObject({ kind: "reminder", trigger: "manual", reminderOffsetDays: -3 });
     expect(await activityTypes(id)).toContain("reminder_sent");
@@ -173,8 +169,12 @@ describe("suggestions and manual reminders", () => {
     const [doc] = await db.select().from(schema.documents).where(eq(schema.documents.id, id));
     await env.BUCKET.put(pdfKey(doc?.currentRevisionId ?? ""), new Uint8Array([37, 80, 68, 70]));
     await sendReminder(env, db, id, { now: offset(0), trigger: "manual" });
-    expect(resend.calls[0]?.body.attachments).toEqual([
-      { filename: "INV-0001.pdf", content: "JVBERg==" },
+    expect(email.primary.sends[0]?.message.attachments).toEqual([
+      {
+        filename: "INV-0001.pdf",
+        content: new Uint8Array([37, 80, 68, 70]),
+        contentType: "application/pdf",
+      },
     ]);
   });
 
@@ -230,11 +230,36 @@ describe("suggestions and manual reminders", () => {
     await runHour(env, offset(7));
     await runHour(env, offset(7) + 60 * 60_000);
     await runHour(env, offset(8));
-    expect(resend.calls).toHaveLength(1);
+    expect(email.primary.sends).toHaveLength(1);
     expect(await reminderJobs()).toEqual([`reminder:${id}:${DUE}:7`]);
     const [row] = await reminderRows(id);
     expect(row?.trigger).toBe("auto");
+    // The auto-send claims the email under the job key.
+    const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.type, REMINDER_JOB));
+    expect(email.primary.sends[0]?.message.idempotencyKey).toBe(`job:${job?.id}`);
+    expect(row?.idempotencyKey).toBe(`job:${job?.id}`);
     expect(await activityTypes(id)).toContain("reminder_sent");
+  });
+
+  it("an unclear auto reminder goes to needs review and is never sent again", async () => {
+    email = await useFakeEmail({
+      primary: {
+        outcomes: [{ status: "unknown", reason: "timeout", message: "The request timed out." }],
+      },
+    });
+    const client = await seedClient();
+    const id = await invoice(client.id, "inherit");
+    await env.DB.prepare("UPDATE workspace SET reminder_mode = 'auto_send'").run();
+
+    await runHour(env, offset(7));
+    await runHour(env, offset(8));
+    expect(email.primary.sends).toHaveLength(1);
+    const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.type, REMINDER_JOB));
+    expect(job?.status).toBe("needs_review");
+    // The unclear email counts as a reminder, so the step is not queued again.
+    expect(await reminderJobs()).toEqual([`reminder:${id}:${DUE}:7`]);
+    const [row] = await reminderRows(id);
+    expect(row?.status).toBe("unknown");
   });
 });
 

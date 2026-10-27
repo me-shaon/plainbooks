@@ -514,7 +514,7 @@ export const counters = sqliteTable("counters", {
   value: integer("value").notNull().default(0),
 });
 
-/** Every email the app tried to send. Counts per day enforce the Resend daily cap. */
+/** Every email the app tried to send, with the mailswitch result and idempotency key. */
 export const emailLog = sqliteTable(
   "email_log",
   {

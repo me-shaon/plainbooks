@@ -1,12 +1,12 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createAppMailer, mailProviders } from "../../src/worker/email/mailer";
 import {
   FAKE_FX_RATE,
   fakeExternals,
   fakeExternalsEnabled,
   fakeOutbox,
   fxFetcher,
-  resendFetcher,
   tinyPdf,
 } from "../../src/worker/externals";
 import { getPdf, setPdfRendererForTesting } from "../../src/worker/services/pdf";
@@ -30,19 +30,23 @@ describe("fakeExternalsEnabled", () => {
 describe("in production", () => {
   const prod = { APP_ENV: "production", FAKE_EXTERNALS: "1" } as const;
 
-  it("ignores FAKE_EXTERNALS and calls the real Frankfurter and Resend", async () => {
+  it("ignores FAKE_EXTERNALS and calls the real Frankfurter", async () => {
     expect(fakeExternals(prod)).toBeNull();
     const spy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async () => Response.json({ real: true }));
 
     await fxFetcher(prod)(FX_URL);
-    await resendFetcher(prod)("https://api.resend.com/emails", { method: "POST", body: "{}" });
 
-    expect(spy.mock.calls.map(([input]) => String(input))).toEqual([
-      FX_URL,
-      "https://api.resend.com/emails",
-    ]);
+    expect(spy.mock.calls.map(([input]) => String(input))).toEqual([FX_URL]);
+  });
+
+  it("needs a saved email provider", async () => {
+    await env.DB.prepare("DELETE FROM email_providers").run();
+    await expect(mailProviders({ ...env, ...prod }, db)).rejects.toMatchObject({
+      status: 422,
+      code: "email_not_configured",
+    });
   });
 
   describe("PDF", () => {
@@ -76,19 +80,27 @@ describe("in production", () => {
 describe("in development with FAKE_EXTERNALS=1", () => {
   const dev = { APP_ENV: "development", FAKE_EXTERNALS: "1" } as const;
 
-  it("answers Frankfurter and Resend without the network", async () => {
+  it("answers Frankfurter and sends email through the mailswitch fake, without the network", async () => {
+    await env.DB.prepare("DELETE FROM email_providers").run();
     const spy = vi.spyOn(globalThis, "fetch");
 
     const fx = await (await fxFetcher(dev)(FX_URL)).json();
     expect(fx).toEqual({ date: "2026-10-23", base: "USD", quote: "BDT", rate: FAKE_FX_RATE });
 
+    // With no saved provider, the fakes still give a toSend primary.
+    const devEnv = { ...env, ...dev };
+    const providers = await mailProviders(devEnv, db);
+    expect(providers.map((p) => [p.role, p.providerId])).toEqual([["primary", "tosend"]]);
     const before = fakeOutbox.length;
-    const res = await resendFetcher(dev)("https://api.resend.com/emails", {
-      method: "POST",
-      body: JSON.stringify({ to: ["a@example.com"], subject: "Invoice" }),
+    const result = await createAppMailer(devEnv, db, providers, Date.now()).send({
+      from: "billing@studio.test",
+      to: ["a@example.com"],
+      subject: "Invoice",
+      text: "Hello",
+      idempotencyKey: `externals-test:${crypto.randomUUID()}`,
     });
-    expect(res.status).toBe(200);
-    const { id } = (await res.json()) as { id: string };
+    expect(result).toMatchObject({ status: "sent", provider: "tosend" });
+    const id = result.status === "sent" ? result.providerMessageId : undefined;
     expect(fakeOutbox.slice(before)).toEqual([{ id, to: ["a@example.com"], subject: "Invoice" }]);
 
     expect(spy).not.toHaveBeenCalled();

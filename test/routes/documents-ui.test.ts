@@ -1,8 +1,8 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DocumentSummary, FxQuote, SendPreview } from "../../src/shared/schemas/document";
 import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
 import { draft, resetDocuments, seedClient } from "../helpers/documents";
-import { fillEmailLog, resetEmailState } from "../helpers/email";
+import { fillDailyCap, resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
 
 const MEMBER = "member@docs-ui.test";
 let clientId: string;
@@ -16,8 +16,12 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDocuments();
   await resetEmailState();
+  // Resend has a default cap of 100 a day.
+  await useFakeEmail({ primary: { providerId: "resend" } });
   clientId = (await seedClient()).id;
 });
+
+afterEach(() => restoreEmail());
 
 describe("endpoints for the document UI", () => {
   it("lists rows with the first line as the summary", async () => {
@@ -51,7 +55,7 @@ describe("endpoints for the document UI", () => {
       currency: "EUR",
       fxRate: { rate: "130", date: "2026-10-23" },
     });
-    await fillEmailLog(todayInDhaka(), 3);
+    await fillDailyCap({ providerId: "resend", role: "primary" }, 3, Date.now());
     const body = (await (
       await apiFetch(`/api/documents/${id}/send-preview`, { as: MEMBER })
     ).json()) as SendPreview;
@@ -63,6 +67,22 @@ describe("endpoints for the document UI", () => {
     });
     expect(body.dailyLimit).toBe(100);
     expect(body.emailsSentToday).toBe(3);
+  });
+
+  it("reports no limit for a provider with no cap, and no email without a provider", async () => {
+    const id = await draft({ clientId });
+    await resetEmailState();
+    await useFakeEmail({ primary: { providerId: "tosend" } });
+    const uncapped = (await (
+      await apiFetch(`/api/documents/${id}/send-preview`, { as: MEMBER })
+    ).json()) as SendPreview;
+    expect(uncapped).toMatchObject({ emailConfigured: true, dailyLimit: null, emailsSentToday: 0 });
+
+    await resetEmailState();
+    const none = (await (
+      await apiFetch(`/api/documents/${id}/send-preview`, { as: MEMBER })
+    ).json()) as SendPreview;
+    expect(none).toMatchObject({ emailConfigured: false, dailyLimit: null });
   });
 
   it("returns an identity rate for the home currency and rejects a bad query", async () => {
@@ -77,8 +97,3 @@ describe("endpoints for the document UI", () => {
     expect(bad.status).toBe(400);
   });
 });
-
-/** Today in Asia/Dhaka, the day the send-preview counts. */
-function todayInDhaka(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka" }).format(new Date());
-}

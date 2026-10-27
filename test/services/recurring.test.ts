@@ -11,15 +11,13 @@ import {
 } from "../../src/shared/recurring";
 import { schema } from "../../src/worker/db/client";
 import type { AuthUser } from "../../src/worker/env";
-import {
-  registerEmailJobHandlers,
-  setResendFetchForTesting,
-} from "../../src/worker/services/email";
+import { registerEmailJobHandlers } from "../../src/worker/services/email";
 import type { Fetcher } from "../../src/worker/services/fx";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
 import {
   createSchedule,
   listSchedules,
+  RECURRING_JOB,
   registerRecurringJobs,
   resolveSendMode,
   setRecurringFetcherForTesting,
@@ -28,7 +26,13 @@ import {
 import { runTick } from "../../src/worker/services/scheduler";
 import { apiFetch, clearUsers, installAccessKeys, seedUser } from "../helpers/auth";
 import { db, draft, noFetch, resetDocuments, seedClient, seedTaxRate } from "../helpers/documents";
-import { resetEmailState, stubResend } from "../helpers/email";
+import {
+  type FakeEmail,
+  fillDailyCap,
+  resetEmailState,
+  restoreEmail,
+  useFakeEmail,
+} from "../helpers/email";
 import { resetPdfState, stubRenderer } from "../helpers/pdf";
 import { runHour } from "../helpers/scheduler";
 
@@ -36,7 +40,7 @@ import { runHour } from "../helpers/scheduler";
 const at = (day: string) => Date.parse(`${day}T04:00:00Z`);
 
 let owner: AuthUser;
-let resend: ReturnType<typeof stubResend>;
+let email: FakeEmail;
 
 async function scheduleFor(
   clientId: string,
@@ -89,14 +93,13 @@ beforeEach(async () => {
   const row = await seedUser("owner@studio.test", "owner");
   owner = { id: row.id, email: row.email, name: row.name, role: "owner" };
   setPdfRendererForTesting(stubRenderer());
-  resend = stubResend();
-  setResendFetchForTesting(resend);
+  email = await useFakeEmail();
   setRecurringFetcherForTesting(noFetch);
 });
 
 afterEach(() => {
   setPdfRendererForTesting(null);
-  setResendFetchForTesting(null);
+  restoreEmail();
   setRecurringFetcherForTesting(null);
 });
 
@@ -180,11 +183,18 @@ describe("recurring_issue", () => {
     expect(invoice?.issueDate).toBe("2026-10-23");
     expect(invoice?.dueDate).toBe("2026-11-06");
     expect(invoice?.recurringPeriodId).toBe("2026-10");
-    expect(resend.calls).toHaveLength(1);
-    expect(resend.calls[0]?.body.to).toEqual(["ap@northwind.test"]);
-    expect(resend.calls[0]?.body.attachments).toHaveLength(1);
+    expect(email.primary.sends).toHaveLength(1);
+    expect(email.primary.sends[0]?.message.to).toEqual(["ap@northwind.test"]);
+    expect(email.primary.sends[0]?.message.attachments).toHaveLength(1);
     expect(await notificationTypes()).toEqual([]);
     expect(await jobKeys()).toEqual([`recurring:${id}:2026-10`]);
+    // The auto-send claims the email under the job key, not a manual send key.
+    const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.type, RECURRING_JOB));
+    expect(email.primary.sends[0]?.message.idempotencyKey).toBe(`job:${job?.id}`);
+    const log = await env.DB.prepare(
+      "SELECT idempotency_key AS key, email_provider AS provider FROM email_log",
+    ).first();
+    expect(log).toEqual({ key: `job:${job?.id}`, provider: "tosend" });
 
     const [schedule] = await db
       .select()
@@ -207,9 +217,9 @@ describe("recurring_issue", () => {
 
     // The owner email goes out on a later tick of the hour. The client gets nothing.
     await runTick(env, at("2026-10-23") + 60 * 60_000);
-    expect(resend.calls).toHaveLength(1);
-    expect(resend.calls[0]?.body.to).toEqual(["owner@studio.test"]);
-    expect(resend.calls[0]?.body.subject).toContain("Recurring invoice draft ready");
+    expect(email.primary.sends).toHaveLength(1);
+    expect(email.primary.sends[0]?.message.to).toEqual(["owner@studio.test"]);
+    expect(email.primary.sends[0]?.message.subject).toContain("Recurring invoice draft ready");
   });
 
   it("catches up on missed periods, and a repeated tick creates no duplicate", async () => {
@@ -294,19 +304,22 @@ describe("recurring_issue", () => {
     expect(invoice?.number).toBeNull();
     expect(await notificationTypes()).toEqual(["fx_rate_needed"]);
     // Only the owner notice went out. The client got nothing.
-    expect(resend.calls.map((c) => c.body.to)).toEqual([["owner@studio.test"]]);
+    expect(email.primary.sends.map((c) => c.message.to)).toEqual([["owner@studio.test"]]);
     expect(await jobKeys()).toContain(`fx_rate_needed:${invoice?.id}`);
   });
 
-  it("an auto-send period at the daily email cap waits for tomorrow", async () => {
+  it("an auto-send period with every provider at its daily cap waits and creates nothing", async () => {
+    await resetEmailState();
+    await useFakeEmail({ primary: { dailyCap: 5 } });
     const client = await seedClient({ recurringSendMode: "auto_send" });
     const id = await scheduleFor(client.id, { startDate: "2026-10-23" });
-    const { fillEmailLog } = await import("../helpers/email");
-    await fillEmailLog("2026-10-23", 100);
+    await fillDailyCap({ providerId: "tosend", role: "primary" }, 5, at("2026-10-23"));
 
     const summary = await runHour(env, at("2026-10-23"));
     expect(summary.deferred).toBe(1);
     expect(await invoicesOf(id)).toHaveLength(0);
+    const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.type, RECURRING_JOB));
+    expect(job).toMatchObject({ status: "pending", attempts: 0, lastError: "daily_email_limit" });
   });
 
   it("produces the right drafts across a simulated 3-month clock", async () => {
@@ -341,7 +354,7 @@ describe("recurring edge cases", () => {
     await runHour(env, at("2026-10-23"));
     const invoices = await invoicesOf(id);
     expect(invoices.map((d) => [d.issueDate, d.status])).toEqual([["2026-10-23", "sent"]]);
-    expect(resend.calls).toHaveLength(1);
+    expect(email.primary.sends).toHaveLength(1);
   });
 
   it("a tax rate archived after the schedule was made still applies", async () => {
@@ -452,7 +465,7 @@ describe("recurring routes", () => {
     expect(job?.status).toBe("done");
     expect(await invoicesOf(id)).toHaveLength(0);
     expect(await notificationTypes()).toEqual([]);
-    expect(resend.calls).toHaveLength(0);
+    expect(email.primary.sends).toHaveLength(0);
   });
 
   it("lets an Owner create a schedule from an invoice and lists it", async () => {

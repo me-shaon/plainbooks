@@ -37,10 +37,11 @@ import { fxFetcher } from "../externals";
 import { createDraft, loadWorkspace, workspaceToday } from "./documents";
 import {
   appDocumentUrl,
+  CAPACITY_RECHECK_MS,
   deferForPdf,
-  hasEmailCapacity,
-  nextEmailWindow,
+  emailJobOutcome,
   ownerEmails,
+  providersWithCapacity,
   SEND_EMAIL_JOB,
   type SendEmailJobPayload,
   sendDocument,
@@ -734,8 +735,10 @@ export function registerRecurringJobs(): void {
       const mode = resolveSendMode(s.sendMode, client.recurringSendMode, ws.recurringSendMode);
 
       // Auto-send waits for email capacity before it creates anything (the daily cap).
-      if (mode === "auto_send" && !(await hasEmailCapacity(db, ws, now))) {
-        return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
+      // Null means no provider: the send below reports it, and the owner gets the draft.
+      const providers = mode === "auto_send" ? await providersWithCapacity(env, db, now) : null;
+      if (providers?.length === 0) {
+        return { defer: { runAfter: now + CAPACITY_RECHECK_MS, reason: "daily_email_limit" } };
       }
 
       const doc = await periodInvoice(db, s, client, ws, payload, now);
@@ -775,12 +778,12 @@ export function registerRecurringJobs(): void {
           trigger: "auto",
           idempotencyKey: `job:${job.id}`,
           fetcher: autoSendFetcher(env),
+          providers: providers ?? undefined,
         });
       } catch (err) {
+        const outcome = emailJobOutcome(err, now);
+        if (outcome) return outcome;
         if (!(err instanceof AppError)) throw err;
-        if (err.code === "daily_email_limit") {
-          return { defer: { runAfter: nextEmailWindow(ws, now), reason: "daily_email_limit" } };
-        }
         // The invoice exists and the cursor waits. The next run reuses the invoice.
         if (err.code === "pdf_pending") return deferForPdf(now);
         if (err.code === "fx_rate_required") {

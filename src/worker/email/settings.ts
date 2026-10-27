@@ -97,11 +97,16 @@ function forgetEmailProviders(db: Db): void {
   rowReads.delete(db);
 }
 
+/** One query. A Drizzle builder runs again on each `then`, so the cache keeps a Promise. */
+async function selectRows(db: Db): Promise<EmailProviderRow[]> {
+  return db.select().from(emailProviders);
+}
+
 async function readRows(db: Db): Promise<EmailProviderRow[]> {
-  if (!isRequestScoped(db)) return db.select().from(emailProviders);
+  if (!isRequestScoped(db)) return selectRows(db);
   let read = rowReads.get(db);
   if (!read) {
-    read = db.select().from(emailProviders);
+    read = selectRows(db);
     rowReads.set(db, read);
     read.catch(() => rowReads.delete(db));
   }
@@ -131,6 +136,11 @@ async function decryptRow(
     );
     const credentials = JSON.parse(json) as unknown;
     if (!isStringRecord(credentials)) return { ...base, status: "needs_reentry" };
+    // Keys that no longer pass the field rules would make `createMailer` throw at send
+    // time. Settings asks for them again instead.
+    if (!parseCredentials(meta, credentials, row.presetId ?? undefined).ok) {
+      return { ...base, status: "needs_reentry" };
+    }
     const webhookSecret = row.webhookSecret
       ? await decrypt(
           ring,

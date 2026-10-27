@@ -434,10 +434,12 @@ export interface SendPreview {
   recipients: string[];
   /** The default subject. The number is the next free number for an unnumbered draft. */
   subject: string;
-  /** True when the workspace has a sender address. */
+  /** True when the workspace has a sender address and a usable email provider. */
   emailConfigured: boolean;
+  /** Sends in the rolling 24 hours, summed over the providers that have a daily cap. */
   emailsSentToday: number;
-  dailyLimit: number;
+  /** The summed daily caps, or null when a provider has no cap. */
+  dailyLimit: number | null;
   /** The issue date the send will use. */
   issueDate: string;
   homeCurrency: string;
