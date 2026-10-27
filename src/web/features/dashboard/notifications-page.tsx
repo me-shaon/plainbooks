@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Segment, SegmentedControl } from "../../components/ui/segmented-control";
 import { Skeleton } from "../../components/ui/skeleton";
+import { NeedsReviewPanel } from "../documents/needs-review";
 import { NotificationRow } from "./notifications";
 import { useDismissAllNotifications, useNotifications } from "./queries";
 
@@ -35,6 +36,7 @@ export function NotificationsPage() {
           </Button>
         }
       />
+      <NeedsReviewPanel />
       <SegmentedControl
         aria-label="Show"
         selectedKey={state}
@@ -55,7 +57,7 @@ export function NotificationsPage() {
         <EmptyState
           icon={Bell}
           title={state === "unread" ? "No open notifications" : "No notifications yet"}
-          description="Failed tasks, quote decisions, bounces, and recurring drafts show up here."
+          description="Failed tasks, emails that need review, quote decisions, bounces, and recurring drafts show up here."
         />
       ) : (
         <ul

@@ -31,6 +31,8 @@ export const ACTIVITY_TYPES = [
   "email_complained",
   "reminder_sent",
   "link_reset",
+  "email_marked_sent",
+  "email_sent_again",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

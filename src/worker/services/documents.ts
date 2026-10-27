@@ -37,7 +37,7 @@ import type { AuthUser } from "../env";
 import { AppError } from "../errors";
 import { type ActivityInput, guardedActivity } from "./activity";
 import { type Fetcher, type FxRate, getRate, manualRate } from "./fx";
-import { type EnqueueInput, guardedEnqueueStatement } from "./jobs";
+import { type EnqueueInput, guardedEnqueueStatement, needsReviewSql, reviewJobIdSql } from "./jobs";
 import { counterIncrement, numberExpression, UNNUMBERED_DRAFT } from "./numbering";
 import { brandKitOf, loadWorkspace } from "./settings";
 import { overdueSql } from "./status-sql";
@@ -947,6 +947,11 @@ export interface FinalizeOptions extends ActionContext {
   issueDate?: string;
   /** For the FX fetch. Defaults to global fetch. */
   fetcher?: Fetcher;
+  /**
+   * The document row, when the caller loaded it with no write since. It saves one D1
+   * statement. The writes stay guarded on the draft state.
+   */
+  document?: Document;
 }
 
 export interface FinalizeResult {
@@ -991,7 +996,7 @@ export async function finalize(
   documentId: string,
   opts: FinalizeOptions,
 ): Promise<FinalizeResult> {
-  const doc = await loadDocument(db, documentId);
+  const doc = opts.document ?? (await loadDocument(db, documentId));
   if (isLocked(doc)) return existingFinalized(db, doc);
 
   const [ws, lines, terms] = await Promise.all([
@@ -1096,9 +1101,17 @@ export async function finalize(
 export async function markSent(
   db: Db,
   documentId: string,
-  opts: ActionContext & { revisionId: string; trigger?: "manual" | "auto" },
+  opts: ActionContext & {
+    revisionId: string;
+    trigger?: "manual" | "auto";
+    /**
+     * The document row, when the caller loaded it with no write since. It saves one D1
+     * statement. The update stays guarded on the status of this row.
+     */
+    document?: Document;
+  },
 ): Promise<Document> {
-  const doc = await loadDocument(db, documentId);
+  const doc = opts.document ?? (await loadDocument(db, documentId));
   if (doc.number === null) {
     throw new AppError(409, "not_finalized", "Finalize the document before marking it sent");
   }
@@ -1129,7 +1142,18 @@ export async function markSent(
       )
       .bind(status, opts.now, overdue ? 1 : 0, opts.now, documentId, doc.status),
   ];
-  await d1.batch(statements);
+  const results = await d1.batch(statements);
+  // The guarded update applied, so the new row is known without a read. This keeps a
+  // scheduler document send inside the D1 statement budget.
+  if (changes(results[1]) === 1) {
+    return {
+      ...doc,
+      status,
+      sentAt: doc.sentAt ?? opts.now,
+      isOverdue: overdue,
+      updatedAt: opts.now,
+    };
+  }
   return loadDocument(db, documentId);
 }
 
@@ -1574,6 +1598,7 @@ function summaryOf(
   >,
   clientName: string,
   today: string,
+  needsReview: boolean,
 ): DocumentSummary {
   return {
     id: doc.id,
@@ -1592,6 +1617,7 @@ function summaryOf(
     balance: doc.total - doc.amountPaid,
     isOverdue: isOverdue(doc, today),
     updatedAt: doc.updatedAt,
+    needsReview,
   };
 }
 
@@ -1648,6 +1674,7 @@ export async function listDocuments(
         summary: sql<
           string | null
         >`(SELECT description FROM document_lines WHERE document_id = ${documents.id} ORDER BY position LIMIT 1)`,
+        needsReview: needsReviewSql(sql`${documents.id}`),
       })
       .from(documents)
       .innerJoin(clients, eq(documents.clientId, clients.id))
@@ -1663,7 +1690,7 @@ export async function listDocuments(
   ]);
   return {
     items: rows.map((row) => ({
-      ...summaryOf(row, row.clientName, today),
+      ...summaryOf(row, row.clientName, today, Boolean(row.needsReview)),
       summary: row.summary || null,
     })),
     total: Number(count?.count ?? 0),
@@ -1698,11 +1725,15 @@ export async function getDocumentDetail(
       .select({ fieldId: customFieldValues.fieldId, value: customFieldValues.value })
       .from(customFieldValues)
       .where(and(eq(customFieldValues.entityType, "document"), eq(customFieldValues.entityId, id))),
-    db.select({ name: clients.name }).from(clients).where(eq(clients.id, doc.clientId)),
+    db
+      .select({ name: clients.name, reviewJobId: reviewJobIdSql(sql`${id}`) })
+      .from(clients)
+      .where(eq(clients.id, doc.clientId)),
   ]);
   const today = workspaceToday(ws, opts.now);
   return {
-    ...summaryOf(doc, client?.name ?? "", today),
+    ...summaryOf(doc, client?.name ?? "", today, Boolean(client?.reviewJobId)),
+    reviewJobId: client?.reviewJobId ?? null,
     paymentTermsDays: doc.paymentTermsDays,
     discount: discountFromRow(doc),
     notes: doc.notes,

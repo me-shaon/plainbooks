@@ -3,7 +3,7 @@
 //   registerEnqueueHook("recurring", hook)        (U15)
 // Register at module scope in the feature's service file, and import that file from
 // src/worker/index.ts so the registration runs in every isolate.
-import { and, eq, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, lte, notInArray, or, type SQL, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { createRequestDb, type Db, schema } from "../db/client";
 import type { Workspace } from "../db/schema";
@@ -72,7 +72,16 @@ export type JobOutcome =
   | { statements: BatchStatement[] }
   | { defer: { runAfter: number; reason?: string } }
   | { fail: { message: string } }
-  | { review: { message: string } };
+  | { review: ReviewDetail };
+
+/** Why an email job needs review, for the job row and the owner notification. */
+export interface ReviewDetail {
+  /** The provider ID that got the last attempt, when known. */
+  provider?: string | null;
+  /** The mailswitch reason, for example `timeout`. */
+  reason?: string;
+  message: string;
+}
 
 export type JobHandler<P = unknown> = (ctx: JobContext<P>) => Promise<JobOutcome> | JobOutcome;
 
@@ -325,7 +334,7 @@ export async function runJob(
     return "deferred";
   }
   if (outcome && "fail" in outcome) return fail(db, job, now, errorMessage(outcome.fail.message));
-  if (outcome && "review" in outcome) return needsReview(db, job, now, outcome.review.message);
+  if (outcome && "review" in outcome) return needsReview(db, job, now, outcome.review);
 
   const done = db
     .update(jobs)
@@ -395,31 +404,82 @@ async function needsReview(
   db: Db,
   job: ClaimedJob,
   now: number,
-  message: string,
+  detail: ReviewDetail,
 ): Promise<JobRunStatus> {
   await db.batch([
     db
       .update(jobs)
       .set({
         status: "needs_review",
-        lastError: errorMessage(message),
+        lastError: reviewError(detail),
         leaseOwner: null,
         leaseUntil: null,
         updatedAt: now,
       })
       .where(leaseHeld(job)),
-    db.insert(notifications).values({
-      type: "job_needs_review",
-      title: "An email needs review",
-      body: `${job.type}: ${message}`.slice(0, 1000),
-      documentId: documentIdOf(job.payload),
-      createdAt: now,
-    }),
+    reviewNotification(db, { documentId: documentIdOf(job.payload), detail, now }),
   ]);
   return "needs_review";
 }
 
-function documentIdOf(payload: unknown): string | null {
+/** The `last_error` text of a job in needs_review: "tosend unknown/timeout: The request timed out." */
+export function reviewError(detail: ReviewDetail): string {
+  const head = `${detail.provider ?? "email"} unknown/${detail.reason ?? "unknown"}`;
+  return errorMessage(`${head}: ${detail.message}`);
+}
+
+/**
+ * The owner notification for an email that needs review. It names the provider, the time
+ * in UTC, and the reason, and tells the Owner what to do next.
+ */
+export function reviewNotification(
+  db: Db,
+  input: { documentId: string | null; detail: ReviewDetail; now: number },
+) {
+  const { detail } = input;
+  const at = `${new Date(input.now).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const reason = detail.reason ? `${detail.reason} (${detail.message})` : detail.message;
+  return db.insert(notifications).values({
+    type: "job_needs_review",
+    title: "An email needs review",
+    body: `Provider: ${detail.provider ?? "unknown"}. Time: ${at}. Reason: ${reason}. The email may have gone out. Check the provider logs, then mark it as sent or send it again.`.slice(
+      0,
+      1000,
+    ),
+    documentId: input.documentId,
+    createdAt: input.now,
+  });
+}
+
+/**
+ * The job types that email a document to the client. A job of these types in
+ * needs_review shows a "Needs review" badge on its document. The names match
+ * SEND_DOCUMENT_JOB, MANUAL_SEND_JOB, and REMINDER_JOB.
+ */
+export const DOCUMENT_EMAIL_JOB_TYPES = [
+  "send_document",
+  "document_send",
+  "send_reminder",
+] as const;
+const DOCUMENT_EMAIL_TYPES_SQL = sql.raw(DOCUMENT_EMAIL_JOB_TYPES.map((t) => `'${t}'`).join(", "));
+
+/** The needs_review jobs that email the document in `documentIdSql`. Uses the status index. */
+const reviewJobsOf = (documentIdSql: SQL) =>
+  sql`FROM jobs j WHERE j.status = 'needs_review' AND j.type IN (${DOCUMENT_EMAIL_TYPES_SQL})
+    AND json_extract(j.payload, '$.documentId') = ${documentIdSql}`;
+
+/** SQL for the ID of the newest needs_review job that emails the document, or NULL. */
+export function reviewJobIdSql(documentIdSql: SQL): SQL<string | null> {
+  return sql<string | null>`(SELECT j.id ${reviewJobsOf(documentIdSql)}
+    ORDER BY j.updated_at DESC LIMIT 1)`;
+}
+
+/** SQL that is 1 when a needs_review job emails the document. For list rows. */
+export function needsReviewSql(documentIdSql: SQL): SQL<number> {
+  return sql<number>`EXISTS (SELECT 1 ${reviewJobsOf(documentIdSql)})`;
+}
+
+export function documentIdOf(payload: unknown): string | null {
   if (payload && typeof payload === "object" && "documentId" in payload) {
     const value = (payload as { documentId: unknown }).documentId;
     if (typeof value === "string") return value;

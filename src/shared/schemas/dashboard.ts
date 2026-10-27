@@ -51,6 +51,19 @@ export interface FailedJobView {
   documentId: string | null;
 }
 
+/** An email job whose send ended `unknown`. GET /api/jobs/needs-review lists them. */
+export interface ReviewJobView {
+  id: string;
+  type: string;
+  /** For example "tosend unknown/timeout: The request timed out." */
+  lastError: string | null;
+  /** When the job moved to needs review. */
+  updatedAt: number;
+  documentId: string | null;
+  documentKind: DocumentKind | null;
+  documentNumber: string | null;
+}
+
 /** GET /api/dashboard. Every amount is in minor units. */
 export interface DashboardData {
   homeCurrency: string;
@@ -91,6 +104,7 @@ export interface NotificationList {
 export function jobTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     send_document: "Send a document",
+    document_send: "Send a document",
     send_email: "Send an email",
     send_reminder: "Send a reminder",
     recurring_issue: "Create a recurring invoice",

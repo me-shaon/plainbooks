@@ -30,6 +30,8 @@ export const queryKeys = {
     all: ["documents", "dashboard"] as const,
     view: (recent: string) => ["documents", "dashboard", { recent }] as const,
   },
+  /** Emails that need review. Under "documents" so document mutations refresh them too. */
+  reviewJobs: ["documents", "review-jobs"] as const,
   /** Reports. Under "documents" so document mutations refresh them too. */
   reports: {
     all: ["documents", "reports"] as const,

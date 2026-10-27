@@ -53,6 +53,8 @@ const ACTIVITY_LABELS: Record<string, string> = {
   email_complained: "Marked as spam",
   reminder_sent: "Reminder sent",
   link_reset: "Public link reset",
+  email_marked_sent: "Email marked as sent after review",
+  email_sent_again: "Email queued again after review",
 };
 
 /** The title and an optional detail line for an activity row. */
@@ -72,6 +74,11 @@ export function activityText(
     detail = "Sent automatically";
   } else if (entry.type === "reminder_sent" && typeof data.offsetDays === "number") {
     detail = `${reminderOffsetText(data.offsetDays)}${data.trigger === "auto" ? " · Sent automatically" : ""}`;
+  } else if (
+    (entry.type === "email_marked_sent" || entry.type === "email_sent_again") &&
+    typeof data.priorStatus === "string"
+  ) {
+    detail = `The email was in ${data.priorStatus.replace(/_/g, " ")}`;
   } else if (entry.type === "send_failed" && typeof data.message === "string") {
     detail = data.message;
   } else if (typeof data.comment === "string" && data.comment) {

@@ -54,6 +54,8 @@ function sentInvoice(overrides: Partial<DocumentDetail> = {}): DocumentDetail {
     kind: "invoice",
     status: "sent",
     displayStatus: "sent",
+    needsReview: false,
+    reviewJobId: null,
     number: "INV-0001",
     clientId: "c1",
     clientName: "Northwind",

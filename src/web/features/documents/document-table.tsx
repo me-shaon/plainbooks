@@ -14,6 +14,7 @@ import {
 } from "../../components/ui/table";
 import { formatDate } from "../../lib/format";
 import { documentPath } from "./labels";
+import { NeedsReviewBadge } from "./needs-review";
 
 /** The amount as "USD 1,250.00" with a muted code, like the Ledger table. */
 export function Amount({ minor, currency }: { minor: number; currency: string }) {
@@ -84,7 +85,10 @@ export function DocumentTable({ items, label, hideClient }: DocumentTableProps) 
                   </div>
                 </Cell>
                 <Cell>
-                  <Pill status={doc.displayStatus} />
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <Pill status={doc.displayStatus} />
+                    {doc.needsReview ? <NeedsReviewBadge /> : null}
+                  </span>
                 </Cell>
                 <Cell>
                   <span className="text-muted-foreground">{dateColumn(doc)}</span>
@@ -109,6 +113,7 @@ export function DocumentTable({ items, label, hideClient }: DocumentTableProps) 
               <span className="flex items-center gap-2">
                 <span className="figure">{doc.number ?? "Draft"}</span>
                 <Pill status={doc.displayStatus} />
+                {doc.needsReview ? <NeedsReviewBadge /> : null}
               </span>
             }
             value={<Amount minor={doc.total} currency={doc.currency} />}

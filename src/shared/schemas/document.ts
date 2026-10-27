@@ -294,6 +294,8 @@ export interface DocumentSummary {
   updatedAt: number;
   /** The first line's description. Only list rows have it. */
   summary?: string | null;
+  /** True when an email of this document ended `unknown` and waits for an Owner. */
+  needsReview: boolean;
 }
 
 export interface DocumentLineView {
@@ -324,6 +326,8 @@ export interface RevisionSummary {
 }
 
 export interface DocumentDetail extends DocumentSummary {
+  /** The needs_review job that emails this document, when there is one. */
+  reviewJobId: string | null;
   paymentTermsDays: number | null;
   discount: DiscountValue;
   notes: string | null;

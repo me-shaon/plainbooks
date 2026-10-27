@@ -31,6 +31,7 @@ import { MakeRecurringDialog } from "../recurring/make-recurring-dialog";
 import { ReminderPanel } from "../reminders/reminder-panel";
 import { ActivityTimeline } from "./activity-timeline";
 import { editPath, FX_PROVIDER_LABELS } from "./labels";
+import { NeedsReviewBadge, NeedsReviewCallout } from "./needs-review";
 import { PaymentDialog } from "./payment-dialog";
 import { downloadPdf } from "./pdf";
 import {
@@ -290,6 +291,7 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
           <span className="flex flex-wrap items-center gap-3">
             {title}
             <Pill status={doc.displayStatus} />
+            {doc.needsReview ? <NeedsReviewBadge /> : null}
           </span>
         }
         subtitle={
@@ -352,7 +354,9 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
         }
       />
 
-      {actions.isReady ? (
+      {doc.reviewJobId ? (
+        <NeedsReviewCallout jobId={doc.reviewJobId} />
+      ) : actions.isReady ? (
         <p
           role="status"
           className="m-0 rounded-button border border-border bg-sidebar px-4 py-3 text-[13px] text-ink"

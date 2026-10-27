@@ -1,6 +1,6 @@
 // Email delivery (U13): document sends through the mailswitch mailer, daily cap checks,
 // the generic email job, and owner notifications.
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import type { Address, NotSentResult, SendResult, UnknownResult } from "mailswitch";
 import type { EmailKind, Trigger } from "../../shared/domain";
 import type { DocumentSnapshot, FxQuote, SendPreview } from "../../shared/schemas/document";
@@ -24,14 +24,26 @@ import {
   workspaceToday,
 } from "./documents";
 import { type Fetcher, getRate } from "./fx";
-import { type JobOutcome, registerJobHandler } from "./jobs";
+import {
+  type JobOutcome,
+  type ReviewDetail,
+  registerJobHandler,
+  reviewError,
+  reviewNotification,
+} from "./jobs";
 import { counterName, formatDocumentNumber } from "./numbering";
 import { getPdf } from "./pdf";
 
-const { emailLog, clientContacts, users, notifications } = schema;
+const { emailLog, clientContacts, users, notifications, jobs } = schema;
 
 export const SEND_DOCUMENT_JOB = "send_document";
 export const SEND_EMAIL_JOB = "send_email";
+/**
+ * A manual document send that ended `unknown`. The row starts in needs_review and holds
+ * the document, the revision, and the send key. "Send again" queues it, and the handler
+ * sends with the same key.
+ */
+export const MANUAL_SEND_JOB = "document_send";
 /** A job that meets a busy browser tries again after this long, without using an attempt. */
 export const PDF_PENDING_RETRY_MS = 60_000;
 /**
@@ -211,6 +223,11 @@ function describeFailure(
   return [502, "email_send_failed", `${subject} was not sent: ${detail}`];
 }
 
+/** The provider, reason, and message of an `unknown` result. */
+export function reviewDetail(result: UnknownResult): ReviewDetail {
+  return { provider: result.provider ?? null, reason: result.reason, message: result.message };
+}
+
 /**
  * The job outcome for an email error, or null when the error is not about the send:
  * - `unknown`: needs review. The email may have gone out, so it is never retried.
@@ -223,7 +240,7 @@ export function emailJobOutcome(err: unknown, now: number): JobOutcome | null {
   if (err instanceof EmailSendError) {
     const { result } = err;
     const detail = `${result.provider ?? "email"} ${result.status}/${result.reason}: ${result.message}`;
-    if (result.status === "unknown") return { review: { message: detail } };
+    if (result.status === "unknown") return { review: reviewDetail(result) };
     if (RETRYABLE_REASONS.has(result.reason)) {
       if (result.resetAt !== undefined) {
         return { defer: { runAfter: Math.max(now, result.resetAt), reason: result.reason } };
@@ -435,6 +452,8 @@ export async function sendDocument(
     now: opts.now,
     actor: opts.actor,
     fetcher: opts.fetcher ?? fxFetcher(env),
+    // No write since the read above, so finalize can reuse the row.
+    document: doc,
   });
   const current = finalized.document;
   const revisionId = current.currentRevisionId ?? finalized.revision.id;
@@ -482,6 +501,7 @@ export async function sendDocument(
 
   const revision = known ?? (await getRevision(db, revisionId));
   const content = documentEmail(emailInput(env, current, revision.snapshot, ws, opts));
+  const key = opts.idempotencyKey ?? (await manualSendKey(db, documentId));
   // getPdf returns the R2 object of the revision (or the bytes it just stored there), so a
   // retry with the same key sends the same bytes.
   const { result } = await deliverEmail(
@@ -497,10 +517,22 @@ export async function sendDocument(
       documentId,
       revisionId,
       attachments: [{ filename: pdf.filename, content: pdf.bytes }],
-      idempotencyKey: opts.idempotencyKey ?? (await manualSendKey(db, documentId)),
+      idempotencyKey: key,
     },
     { now: opts.now, workspace: ws, providers },
   );
+  if (result.status === "unknown" && !opts.idempotencyKey) {
+    // A manual send has no job yet. Make one, so the Owner can resolve it.
+    await holdForReview(db, result, {
+      documentId,
+      revisionId,
+      idempotencyKey: key,
+      recipients,
+      subject: opts.subject ?? null,
+      message: opts.message ?? null,
+      now: opts.now,
+    });
+  }
   if (result.status !== "sent") return fail(new EmailSendError(result));
 
   const document = await markSent(db, documentId, {
@@ -508,8 +540,76 @@ export async function sendDocument(
     now: opts.now,
     actor: opts.actor,
     trigger: opts.trigger ?? "manual",
+    document: current,
   });
   return { document, revisionId, emailId: result.providerMessageId ?? null, recipients };
+}
+
+/** Payload of `document_send`: a manual send that needs review. */
+export interface ManualSendJobPayload {
+  documentId: string;
+  /** The revision that the unclear send carried. */
+  revisionId: string;
+  /** The send key, `document:<id>:send:<n>`. mailswitch stores it as `plainbooks:<key>`. */
+  idempotencyKey: string;
+  recipients: string[];
+  subject: string | null;
+  message: string | null;
+}
+
+/**
+ * Creates the needs_review `document_send` job of a manual send that ended `unknown`, and
+ * notifies the Owner. The job key is `review:<send key>`, so a second unclear click on the
+ * same send reuses the row and adds no second notification. A row that a "Send again"
+ * queued (pending or running) is left alone.
+ */
+async function holdForReview(
+  db: Db,
+  result: UnknownResult,
+  input: ManualSendJobPayload & { now: number },
+): Promise<void> {
+  const { now, ...payload } = input;
+  const jobKey = `review:${payload.idempotencyKey}`;
+  const [existing] = await db
+    .select({ status: jobs.status })
+    .from(jobs)
+    .where(eq(jobs.idempotencyKey, jobKey));
+  if (existing?.status === "pending" || existing?.status === "running") return;
+  const detail = reviewDetail(result);
+  const lastError = reviewError(detail);
+  const upsert = db
+    .insert(jobs)
+    .values({
+      id: crypto.randomUUID(),
+      type: MANUAL_SEND_JOB,
+      payload,
+      idempotencyKey: jobKey,
+      status: "needs_review",
+      attempts: 1,
+      runAfter: now,
+      lastError,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: jobs.idempotencyKey,
+      set: {
+        status: "needs_review",
+        payload,
+        attempts: 1,
+        lastError,
+        finishedAt: null,
+        leaseOwner: null,
+        leaseUntil: null,
+        updatedAt: now,
+      },
+      setWhere: notInArray(jobs.status, ["pending", "running"]),
+    });
+  if (existing?.status === "needs_review") {
+    await upsert;
+    return;
+  }
+  await db.batch([upsert, reviewNotification(db, { documentId: payload.documentId, detail, now })]);
 }
 
 /** The providers and their cap use, or null when no provider is set up. */
@@ -666,13 +766,37 @@ export const deferForPdf = (now: number) => ({
   defer: { runAfter: now + PDF_PENDING_RETRY_MS, reason: "pdf_pending" },
 });
 
+/** Runs the send of a document job and maps its errors to a job outcome. */
+async function documentJobSend(
+  jobId: string,
+  now: number,
+  send: () => Promise<unknown>,
+): Promise<JobOutcome> {
+  try {
+    await send();
+  } catch (err) {
+    const outcome = emailJobOutcome(err, now);
+    if (outcome) return outcome;
+    if (err instanceof AppError) {
+      if (err.code === "pdf_pending") return deferForPdf(now);
+      // The document was voided, paid, or deleted since the job was queued. Nothing to send.
+      if (err.status === 404 || err.code === "send_not_allowed" || err.code === "document_void") {
+        console.log("document send skipped", JSON.stringify({ jobId, code: err.code }));
+        return undefined;
+      }
+    }
+    throw err;
+  }
+  return undefined;
+}
+
 /** Registers the email job handlers. Runs at module scope; tests call it after a reset. */
 export function registerEmailJobHandlers(): void {
   registerJobHandler<SendDocumentJobPayload>(
     SEND_DOCUMENT_JOB,
-    async ({ env, db, now, payload, job }) => {
-      try {
-        await sendDocument(env, db, payload.documentId, {
+    ({ env, db, now, payload, job }) =>
+      documentJobSend(job.id, now, () =>
+        sendDocument(env, db, payload.documentId, {
           actor: null,
           recipients: payload.recipients,
           subject: payload.subject,
@@ -680,26 +804,26 @@ export function registerEmailJobHandlers(): void {
           now,
           trigger: "auto",
           idempotencyKey: `job:${job.id}`,
-        });
-      } catch (err) {
-        const outcome = emailJobOutcome(err, now);
-        if (outcome) return outcome;
-        if (err instanceof AppError) {
-          if (err.code === "pdf_pending") return deferForPdf(now);
-          // The document was voided, paid, or deleted since the job was queued. Nothing to send.
-          if (
-            err.status === 404 ||
-            err.code === "send_not_allowed" ||
-            err.code === "document_void"
-          ) {
-            console.log("send_document skipped", JSON.stringify({ jobId: job.id, code: err.code }));
-            return undefined;
-          }
-        }
-        throw err;
-      }
-      return undefined;
-    },
+        }),
+      ),
+    { heavy: true },
+  );
+
+  /** "Send again" on a manual send: the same key, which the Owner released first. */
+  registerJobHandler<ManualSendJobPayload>(
+    MANUAL_SEND_JOB,
+    ({ env, db, now, payload, job }) =>
+      documentJobSend(job.id, now, () =>
+        sendDocument(env, db, payload.documentId, {
+          actor: null,
+          recipients: payload.recipients,
+          subject: payload.subject,
+          message: payload.message,
+          now,
+          trigger: "manual",
+          idempotencyKey: payload.idempotencyKey,
+        }),
+      ),
     { heavy: true },
   );
 

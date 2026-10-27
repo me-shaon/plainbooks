@@ -146,4 +146,19 @@ describe("tick query budget with the real handlers", () => {
     expect(await runBudgetScenario()).toEqual(Array(5).fill("tosend"));
     expect(email.primary.sends).toHaveLength(0);
   });
+
+  it("stays under 50 when a capped primary takes a unit, answers not_sent, and a capped fallback sends", async () => {
+    // The worst document send: the primary reserves a cap unit, answers not_sent, and
+    // gets the unit back, then the fallback reserves a unit and sends.
+    email = await useFakeEmail({
+      primary: {
+        providerId: "resend",
+        dailyCap: 50,
+        outcomes: () => ({ status: "not_sent", reason: "rate_limited", message: "Slow down." }),
+      },
+      fallback: { providerId: "tosend", dailyCap: 50 },
+    });
+    expect(await runBudgetScenario()).toEqual(Array(5).fill("tosend"));
+    expect(email.primary.sends).toHaveLength(5);
+  });
 });
