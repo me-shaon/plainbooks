@@ -78,9 +78,11 @@ describe("sessionAuth", () => {
     const name = await sessionCookieName();
     const signed = decodeURIComponent(await signCookieValue(token));
     const [value = "", signature = ""] = signed.split(".");
+    // Change the last character to a different one, so the token always changes.
+    const tampered = `${value.slice(0, -1)}${value.endsWith("x") ? "y" : "x"}`;
     const cookies = [
       // Another token with the old signature.
-      `${name}=${encodeURIComponent(`${value.slice(0, -1)}x.${signature}`)}`,
+      `${name}=${encodeURIComponent(`${tampered}.${signature}`)}`,
       // The token with a signature from another secret.
       `${name}=${await signCookieValue(token, "another-secret-0123456789abcdef0123")}`,
       // The token with no signature.
