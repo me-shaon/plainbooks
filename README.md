@@ -130,6 +130,7 @@ On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command fo
 | Task | How |
 | --- | --- |
 | Update the app | Pull the new version, then run `pnpm run ship`. If you used the button, push to your copy. Database migrations run as part of the deploy. |
+| Upgrade from the Cloudflare Access version | Read [Upgrade from the Cloudflare Access version](docs/setup.md#upgrade-from-the-cloudflare-access-version). |
 | Back up the data | Run `pnpm wrangler d1 export plainbooks --remote --output=backup-$(date +%F).sql`. D1 Time Travel also keeps 7 days of history. |
 | Add a team member | Add the email in **Settings** > **Team**. The app creates an invite link. |
 | Recover a locked-out Owner | Set a new `SETUP_TOKEN` secret and open `/recover`. Read [Recover a locked-out Owner](docs/setup.md#9-recover-a-locked-out-owner). |

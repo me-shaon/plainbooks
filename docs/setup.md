@@ -200,6 +200,11 @@ Each provider has a daily cap: the most emails that it sends in 24 hours. Set th
 
 Sometimes the app cannot tell if the provider sent an email. The document then shows the email under **Emails that need review**. Check with the recipient or in the provider dashboard. Then mark the email as sent, or send it again.
 
+The app does not retry these emails by itself, because a retry can send a second copy. Two related messages can show in the send dialog:
+
+- **This document is being sent now:** another send of the same document is still running. Do not send it again. Reload the page to see the result.
+- **An earlier send needs review:** resolve the earlier email under **Emails that need review** first.
+
 ## 6. Check Browser Run
 
 The `BROWSER` binding needs no setup on the Free plan. Check it once after the deploy:
@@ -249,10 +254,12 @@ The invite link works one time, for 7 days. The person opens the link and sets a
 The member menu on the Team page has these actions:
 
 - **Resend invite:** makes a new invite link.
-- **Reset sign-in:** makes a link that lets the member set a new password. The link works for 24 hours.
+- **Reset sign-in:** ends the member's sessions, removes their password and their Google sign-in, and makes a link that lets them set a new password. The link works for 24 hours.
 - **Remove:** removes the member and ends their sessions at once. The app does not let you remove the last Owner.
 
-Members can also reset their own password from the sign-in page, if email is set up.
+Members can also reset their own password from the sign-in page, if email is set up. The app sends at most 2 reset emails per hour to one address.
+
+The app shows an invite link or a reset link only one time. If the link is lost, use **Resend invite** or **Reset sign-in** to make a new one.
 
 ## 9. Recover a locked-out Owner
 
@@ -274,6 +281,16 @@ Use this procedure only when no Owner can sign in, and a password reset by email
 
 Recovery ends all sessions of that Owner. The app sends an email about the recovery to every Owner, if email is set up.
 
+## Upgrade from the Cloudflare Access version
+
+Earlier versions used Cloudflare Access for sign-in and Resend for email. If you run one of these versions, do these steps after you deploy the new version:
+
+1. Set the new secrets: `SETUP_TOKEN`, `AUTH_SECRET`, and `ENCRYPTION_KEY`. `pnpm run ship` makes them for you.
+2. Existing users have no password. Setup is closed, because users already exist. Open `/recover` with the setup token, and set a password for an Owner email.
+3. Sign in as that Owner. On the Team page, select **Reset sign-in** for each member, and send each member their link.
+4. Set up email in **Settings** > **Email**. The old `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` secrets are no longer used. Delete them.
+5. In Zero Trust, delete the three Access applications of the app.
+
 ## Change a secret
 
 Change a secret only when you must. Some changes have effects on all users:
@@ -293,7 +310,7 @@ Change a secret only when you must. Some changes have effects on all users:
 | D1 rows read | 5 million per day, reset at 00:00 UTC | Queries fail with an error until the reset. |
 | D1 rows written | 100,000 per day, reset at 00:00 UTC | Queries fail with an error until the reset. |
 | D1 storage | 500 MB per database, 5 GB per account | Inserts fail. Delete old data or upgrade. |
-| Durable Objects | 100,000 requests per day, reset at 00:00 UTC | The app uses one Durable Object for the sign-in rate limits. Sign-in and setup fail until the reset. |
+| Durable Objects | 100,000 requests and 100,000 SQLite rows written per day, reset at 00:00 UTC | The app uses one Durable Object for the sign-in rate limits. Password sign-in still works, but setup and recovery fail until the reset. |
 | R2 | 10 GB-month storage, 1 million Class A and 10 million Class B operations per month | Usage above the free amount needs a paid plan. |
 | Browser Run | 10 minutes of browser time per day, 1 Quick Action every 10 seconds | The app shows "The PDF is being prepared". Try again later. Cached PDFs still download. |
 | Email | Depends on your provider | Set the daily cap of each provider in **Settings** > **Email**. At the cap, manual sends show an error. Scheduled sends wait until the cap resets. |
@@ -325,7 +342,7 @@ The `SETUP_TOKEN` secret is missing or has fewer than 32 characters. Set a new v
 ### Sign-in fails
 
 - Check the email and the password. The password has 12 to 128 characters.
-- After many wrong attempts, the app refuses new attempts for up to 15 minutes. Wait and try again.
+- After many wrong attempts, the app refuses new attempts for up to 15 minutes. Wait and try again. The limit is 5 failed attempts from one network address, and 20 failed attempts for one email. Successful sign-ins do not count.
 - If you forgot the password and email is set up, select **Forgot your password?** on the sign-in page.
 - Otherwise, ask an Owner to reset your sign-in on the Team page. If no Owner can sign in, follow step 9.
 
@@ -348,6 +365,17 @@ If the error code is `not_a_member`, your user is not an active member. Ask an O
 - A 401 response also comes when the provider for that role is not set up. Check that the URL ends in `primary` for the primary provider and in `fallback` for the fallback provider.
 - For Postmark, the webhook Basic auth username must be `mailswitch`.
 - For Amazon SES, check that the topic ARN of each subscription is in the **SNS topic ARNs** field.
+- A 500 response with a log line about the query limit means that one webhook request had too many events. The Workers Free plan allows 50 database queries per request. At the provider, select only the bounce and complaint events, so each request carries fewer events.
+
+### Sign-in fails with error 1102
+
+Error 1102 means that the Worker used more CPU time than the plan allows. The Workers Free plan allows 10 ms per request. A password check is the most expensive step in the app.
+
+1. In `wrangler.jsonc`, add `"PBKDF2_ITERATIONS": "50000"` to `vars`. The default is 100000.
+2. Deploy again.
+3. Sign in again. The app updates each stored password to the new setting at the next sign-in.
+
+A lower value makes stored passwords faster to guess if someone copies the database. Use the highest value that works on your plan.
 
 ### Settings shows that the provider keys need re-entry
 
