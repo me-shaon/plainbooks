@@ -11,6 +11,7 @@ import { recurringRoutes } from "./recurring";
 import { reminderDocumentRoutes, reminderRoutes } from "./reminders";
 import { reportRoutes } from "./reports";
 import { settingsRoutes } from "./settings";
+import { setupRoutes } from "./setup";
 import { taxRateRoutes } from "./tax-rates";
 import { teamRoutes } from "./team";
 import { templateRoutes } from "./templates";
@@ -23,6 +24,7 @@ import { webhookRoutes } from "./webhooks";
 export const api = new Hono<AppEnv>()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/me", meRoutes)
+  .route("/setup", setupRoutes)
   .route("/dashboard", dashboardRoutes)
   .route("/notifications", notificationRoutes)
   .route("/jobs", jobRoutes)

@@ -127,3 +127,20 @@ export function passwordResetEmail(input: OwnerBase & { expiresInMinutes: number
     "Set a new password",
   );
 }
+
+/** Tells every Owner that a setup token reset an Owner's password. */
+export function ownerRecoveredEmail(
+  input: OwnerBase & { email: string; when: string },
+): EmailContent {
+  return ownerEmail(
+    input,
+    `An Owner password was reset in ${input.workspace}`,
+    [
+      `The password for ${input.email} was reset with a setup token on ${input.when}.`,
+      "All sessions of that Owner were signed out.",
+      "If nobody on your team did this, set a new SETUP_TOKEN secret and reset the password again.",
+    ],
+    null,
+    "Open the app",
+  );
+}

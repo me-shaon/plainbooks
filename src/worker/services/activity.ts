@@ -35,6 +35,8 @@ export const ACTIVITY_TYPES = [
   "email_sent_again",
   // A workspace row with no document: an SNS subscription of the SES webhook was confirmed.
   "email_webhook_confirmed",
+  // A workspace row with no document: an Owner set a new password with a setup token.
+  "owner_recovered",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

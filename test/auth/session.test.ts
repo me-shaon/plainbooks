@@ -174,11 +174,10 @@ describe("sessionAuth", () => {
     const exempt = await apiFetch("/api/webhooks/email/primary", { method: "POST" });
     expect(exempt.status).toBe(401);
     expect(await exempt.json()).toMatchObject({ code: "invalid_signature" });
-    // Setup and invite routes need no session. U9 and U10 add them, so these are 404 now.
-    for (const path of ["/api/setup/status", "/api/invites/abc"]) {
-      const res = await apiFetch(path);
-      expect(res.status, path).toBe(404);
-    }
+    // Setup and invite routes need no session. The setup status answers with no cookie.
+    expect((await apiFetch("/api/setup/status")).status).toBe(200);
+    // U11 adds the invite routes, so this is 404 now.
+    expect((await apiFetch("/api/invites/abc")).status).toBe(404);
   });
 
   it("does not run on /p/* public links", async () => {

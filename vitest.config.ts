@@ -24,6 +24,8 @@ export default defineConfig(async () => {
                   ENCRYPTION_KEY: btoa("test-encryption-key-0123456789ab"),
                   AUTH_SECRET: "test-auth-secret-0123456789abcdef0123456789",
                   PBKDF2_ITERATIONS: "100000",
+                  // 32 characters or more. Setup tests pass their own value per test.
+                  SETUP_TOKEN: "test-setup-token-0123456789abcdef0123",
                   // A local .dev.vars may turn the fakes on. Tests install their own stubs.
                   FAKE_EXTERNALS: "0",
                 },

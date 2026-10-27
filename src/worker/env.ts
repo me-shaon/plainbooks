@@ -18,6 +18,12 @@ export type Bindings = Env & {
    * with it. A new value signs everyone out.
    */
   AUTH_SECRET?: string;
+  /**
+   * Secret. At least 32 random characters. It claims a fresh deploy on /setup and
+   * recovers a locked-out Owner on /recover. Each value works once. A shorter or missing
+   * value turns both routes off.
+   */
+  SETUP_TOKEN?: string;
   /** Secret. The Google OAuth client ID. Google sign-in shows only when both are set. */
   GOOGLE_CLIENT_ID?: string;
   /** Secret. The Google OAuth client secret. */

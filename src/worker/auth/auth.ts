@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../../shared/schemas/setup";
 import { createDb, schema } from "../db/client";
 import { passwordResetEmail } from "../email/templates";
 import type { Bindings } from "../env";
@@ -22,9 +23,8 @@ import {
 
 export const AUTH_BASE_PATH = "/api/auth";
 export const AUTH_COOKIE_PREFIX = "plainbooks";
-/** Password length on setup, invite accept, and reset. The maximum also bounds hash CPU. */
-export const PASSWORD_MIN_LENGTH = 12;
-export const PASSWORD_MAX_LENGTH = 128;
+/** Password length on setup, recovery, invite accept, and reset (from the shared schema). */
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH };
 export const SESSION_EXPIRES_IN_SECONDS = 30 * 24 * 60 * 60;
 export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 export const RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;

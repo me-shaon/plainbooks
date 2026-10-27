@@ -7,5 +7,6 @@ declare namespace Cloudflare {
     ENCRYPTION_KEY: string;
     AUTH_SECRET: string;
     PBKDF2_ITERATIONS: string;
+    SETUP_TOKEN: string;
   }
 }
