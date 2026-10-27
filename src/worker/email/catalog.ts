@@ -138,7 +138,7 @@ export const WEBHOOK_SECRET_FIELDS: Readonly<Partial<Record<EmailProviderId, Web
     },
     postmark: {
       label: "Webhook password",
-      hint: "Make a random value of at least 22 characters. Give it to Postmark as the Basic auth password of the webhook.",
+      hint: "Make a random value of at least 22 characters. In Postmark, set the webhook Basic auth username to mailswitch and the password to this value.",
     },
     brevo: {
       label: "Webhook token",
