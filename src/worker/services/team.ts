@@ -253,9 +253,9 @@ export async function resendInvite(ctx: LinkContext, userId: string): Promise<Me
 }
 
 /**
- * Resets the sign-in of an active member: ends every session, removes the password, and
- * issues a reset link that expires in 24 hours. The link is not emailed. The Owner gives
- * it to the member.
+ * Resets the sign-in of an active member: ends every session, removes the password and a
+ * linked Google account, and issues a reset link that expires in 24 hours. The link is
+ * not emailed. The Owner gives it to the member.
  */
 export async function resetSignIn(ctx: LinkContext, userId: string): Promise<MemberLink> {
   const d1 = ctx.env.DB;
@@ -271,8 +271,9 @@ export async function resetSignIn(ctx: LinkContext, userId: string): Promise<Mem
   });
   await d1.batch([
     d1.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
+    // The password and a linked Google account both go, so only the reset link signs in.
     d1
-      .prepare("DELETE FROM accounts WHERE user_id = ? AND provider_id = 'credential'")
+      .prepare("DELETE FROM accounts WHERE user_id = ? AND provider_id IN ('credential', 'google')")
       .bind(userId),
     ...issued.statements,
   ]);

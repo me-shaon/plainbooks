@@ -1,6 +1,8 @@
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { app } from "../../src/worker/app";
 import { createAuth, googleEnabled } from "../../src/worker/auth/auth";
 import { hashPassword, parseHash } from "../../src/worker/auth/pbkdf2";
 import { setRateBackendForTesting } from "../../src/worker/auth/rate-limit";
@@ -48,13 +50,23 @@ function authFetch(path: string, init: { json?: unknown; ip?: string; cookie?: s
     headers.set("content-type", "application/json");
     body = JSON.stringify(init.json);
   }
-  return exports.default.fetch(
-    new Request(`${ORIGIN}/api/auth${path}`, {
-      method: init.json === undefined ? "GET" : "POST",
-      headers,
-      body,
-    }),
-  );
+  const request = new Request(`${ORIGIN}/api/auth${path}`, {
+    method: init.json === undefined ? "GET" : "POST",
+    headers,
+    body,
+  });
+  return fetchAndWait(request);
+}
+
+/**
+ * Sends a request and waits for its waitUntil work, such as the reset email, so a test
+ * sees the result and no work runs into the next test.
+ */
+async function fetchAndWait(request: Request): Promise<Response> {
+  const ctx = createExecutionContext();
+  const res = await app.fetch(request, env, ctx);
+  await waitOnExecutionContext(ctx);
+  return res;
 }
 
 function signIn(email: string, password: string, ip?: string) {
@@ -189,6 +201,41 @@ describe("sign-in rate limits", () => {
     expect((await signIn("other@example.com", PASSWORD)).status).toBe(200);
   });
 
+  it("counts failed sign-ins only, so a correct password does not use an attempt", async () => {
+    await createAuthUser("counted@example.com");
+    const ip = freshIp();
+    for (let i = 0; i < 4; i++) {
+      expect((await signIn("counted@example.com", "wrong password here", ip)).status).toBe(401);
+    }
+    // Another client used 4 of 5 attempts. The correct password still signs in.
+    for (let i = 0; i < 3; i++) {
+      expect((await signIn("counted@example.com", PASSWORD, ip)).status).toBe(200);
+    }
+    // The fifth failure fills the window. The successes did not count.
+    expect((await signIn("counted@example.com", "wrong password here", ip)).status).toBe(401);
+    expect((await signIn("counted@example.com", PASSWORD, ip)).status).toBe(429);
+  });
+
+  it("lets the owner of an email sign in after 19 failures from other IPs", async () => {
+    await createAuthUser("victim@example.com");
+    for (let i = 0; i < 19; i++) {
+      expect((await signIn("victim@example.com", "wrong password here")).status).toBe(401);
+    }
+    expect((await signIn("victim@example.com", PASSWORD)).status).toBe(200);
+    expect((await signIn("victim@example.com", PASSWORD)).status).toBe(200);
+  });
+
+  it("counts IPv6 clients by their /64 prefix", async () => {
+    await createAuthUser("ipv6@example.com");
+    for (let i = 1; i <= 5; i++) {
+      const ip = `2001:db8:1:2::${i.toString(16)}`;
+      expect((await signIn("ipv6@example.com", "wrong password here", ip)).status).toBe(401);
+    }
+    const sameNetwork = await signIn("ipv6@example.com", PASSWORD, "2001:db8:1:2:ffff::1");
+    expect(sameNetwork.status).toBe(429);
+    expect((await signIn("ipv6@example.com", PASSWORD, "2001:db8:1:3::1")).status).toBe(200);
+  });
+
   it("fails open and logs an error when the Durable Object call throws", async () => {
     await createAuthUser("member@example.com");
     setRateBackendForTesting(async () => {
@@ -247,6 +294,71 @@ describe("password rules and reset", () => {
     expect(await session.json()).toBeNull();
     expect((await signIn("member@example.com", PASSWORD)).status).toBe(401);
     expect((await signIn("member@example.com", newPassword)).status).toBe(200);
+  });
+});
+
+describe("password reset rate limits", () => {
+  it("gives 429 on the sixth reset request from one IP", async () => {
+    const ip = freshIp();
+    for (let i = 0; i < 5; i++) {
+      const res = await authFetch("/request-password-reset", {
+        json: { email: `nobody-${i}@example.com` },
+        ip,
+      });
+      expect(res.status).toBe(200);
+    }
+    const res = await authFetch("/request-password-reset", {
+      json: { email: "nobody-6@example.com" },
+      ip,
+    });
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  it("gives 429 on the 21st reset request for one email from 21 IPs", async () => {
+    for (let i = 0; i < 20; i++) {
+      const res = await authFetch("/request-password-reset", {
+        json: { email: "flooded@example.com" },
+      });
+      expect(res.status).toBe(200);
+    }
+    const res = await authFetch("/request-password-reset", {
+      json: { email: "flooded@example.com" },
+    });
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  it("gives 429 on the sixth bad reset token from one IP", async () => {
+    const ip = freshIp();
+    const newPassword = "a brand new passphrase";
+    for (let i = 0; i < 5; i++) {
+      const res = await authFetch("/reset-password", {
+        json: { token: `not-a-real-token-${i}`, newPassword },
+        ip,
+      });
+      expect(res.status).toBe(400);
+    }
+    const res = await authFetch("/reset-password", {
+      json: { token: "not-a-real-token-6", newPassword },
+      ip,
+    });
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  it("sends at most 2 reset emails to one address in an hour, with the same answer", async () => {
+    await resetEmailState();
+    const email = await useFakeEmail();
+    await createAuthUser("capped@example.com");
+    for (let i = 0; i < 3; i++) {
+      const res = await authFetch("/request-password-reset", {
+        json: { email: "capped@example.com" },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ status: true });
+    }
+    expect(email.messages()).toHaveLength(2);
   });
 });
 

@@ -80,6 +80,27 @@ export class AuthRateLimiter extends DurableObject<Env> {
     return { allowed: true, count: count + 1, retryAfterMs: 0 };
   }
 
+  /**
+   * Returns the status without counting an attempt. `allowed` is false when the window is
+   * already full. Password sign-in peeks first and consumes only after a failure.
+   */
+  async peek(rule: RateRule, now = Date.now()): Promise<RateResult> {
+    const row = this.ctx.storage.sql
+      .exec<AttemptRow>("SELECT start, count, window_ms FROM attempts WHERE id = 1")
+      .toArray()[0];
+    if (!row || now - row.start >= rule.windowMs) {
+      return { allowed: true, count: 0, retryAfterMs: 0 };
+    }
+    if (row.count >= rule.limit) {
+      return {
+        allowed: false,
+        count: row.count,
+        retryAfterMs: Math.max(0, row.start + rule.windowMs - now),
+      };
+    }
+    return { allowed: true, count: row.count, retryAfterMs: 0 };
+  }
+
   override async alarm(): Promise<void> {
     const now = Date.now();
     const sql = this.ctx.storage.sql;
@@ -99,20 +120,27 @@ export class AuthRateLimiter extends DurableObject<Env> {
 // ---------------------------------------------------------------------------
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
 
 /**
- * The rules. Every attempt counts, not only failures. Per email, the counter key holds
- * the SHA-256 of the lowercase email, so no Durable Object name holds an address.
+ * The rules. Every attempt counts, except password sign-in, where only failed attempts
+ * count. Per email, the counter key holds the SHA-256 of the lowercase email, so no
+ * Durable Object name holds an address.
  */
 export const RATE_RULES = {
-  /** Password sign-in from one IP. */
+  /** Failed password sign-ins from one IP. */
   signInIp: { limit: 5, windowMs: FIFTEEN_MINUTES },
-  /** Password sign-in for one email, from all IPs. */
+  /** Failed password sign-ins for one email, from all IPs. */
   signInEmail: { limit: 20, windowMs: FIFTEEN_MINUTES },
   /** Password reset requests and reset-link use from one IP. */
   passwordResetIp: { limit: 5, windowMs: FIFTEEN_MINUTES },
   /** Password reset requests for one email, from all IPs. */
   passwordResetEmail: { limit: 20, windowMs: FIFTEEN_MINUTES },
+  /**
+   * Reset emails sent to one address. A request past the limit gets the same answer and
+   * sends nothing, so anonymous requests cannot use up the provider's daily cap.
+   */
+  passwordResetMail: { limit: 2, windowMs: ONE_HOUR },
   /** Setup and recovery attempts from one IP. */
   setupIp: { limit: 5, windowMs: FIFTEEN_MINUTES },
   /** Setup and recovery attempts over the whole deployment. */
@@ -124,11 +152,43 @@ export const RATE_RULES = {
 } as const satisfies Record<string, RateRule>;
 
 /** The action part of a counter key. */
-export type RateAction = "sign-in" | "password-reset" | "setup" | "token-link" | "token-lookup";
+export type RateAction =
+  | "sign-in"
+  | "password-reset"
+  | "password-reset-mail"
+  | "setup"
+  | "token-link"
+  | "token-lookup";
+
+/** The eight 16-bit groups of an IPv6 address, or null when it is not valid IPv6. */
+function ipv6Groups(ip: string): string[] | null {
+  const halves = ip.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  const groups = [...head, ...Array<string>(missing).fill("0"), ...tail];
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return null;
+  return groups.map((g) => g.toLowerCase().replace(/^0+(?=.)/, ""));
+}
+
+/**
+ * The client part of an IP counter key. One IPv6 client often holds a whole /64, so an
+ * IPv6 address becomes its /64 prefix, for example `2001:db8:0:1::/64`. An IPv4 address
+ * and an IPv4-mapped IPv6 address stay one address.
+ */
+export function ipKeyPart(ip: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (mapped?.[1]) return mapped[1];
+  if (!ip.includes(":")) return ip;
+  const groups = ipv6Groups(ip.split("%")[0] ?? ip);
+  return groups ? `${groups.slice(0, 4).join(":")}::/64` : ip;
+}
 
 /** Counter keys. */
 export const rateKeys = {
-  ip: (action: RateAction, ip: string) => `${action}:ip:${ip}`,
+  ip: (action: RateAction, ip: string) => `${action}:ip:${ipKeyPart(ip)}`,
   email: async (action: RateAction, email: string) =>
     `${action}:email:${await sha256Hex(email.trim().toLowerCase())}`,
   /** One counter for the whole deployment, for setup and recovery. */
@@ -144,11 +204,16 @@ export function clientIp(request: Request): string {
 // Consume
 // ---------------------------------------------------------------------------
 
-/** Consumes one counter. Tests can replace it. */
-export type RateBackend = (env: Bindings, check: RateCheck) => Promise<RateResult>;
+/** "consume" counts an attempt when the window has room. "peek" only reads the status. */
+export type RateMode = "consume" | "peek";
 
-const durableBackend: RateBackend = (env, check) =>
-  env.AUTH_RATE_LIMITER.getByName(check.key).consume(check.rule);
+/** Consumes or peeks at one counter. Tests can replace it. */
+export type RateBackend = (env: Bindings, check: RateCheck, mode: RateMode) => Promise<RateResult>;
+
+const durableBackend: RateBackend = (env, check, mode) => {
+  const stub = env.AUTH_RATE_LIMITER.getByName(check.key);
+  return mode === "peek" ? stub.peek(check.rule) : stub.consume(check.rule);
+};
 
 let backendOverride: RateBackend | null = null;
 
@@ -169,16 +234,37 @@ export interface ConsumeOptions {
  * Consumes the counters in order and stops at the first refusal, so a refused IP does not
  * use up the email counter. Returns the refusal, or an allowed result.
  */
-export async function consumeRateLimits(
+export function consumeRateLimits(
   env: Bindings,
   checks: readonly RateCheck[],
   options: ConsumeOptions,
+): Promise<RateResult> {
+  return runRateLimits(env, checks, options, "consume");
+}
+
+/**
+ * Reads the counters in order without counting, and returns the first refusal (a full
+ * window), or an allowed result.
+ */
+export function peekRateLimits(
+  env: Bindings,
+  checks: readonly RateCheck[],
+  options: ConsumeOptions,
+): Promise<RateResult> {
+  return runRateLimits(env, checks, options, "peek");
+}
+
+async function runRateLimits(
+  env: Bindings,
+  checks: readonly RateCheck[],
+  options: ConsumeOptions,
+  mode: RateMode,
 ): Promise<RateResult> {
   const backend = backendOverride ?? durableBackend;
   let last: RateResult = { allowed: true, count: 0, retryAfterMs: 0 };
   for (const check of checks) {
     try {
-      last = await backend(env, check);
+      last = await backend(env, check, mode);
     } catch (err) {
       if (options.onError === "closed") throw err;
       console.error(

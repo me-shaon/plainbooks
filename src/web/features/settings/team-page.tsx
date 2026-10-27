@@ -271,8 +271,8 @@ export function TeamPage() {
           reset.mutate(target.id, { onSuccess: (result) => setShownLink(result) });
         }}
       >
-        Their sessions end at once and their password stops working. You get a link that lets them
-        set a new password. The link works for 24 hours.
+        Their sessions end at once. Their password and a linked Google account stop working. You get
+        a link that lets them set a new password. The link works for 24 hours.
       </AlertDialog>
     </Section>
   );

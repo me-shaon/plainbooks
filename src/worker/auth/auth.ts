@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { RESET_PASSWORD_PATH } from "../../shared/domain";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../../shared/schemas/setup";
 import { createDb, schema } from "../db/client";
@@ -14,6 +14,7 @@ import { createPasswordHasher, needsRehash, resolveIterations } from "./pbkdf2";
 import {
   clientIp,
   consumeRateLimits,
+  peekRateLimits,
   RATE_RULES,
   type RateCheck,
   rateKeys,
@@ -50,6 +51,9 @@ interface CredentialsBody {
   password?: unknown;
 }
 
+/** Password sign-in peeks before the attempt and counts only a failed attempt. */
+const SIGN_IN_PATH = "/sign-in/email";
+
 /** The counters for one better-auth endpoint. Other endpoints have none. */
 async function rateChecksFor(
   path: string,
@@ -59,7 +63,7 @@ async function rateChecksFor(
   const ip = clientIp(request);
   const email = typeof body?.email === "string" ? body.email : null;
   switch (path) {
-    case "/sign-in/email":
+    case SIGN_IN_PATH:
       return [
         { key: rateKeys.ip("sign-in", ip), rule: RATE_RULES.signInIp },
         ...(email
@@ -86,11 +90,24 @@ async function rateChecksFor(
 }
 
 /**
- * Sends the self-service reset link through the mailer. Errors are logged, not thrown, so
- * the response is the same whether or not the email exists or email is configured.
+ * Sends the self-service reset link through the mailer. It runs after the response, so
+ * the response time does not tell whether the email exists. Errors are logged, not thrown.
+ * Each address gets at most `passwordResetMail` emails. A refused or failed counter call
+ * sends nothing, because every email uses the provider's daily cap.
  */
 async function sendResetPassword(env: Bindings, to: string, url: string): Promise<void> {
   try {
+    const mail = await consumeRateLimits(
+      env,
+      [
+        {
+          key: await rateKeys.email("password-reset-mail", to),
+          rule: RATE_RULES.passwordResetMail,
+        },
+      ],
+      { onError: "closed" },
+    );
+    if (!mail.allowed) return;
     const db = createDb(env.DB);
     const ws = await loadWorkspace(db);
     const content = passwordResetEmail({
@@ -159,8 +176,23 @@ const inviteExpired = () =>
     message: "The invite was used or has expired. Ask your Owner for a new link.",
   });
 
+/** What the Worker gives better-auth from the request's execution context. */
+export interface AuthRuntime {
+  /** Keeps the Worker alive for work that runs after the response, such as the reset email. */
+  waitUntil?: (promise: Promise<unknown>) => void;
+}
+
+/** The 429 that a refused rate-limit check gives, with a Retry-After header. */
+function tooManyAttempts(seconds: number): APIError {
+  return new APIError(
+    "TOO_MANY_REQUESTS",
+    { message: "Too many attempts. Try again later.", code: "RATE_LIMITED", retryAfter: seconds },
+    { "Retry-After": String(seconds) },
+  );
+}
+
 /** Builds the better-auth instance for one request. */
-export function createAuth(env: Bindings, request: Request) {
+export function createAuth(env: Bindings, request: Request, runtime: AuthRuntime = {}) {
   const iterations = resolveIterations(env.PBKDF2_ITERATIONS);
   const hasher = createPasswordHasher(iterations);
   const secret = env.AUTH_SECRET?.trim();
@@ -226,12 +258,16 @@ export function createAuth(env: Bindings, request: Request) {
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: RESET_TOKEN_EXPIRES_IN_SECONDS,
       // better-auth's own link goes to its GET endpoint, which redirects to a page. The app
-      // links to the page directly.
-      sendResetPassword: ({ user, token }) =>
-        sendResetPassword(env, user.email, resetPasswordUrl(origin, token)),
+      // links to the page directly. The email is not awaited, so the response time is the
+      // same for every email. sendResetPassword logs its own errors.
+      sendResetPassword: async ({ user, token }) => {
+        const task = sendResetPassword(env, user.email, resetPasswordUrl(origin, token));
+        if (runtime.waitUntil) runtime.waitUntil(task);
+        else void task;
+      },
     },
     socialProviders: google,
-    // The AuthRateLimiter Durable Object limits attempts (hooks.before). The built-in
+    // The AuthRateLimiter Durable Object limits attempts (hooks.before and hooks.after). The built-in
     // limiter keeps its counts in isolate memory, so it is off.
     rateLimit: { enabled: false },
     telemetry: { enabled: false },
@@ -289,24 +325,25 @@ export function createAuth(env: Bindings, request: Request) {
         const checks = await rateChecksFor(ctx.path, ctx.request, ctx.body as CredentialsBody);
         if (checks.length === 0) return;
         // A failed counter call allows the attempt and logs an error, so a Durable Object
-        // outage does not lock everyone out.
-        const result = await consumeRateLimits(env, checks, { onError: "open" });
-        if (!result.allowed) {
-          const seconds = retryAfterSeconds(result);
-          throw new APIError(
-            "TOO_MANY_REQUESTS",
-            {
-              message: "Too many attempts. Try again later.",
-              code: "RATE_LIMITED",
-              retryAfter: seconds,
-            },
-            { "Retry-After": String(seconds) },
-          );
-        }
+        // outage does not lock everyone out. Sign-in only checks for a full window here.
+        // The after hook counts a failed sign-in, so correct passwords use no attempts.
+        const run = ctx.path === SIGN_IN_PATH ? peekRateLimits : consumeRateLimits;
+        const result = await run(env, checks, { onError: "open" });
+        if (!result.allowed) throw tooManyAttempts(retryAfterSeconds(result));
       }),
-      // Rehash a password that uses another iteration count, at the sign-in that proves it.
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== "/sign-in/email") return;
+        if (ctx.path !== SIGN_IN_PATH) return;
+        // Count a failed sign-in on every counter. Each counter is separate, so a full IP
+        // counter does not stop the email counter.
+        if (isAPIError(ctx.context.returned)) {
+          if (!ctx.request) return;
+          const checks = await rateChecksFor(ctx.path, ctx.request, ctx.body as CredentialsBody);
+          await Promise.all(
+            checks.map((check) => consumeRateLimits(env, [check], { onError: "open" })),
+          );
+          return;
+        }
+        // Rehash a password that uses another iteration count, at the sign-in that proves it.
         const userId = ctx.context.newSession?.user.id;
         const password = (ctx.body as CredentialsBody | undefined)?.password;
         if (!userId || typeof password !== "string") return;

@@ -161,7 +161,7 @@ describe("TeamPage", () => {
     await user.click(trigger as HTMLElement);
     await user.click(await screen.findByRole("menuitem", { name: "Reset sign-in" }));
     const confirm = await screen.findByRole("alertdialog");
-    expect(within(confirm).getByText(/password stops working/)).toBeTruthy();
+    expect(within(confirm).getByText(/linked Google account stop working/)).toBeTruthy();
     await user.click(within(confirm).getByRole("button", { name: "Reset sign-in" }));
 
     const linkDialog = await screen.findByRole("dialog", { name: "Sign-in reset link" });

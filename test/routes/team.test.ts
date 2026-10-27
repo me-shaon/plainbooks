@@ -1,32 +1,16 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MemberLink, TeamMember } from "../../src/shared/schemas/settings";
-import {
-  type RateBackend,
-  type RateResult,
-  setRateBackendForTesting,
-} from "../../src/worker/auth/rate-limit";
+import { setRateBackendForTesting } from "../../src/worker/auth/rate-limit";
 import { createDb } from "../../src/worker/db/client";
 import { removeUser } from "../../src/worker/services/team";
 import { apiFetch, clearUsers, seedUser, signInAs } from "../helpers/auth";
 import { resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
+import { memoryRateBackend } from "../helpers/rate-limit";
 
 const OWNER = "owner@team.test";
 const PASSWORD = "correct horse battery";
 const NEW_PASSWORD = "a brand new passphrase";
-
-/** In-memory counters with the same rule logic as the Durable Object. */
-function memoryBackend(): RateBackend {
-  const counters = new Map<string, number>();
-  return async (_env, check): Promise<RateResult> => {
-    const count = counters.get(check.key) ?? 0;
-    if (count >= check.rule.limit) {
-      return { allowed: false, count, retryAfterMs: check.rule.windowMs };
-    }
-    counters.set(check.key, count + 1);
-    return { allowed: true, count: count + 1, retryAfterMs: 0 };
-  };
-}
 
 let ipCounter = 0;
 const nextIp = () => `198.51.100.${++ipCounter}`;
@@ -76,7 +60,7 @@ async function members(): Promise<TeamMember[]> {
 const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
 
 beforeEach(async () => {
-  setRateBackendForTesting(memoryBackend());
+  setRateBackendForTesting(memoryRateBackend());
   await clearUsers();
   await resetEmailState();
   await seedUser(OWNER, "owner");
@@ -198,6 +182,27 @@ describe("accepting an invite", () => {
     expect(res.status).toBe(429);
     expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
   });
+
+  it("gives 429 on the 31st lookup from one IP and leaves the accept counter alone", async () => {
+    const counters = new Map<string, number>();
+    setRateBackendForTesting(memoryRateBackend(counters));
+    const ip = "203.0.113.78";
+    const lookupFrom = (token: string) =>
+      apiFetch("/api/invites/lookup", {
+        method: "POST",
+        json: { token },
+        headers: { "cf-connecting-ip": ip },
+      });
+    for (let i = 0; i < 30; i++) {
+      expect((await lookupFrom(`wrong-token-${i}`)).status).toBe(410);
+    }
+    const res = await lookupFrom("wrong-token-31");
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect([...counters.keys()].filter((key) => key.startsWith("token-link:"))).toEqual([]);
+    // The same IP can still use a link.
+    expect((await accept("wrong-token-accept", {}, ip)).status).toBe(410);
+  });
 });
 
 describe("resending an invite", () => {
@@ -256,6 +261,28 @@ describe("resetting a sign-in", () => {
     expect((await signIn("reset@team.test", NEW_PASSWORD)).status).toBe(200);
     const after = (await members()).find((m) => m.email === "reset@team.test");
     expect(after).toMatchObject({ state: "active", name: "Riley Member" });
+  });
+
+  it("also removes a linked Google account, so only the reset link signs in", async () => {
+    const added = await invite("google@team.test");
+    expect((await accept(tokenOf(added.link))).status).toBe(200);
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO accounts (id, user_id, account_id, provider_id, created_at, updated_at)
+       VALUES (?, ?, 'google-sub-1', 'google', ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), added.member.id, now, now)
+      .run();
+
+    const res = await apiFetch(`/api/team/${added.member.id}/reset`, {
+      as: OWNER,
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const left = await env.DB.prepare("SELECT provider_id FROM accounts WHERE user_id = ?")
+      .bind(added.member.id)
+      .all<{ provider_id: string }>();
+    expect(left.results).toEqual([]);
   });
 
   it("refuses to reset the Owner's own sign-in", async () => {

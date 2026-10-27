@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   assertRateLimits,
   consumeRateLimits,
+  ipKeyPart,
+  peekRateLimits,
   RATE_RULES,
   type RateRule,
   rateKeys,
@@ -51,7 +53,52 @@ describe("AuthRateLimiter", () => {
   });
 });
 
+describe("AuthRateLimiter.peek", () => {
+  it("reads the count without counting, and refuses only a full window", async () => {
+    const stub = env.AUTH_RATE_LIMITER.getByName(freshKey());
+    const start = Date.now();
+    expect(await stub.peek(rule, start)).toMatchObject({ allowed: true, count: 0 });
+    for (let i = 1; i <= 4; i++) await stub.consume(rule, start + i);
+    expect(await stub.peek(rule, start + 5)).toMatchObject({ allowed: true, count: 4 });
+    expect(await stub.peek(rule, start + 5)).toMatchObject({ allowed: true, count: 4 });
+    await stub.consume(rule, start + 5);
+    const full = await stub.peek(rule, start + 6);
+    expect(full).toMatchObject({ allowed: false, count: 5 });
+    expect(full.retryAfterMs).toBe(rule.windowMs - 5);
+    expect(await stub.peek(rule, start + 1 + rule.windowMs)).toMatchObject({ allowed: true });
+  });
+
+  it("peekRateLimits returns the first full counter", async () => {
+    const full = freshKey();
+    const stub = env.AUTH_RATE_LIMITER.getByName(full);
+    for (let i = 0; i < 5; i++) await stub.consume(rule);
+    const checks = [
+      { key: freshKey(), rule },
+      { key: full, rule },
+    ];
+    expect((await peekRateLimits(env, checks, { onError: "open" })).allowed).toBe(false);
+    expect(
+      (await peekRateLimits(env, [checks[0] ?? { key: "", rule }], { onError: "open" })).count,
+    ).toBe(0);
+  });
+});
+
 describe("rate keys", () => {
+  it("groups IPv6 addresses by /64 and keeps IPv4 addresses whole", () => {
+    expect(ipKeyPart("198.51.100.7")).toBe("198.51.100.7");
+    expect(ipKeyPart("::ffff:198.51.100.7")).toBe("198.51.100.7");
+    expect(ipKeyPart("2001:db8:1:2::a")).toBe("2001:db8:1:2::/64");
+    expect(ipKeyPart("2001:0DB8:0001:0002:ffff:0:0:1")).toBe("2001:db8:1:2::/64");
+    expect(ipKeyPart("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(ipKeyPart("unknown")).toBe("unknown");
+    expect(rateKeys.ip("sign-in", "2001:db8:1:2::a")).toBe(
+      rateKeys.ip("sign-in", "2001:db8:1:2::b"),
+    );
+    expect(rateKeys.ip("sign-in", "2001:db8:1:2::a")).not.toBe(
+      rateKeys.ip("sign-in", "2001:db8:1:3::a"),
+    );
+  });
+
   it("hashes the lowercase email, so no key holds the address", async () => {
     const key = await rateKeys.email("sign-in", " Owner@Example.com ");
     expect(key).toBe(await rateKeys.email("sign-in", "owner@example.com"));

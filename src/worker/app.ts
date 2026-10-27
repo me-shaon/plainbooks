@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { AUTH_BASE_PATH, createAuth } from "./auth/auth";
 import { sessionAuth } from "./auth/middleware";
 import type { AppEnv } from "./env";
@@ -14,6 +14,16 @@ import { publicAssetRoutes } from "./routes/uploads";
  */
 export const app = new Hono<AppEnv>();
 
+/** The execution context's waitUntil, or undefined when the request has no context. */
+function waitUntilOf(c: Context<AppEnv>): ((promise: Promise<unknown>) => void) | undefined {
+  try {
+    const ctx = c.executionCtx;
+    return (promise) => ctx.waitUntil(promise);
+  } catch {
+    return undefined;
+  }
+}
+
 app.onError(handleError);
 
 app.use("/api/*", sessionAuth);
@@ -22,7 +32,7 @@ app.use("/render/*", sessionAuth);
 // better-auth: sign-in, sign-out, password reset, and Google OAuth. It needs no session.
 // `sessionAuth` has already run the cross-site guard.
 app.on(["GET", "POST"], `${AUTH_BASE_PATH}/*`, (c) =>
-  createAuth(c.env, c.req.raw).handler(c.req.raw),
+  createAuth(c.env, c.req.raw, { waitUntil: waitUntilOf(c) }).handler(c.req.raw),
 );
 
 app.route("/api", api);

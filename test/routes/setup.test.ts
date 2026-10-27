@@ -2,32 +2,16 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/worker/app";
-import {
-  type RateBackend,
-  type RateResult,
-  setRateBackendForTesting,
-} from "../../src/worker/auth/rate-limit";
+import { setRateBackendForTesting } from "../../src/worker/auth/rate-limit";
 import type { Bindings } from "../../src/worker/env";
 import { apiFetch, buildRequest, clearUsers, createSession, sessionCookie } from "../helpers/auth";
 import { resetEmailState, restoreEmail, useFakeEmail } from "../helpers/email";
+import { memoryRateBackend } from "../helpers/rate-limit";
 
 const T1 = "first-setup-token-0123456789abcdef-T1";
 const T2 = "second-setup-token-0123456789abcdef-T2";
 const PASSWORD = "correct horse battery";
 const NEW_PASSWORD = "a brand new passphrase";
-
-/** In-memory counters with the same rule logic as the Durable Object. */
-function memoryBackend(): RateBackend {
-  const counters = new Map<string, number>();
-  return async (_env, check): Promise<RateResult> => {
-    const count = counters.get(check.key) ?? 0;
-    if (count >= check.rule.limit) {
-      return { allowed: false, count, retryAfterMs: check.rule.windowMs };
-    }
-    counters.set(check.key, count + 1);
-    return { allowed: true, count: count + 1, retryAfterMs: 0 };
-  };
-}
 
 /** Sends a request with other bindings, for example another SETUP_TOKEN. */
 async function fetchWith(bindings: Partial<Bindings>, request: Request) {
@@ -81,7 +65,7 @@ async function userCount(): Promise<number> {
 }
 
 beforeEach(async () => {
-  setRateBackendForTesting(memoryBackend());
+  setRateBackendForTesting(memoryRateBackend());
   await clearUsers();
   await env.DB.prepare("DELETE FROM setup_token_uses").run();
   await env.DB.prepare("DELETE FROM activity WHERE type = 'owner_recovered'").run();
