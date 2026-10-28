@@ -239,6 +239,14 @@ export const WEBHOOK_SECRET_HINTS: Readonly<Partial<Record<EmailProviderId, stri
     "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook. Select only the bounce, spam, and unsubscribe events.",
   sendgrid:
     "The public key of the signed Event Webhook in SendGrid. Select only the bounced, spam report, and unsubscribe events.",
+  mailchannels:
+    "The MailChannels public key for the keyid of your webhooks, as base64 or a PEM block. Select only the hard-bounced, soft-bounced, complained, and unsubscribed events.",
+  ahasend:
+    "Copy the secret of the webhook in AhaSend, with the aha-whsec- prefix. Select only the message.bounced, message.transient_error, message.complained, and message.unsubscribed events.",
+  mailtrap:
+    "Copy the signing secret of the webhook in Mailtrap, and set the payload format to JSON. Select only the bounce, soft bounce, spam, and unsubscribe events.",
+  autosend:
+    "Copy the secret of the webhook in AutoSend. Select only the email.bounced, email.spam_reported, and email.unsubscribed events.",
   ses: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused. Send only the bounce and complaint events to these topics.",
 };
 

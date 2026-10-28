@@ -165,7 +165,7 @@ Add the webhook. The webhook tells the app about bounces and complaints.
 2. In toSend, create a webhook with this URL.
 3. Select the bounce and complaint events.
 4. Copy the signing secret of the webhook.
-5. In the app, paste it in **Webhook signing secret**.
+5. In the app, paste it in **Webhook secret**.
 6. Save the provider.
 
 Then send a test email:
@@ -371,8 +371,9 @@ If the error code is `not_a_member`, your user is not an active member. Ask an O
 - A 401 response with `invalid_signature` means that the webhook secret in **Settings** > **Email** does not match the secret of the webhook at the provider. Enter the secret again.
 - A 401 response also comes when the provider for that role is not set up. Check that the URL ends in `primary` for the primary provider and in `fallback` for the fallback provider.
 - For Postmark, the webhook Basic auth username must be `mailswitch`.
-- For Amazon SES, check that the topic ARN of each subscription is in the **SNS topic ARNs** field.
-- A 500 response with a log line about the query limit means that one webhook request had too many events. The Workers Free plan allows 50 database queries per request. At the provider, select only the bounce and complaint events, so each request carries fewer events.
+- For Amazon SES, check that the topic ARN of each subscription is in the **Allowed SNS topic ARNs** field.
+- A 401 response also comes when a saved setting does not fit the provider, for example a Postmark secret that is too short or a missing MailChannels customer handle. The log has a line that names the role. Enter the setting again and save.
+- A 500 response with a log line about the query limit means that one webhook request had too many events. The Workers Free plan allows 50 database queries per request. At the provider, select only the bounce, complaint, and unsubscribe events, so each request carries fewer events.
 
 ### Sign-in fails with error 1102
 
