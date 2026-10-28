@@ -58,38 +58,37 @@ async function readCappedBody(request: Request, max: number): Promise<Uint8Array
 }
 
 /**
- * The D1 statements of one webhook request, for the 50 statement limit of Workers Free:
+ * The D1 queries of one webhook request, for the 50 query limit of Workers Free. One
+ * batch() call is one query.
  * - before the events: the provider row, the workspace, and the owner emails (3);
- * - per event key: the dedupe claim batch (2) and the commit (1), twice for an adapter
- *   with body-bound keys (Mailgun);
- * - per bounce or complaint group: the email_log read, the document read, and a batch of
- *   up to 4 writes (6);
+ * - the dedupe claim and commit: one batch each per 500 keys. An adapter with body-bound
+ *   keys (Mailgun) claims two keys per event;
+ * - per bounce or complaint group: the email_log read, the document read,
+ *   and one batch of writes (3);
  * - per SNS subscription: the activity row (1).
  */
-const WEBHOOK_FIXED_STATEMENTS = 3;
-const WEBHOOK_EVENT_STATEMENTS = 3;
-const WEBHOOK_GROUP_STATEMENTS = 6;
+const WEBHOOK_FIXED_QUERIES = 3;
+const DEDUPE_KEYS_PER_BATCH = 500;
+const WEBHOOK_GROUP_QUERIES = 3;
 
 /**
- * The most D1 statements that a request with these events can use. It counts every
- * event, because mailswitch claims every event key, also the types that the app ignores.
+ * The most D1 queries that a request with these events can use. It counts every event
+ * key, because mailswitch claims every key, also for the types that the app ignores.
  */
-function webhookStatements(adapter: ProviderAdapter, events: NormalizedEvent[]): number {
-  const perEvent =
-    (adapter as { bodyBoundKeys?: boolean }).bodyBoundKeys === true
-      ? 2 * WEBHOOK_EVENT_STATEMENTS
-      : WEBHOOK_EVENT_STATEMENTS;
-  const keys = new Set(events.map((event) => event.eventKey));
+function webhookQueries(adapter: ProviderAdapter, events: NormalizedEvent[]): number {
+  const keysPerEvent = (adapter as { bodyBoundKeys?: boolean }).bodyBoundKeys === true ? 2 : 1;
+  const keys = new Set(events.map((event) => event.eventKey)).size * keysPerEvent;
+  const dedupeBatches = 2 * Math.ceil(keys / DEDUPE_KEYS_PER_BATCH);
   const confirms = events.filter((event) => snsConfirmAction(event) !== null).length;
   return (
-    WEBHOOK_FIXED_STATEMENTS +
-    keys.size * perEvent +
-    groupEvents(events).length * WEBHOOK_GROUP_STATEMENTS +
+    WEBHOOK_FIXED_QUERIES +
+    dedupeBatches +
+    groupEvents(events).length * WEBHOOK_GROUP_QUERIES +
     confirms
   );
 }
 
-/** Parses the body for the statement count. Null when the parser throws. */
+/** Parses the body for the query count. Null when the parser throws. */
 function parseForCount(
   adapter: ProviderAdapter,
   body: Uint8Array,
@@ -316,12 +315,12 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
   const adapter = createAdapter(provider.providerId);
   if (!adapter.webhooks) return unauthorized(c);
 
-  // A request that would pass the D1 statement limit fails part way, after some events
+  // A request that would pass the D1 query limit fails part way, after some events
   // are claimed or written. Refuse it before any write. Only a verified request gets the
   // 500, so an unsigned request still gets the 401 below.
   const parsed = parseForCount(adapter, body, c.req.raw.headers);
-  const statements = parsed ? webhookStatements(adapter, parsed) : 0;
-  if (statements > TICK_QUERY_BUDGET) {
+  const queries = parsed ? webhookQueries(adapter, parsed) : 0;
+  if (queries > TICK_QUERY_BUDGET) {
     const verified = await adapter.webhooks.verify({
       headers: c.req.raw.headers,
       body,
@@ -331,7 +330,7 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
     if (verified.ok) {
       console.error(
         `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
-          `which needs up to ${statements} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
+          `which needs up to ${queries} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
           "Nothing was recorded. In the provider webhook settings, select only the bounce " +
           "and spam complaint events, and turn off event grouping where the provider has it.",
       );

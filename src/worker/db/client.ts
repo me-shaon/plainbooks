@@ -15,7 +15,7 @@ const requestScoped = new WeakSet<Db>();
 
 /**
  * `createDb` for a handle that lives for one request or one cron tick. Services may cache
- * reads on such a handle (see `loadWorkspace`), because every statement counts toward the
+ * reads on such a handle (see `loadWorkspace`), because every query counts toward the
  * D1 per-invocation query limit. Never cache on a shared handle.
  */
 export function createRequestDb(d1: D1Database): Db {

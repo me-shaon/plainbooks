@@ -1144,7 +1144,7 @@ export async function markSent(
   ];
   const results = await d1.batch(statements);
   // The guarded update applied, so the new row is known without a read. This keeps a
-  // scheduler document send inside the D1 statement budget.
+  // scheduler document send inside the D1 query budget.
   if (changes(results[1]) === 1) {
     return {
       ...doc,

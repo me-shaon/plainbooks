@@ -172,7 +172,7 @@ export interface EmailCapacity {
  * Reads the cap counters through `D1DailyCapStore`: one statement per capped provider.
  * A provider with no cap is never full. Without `totals`, the read stops at the first
  * provider with room, and the later providers stay in `available` unchecked: the mailer
- * still enforces their caps. That keeps a send inside the D1 statement budget.
+ * still enforces their caps. That keeps a send inside the D1 query budget.
  */
 export async function emailCapacity(
   db: Db,

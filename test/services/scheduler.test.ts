@@ -237,10 +237,12 @@ describe("runTick", () => {
     const summary = await runTick(counted, NOW);
     expect(summary).toMatchObject({ enqueued: 5, done: 5 });
     const perJob = 3; // the claim, then the handler's insert and the done marker in one batch
-    console.log(`tick with 5 jobs: ${counter.statements} statements, ${counter.batches} batches`);
+    console.log(
+      `tick with 5 jobs: ${counter.statements} statements, ${counter.roundTrips} queries`,
+    );
     expect(counter.statements).toBeLessThanOrEqual(10 + 5 * perJob);
-    expect(summary.queries).toBe(counter.statements);
-    expect(counter.statements).toBeLessThanOrEqual(50);
+    expect(summary.queries).toBe(counter.roundTrips);
+    expect(counter.roundTrips).toBeLessThanOrEqual(50);
     const notes = await db.select().from(schema.notifications);
     expect(notes).toHaveLength(5);
   });

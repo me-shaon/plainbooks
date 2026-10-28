@@ -10,27 +10,46 @@ export interface RecordedQuery {
 export interface QueryCounter {
   /** Statements prepared, including the ones sent inside a batch. */
   statements: number;
-  /** Round trips: batch() calls plus statements run on their own. */
+  /** batch() calls. */
   batches: number;
+  /**
+   * D1 queries toward the per-invocation limit: batch() calls plus statements run on
+   * their own. Budget tests check this count.
+   */
+  roundTrips: number;
   /** Every prepared statement in order, for query plan checks. */
   queries: RecordedQuery[];
   reset(): void;
 }
 
 /**
- * Wraps the D1 binding and counts prepared statements and batch calls. Every statement
- * counts toward the per-invocation query limit, so tests budget `statements`.
+ * Wraps the D1 binding and counts prepared statements, batch calls, and round trips. One
+ * batch() call counts as one query toward the per-invocation limit, so tests budget
+ * `roundTrips`.
  */
 export function countingEnv(base: Bindings = env): { env: Bindings; counter: QueryCounter } {
   const counter: QueryCounter = {
     statements: 0,
     batches: 0,
+    roundTrips: 0,
     queries: [],
     reset() {
       counter.statements = 0;
       counter.batches = 0;
+      counter.roundTrips = 0;
       counter.queries = [];
     },
+  };
+  /** Counts a run of the statement as one round trip. A batch() never calls these. */
+  const countRuns = (statement: D1PreparedStatement): D1PreparedStatement => {
+    for (const method of ["run", "all", "first", "raw"] as const) {
+      const original = statement[method].bind(statement) as (...args: unknown[]) => unknown;
+      (statement as unknown as Record<string, unknown>)[method] = (...args: unknown[]) => {
+        counter.roundTrips += 1;
+        return original(...args);
+      };
+    }
+    return statement;
   };
   const db = base.DB;
   const DB = new Proxy(db, {
@@ -40,11 +59,11 @@ export function countingEnv(base: Bindings = env): { env: Bindings; counter: Que
           counter.statements += 1;
           const recorded: RecordedQuery = { sql: query, params: [] };
           counter.queries.push(recorded);
-          const statement = target.prepare(query);
+          const statement = countRuns(target.prepare(query));
           const bind = statement.bind.bind(statement);
           statement.bind = (...values: unknown[]) => {
             recorded.params = values;
-            return bind(...values);
+            return countRuns(bind(...values));
           };
           return statement;
         };
@@ -52,6 +71,7 @@ export function countingEnv(base: Bindings = env): { env: Bindings; counter: Que
       if (prop === "batch") {
         return (statements: D1PreparedStatement[]) => {
           counter.batches += 1;
+          counter.roundTrips += 1;
           return target.batch(statements);
         };
       }

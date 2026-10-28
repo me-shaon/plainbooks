@@ -1,12 +1,13 @@
 // The cron tick: enqueue due work, update derived statuses, then drain a few jobs. Workers
-// Free gives a cron run 10 ms CPU and 50 D1 queries, so the tick counts every statement
-// and claims a job only when the rest of the budget can pay for it.
+// Free gives a cron run 10 ms CPU and 50 D1 queries, so the tick counts its queries and
+// claims a job only when the rest of the budget can pay for it. One batch() call is one
+// query, whatever the number of statements in it.
 //
-// A heavy job (a document send uses about 48 queries) does not fit next to the enqueue
-// phase. So the :15, :30 and :45 ticks first claim one due heavy job and run only that
+// A heavy job (a document send uses about 30 queries) does not fit next to the enqueue
+// phase and the light jobs. So the :15, :30 and :45 ticks first claim one due heavy job and run only that
 // job. The :00 tick always runs the enqueue phase, so derived statuses and new jobs never
 // wait more than an hour behind a queue of heavy jobs. It also purges the expired
-// mailswitch idempotency and webhook dedupe rows (2 statements).
+// mailswitch idempotency and webhook dedupe rows (2 queries).
 import { D1DedupeStore, D1IdempotencyStore } from "mailswitch/stores/d1";
 import { todayIn, WORKSPACE_TIMEZONE } from "../../shared/time";
 import { createRequestDb, type Db } from "../db/client";
@@ -45,7 +46,7 @@ export interface TickSummary {
   needsReview: number;
   /** Jobs whose result could not be recorded. Their lease expires and they run again. */
   errors: number;
-  /** D1 statements this tick prepared. */
+  /** D1 queries this tick sent: batch() calls plus statements run on their own. */
   queries: number;
 }
 
@@ -55,15 +56,56 @@ export interface TickOptions {
   owner?: string;
 }
 
-/** Wraps a D1 binding and counts every prepared statement, also the ones in a batch. */
+/** The D1 statement methods that send one query. */
+const RUN_METHODS = new Set<PropertyKey>(["run", "all", "first", "raw"]);
+
+/** The real statement behind each counting proxy. `batch()` gets the real ones. */
+const proxied = new WeakMap<D1PreparedStatement, D1PreparedStatement>();
+
+function unwrapStatement(statement: D1PreparedStatement): D1PreparedStatement {
+  return proxied.get(statement) ?? statement;
+}
+
+/**
+ * Wraps a D1 binding and counts its queries toward the per-invocation limit: one per
+ * `batch()` call and one per statement that runs on its own. A statement inside a batch
+ * does not count again.
+ */
 export function countQueries(d1: D1Database): { d1: D1Database; count: () => number } {
   let count = 0;
+  const wrapStatement = (statement: D1PreparedStatement): D1PreparedStatement => {
+    const proxy = new Proxy(statement, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target);
+        if (typeof value !== "function") return value;
+        if (prop === "bind") {
+          return (...values: unknown[]) => wrapStatement(target.bind(...values));
+        }
+        if (RUN_METHODS.has(prop)) {
+          return (...args: unknown[]) => {
+            count += 1;
+            return value.apply(target, args);
+          };
+        }
+        return value.bind(target);
+      },
+    });
+    proxied.set(proxy, statement);
+    return proxy;
+  };
   const wrapped = new Proxy(d1, {
     get(target, prop) {
-      if (prop === "prepare") {
+      if (prop === "prepare") return (query: string) => wrapStatement(target.prepare(query));
+      if (prop === "batch") {
+        return (statements: D1PreparedStatement[]) => {
+          count += 1;
+          return target.batch(statements.map(unwrapStatement));
+        };
+      }
+      if (prop === "exec") {
         return (query: string) => {
           count += 1;
-          return target.prepare(query);
+          return target.exec(query);
         };
       }
       const value = Reflect.get(target, prop, target);

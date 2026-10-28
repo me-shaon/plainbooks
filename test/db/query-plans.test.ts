@@ -1,5 +1,5 @@
 // Per-request D1 budgets and query plans for the hot paths. Workers Free allows 50 D1
-// queries per invocation (every statement in a batch counts), and D1 bills rows read, so
+// queries per invocation (one batch() call is one query), and D1 bills rows read, so
 // these tests pin the statement count of the heaviest endpoints and check that their
 // queries search an index instead of scanning a growing table.
 import { env } from "cloudflare:workers";

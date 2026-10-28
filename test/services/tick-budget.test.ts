@@ -97,9 +97,10 @@ async function runBudgetScenario(): Promise<string[]> {
   for (let i = 0; i < 8; i++) {
     counter.reset();
     const summary = await runTick(counted, start + i * TICK_INTERVAL_MS);
-    perTick.push(counter.statements);
+    perTick.push(counter.roundTrips);
     expect(summary.errors).toBe(0);
-    expect(counter.statements).toBeLessThan(TICK_QUERY_BUDGET);
+    expect(summary.queries).toBe(counter.roundTrips);
+    expect(counter.roundTrips).toBeLessThan(TICK_QUERY_BUDGET);
 
     if (i === 0) {
       // The :00 tick runs the enqueue phase and light jobs only. The heavy jobs stay
@@ -111,7 +112,7 @@ async function runBudgetScenario(): Promise<string[]> {
       }
     }
   }
-  console.log(`statements per tick: ${perTick.join(", ")}`);
+  console.log(`queries per tick: ${perTick.join(", ")}`);
 
   const rows = await db.select().from(schema.jobs);
   expect(rows.every((r) => r.status === "done")).toBe(true);

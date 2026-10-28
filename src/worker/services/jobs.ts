@@ -17,16 +17,19 @@ export type BatchStatement = BatchItem<"sqlite">;
 
 /** The most jobs one tick runs. The query budget below usually stops it sooner. */
 export const JOB_BATCH_SIZE = 5;
-/** Workers Free allows 50 D1 queries per invocation. Every statement in a batch counts. */
+/**
+ * Workers Free allows 50 D1 queries per invocation. One batch() call counts as one query,
+ * whatever the number of statements in it.
+ */
 export const TICK_QUERY_BUDGET = 50;
 /**
  * The most queries a light job (for example send_email) may use, its done marker included.
  * The worst email is a capped primary that takes a unit, answers `not_sent`, and falls
  * back to a capped fallback: the workspace and provider reads (2), the mailswitch claim
- * (4), two heartbeats (2), two cap reservations of 3 each (6), the refund (1), the final
- * record (1), the email_log row (1), and the done marker (1).
+ * batch (1), the heartbeat before the fallback (1), two cap reservation batches (2), the
+ * refund (1), the final record (1), the email_log row (1), and the done marker (1).
  */
-export const LIGHT_JOB_QUERIES = 18;
+export const LIGHT_JOB_QUERIES = 10;
 /** Queries kept free for the retry or failure write after a job. */
 export const JOB_FAILURE_RESERVE = 2;
 /** A claimed job is leased for this long. After that, another tick can claim it again. */
@@ -105,8 +108,8 @@ const heavyTypes = new Set<string>();
 
 export interface JobHandlerOptions {
   /**
-   * The job can use up to about 48 D1 queries (a document send: finalize, PDF, the
-   * mailswitch claim and cap statements, email, mark sent). The scheduler runs a heavy job
+   * The job can use up to about 30 D1 queries (a document send: finalize, PDF, the
+   * mailswitch claim and cap queries, email, mark sent). The scheduler runs a heavy job
    * only in a tick of its own.
    */
   heavy?: boolean;
