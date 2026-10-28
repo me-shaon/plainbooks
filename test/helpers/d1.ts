@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { Bindings } from "../../src/worker/env";
+import { countQueries } from "../../src/worker/services/scheduler";
 
 /** One prepared statement: its SQL and the values bound to it. */
 export interface RecordedQuery {
@@ -25,45 +26,38 @@ export interface QueryCounter {
 /**
  * Wraps the D1 binding and counts prepared statements, batch calls, and round trips. One
  * batch() call counts as one query toward the per-invocation limit, so tests budget
- * `roundTrips`.
+ * `roundTrips`. The round trips come from `countQueries`, the counter of the scheduler.
  */
 export function countingEnv(base: Bindings = env): { env: Bindings; counter: QueryCounter } {
+  let trips: () => number = () => 0;
+  let tripsAtReset = 0;
   const counter: QueryCounter = {
     statements: 0,
     batches: 0,
-    roundTrips: 0,
+    get roundTrips() {
+      return trips() - tripsAtReset;
+    },
     queries: [],
     reset() {
       counter.statements = 0;
       counter.batches = 0;
-      counter.roundTrips = 0;
+      tripsAtReset = trips();
       counter.queries = [];
     },
   };
-  /** Counts a run of the statement as one round trip. A batch() never calls these. */
-  const countRuns = (statement: D1PreparedStatement): D1PreparedStatement => {
-    for (const method of ["run", "all", "first", "raw"] as const) {
-      const original = statement[method].bind(statement) as (...args: unknown[]) => unknown;
-      (statement as unknown as Record<string, unknown>)[method] = (...args: unknown[]) => {
-        counter.roundTrips += 1;
-        return original(...args);
-      };
-    }
-    return statement;
-  };
   const db = base.DB;
-  const DB = new Proxy(db, {
+  const recording = new Proxy(db, {
     get(target, prop) {
       if (prop === "prepare") {
         return (query: string) => {
           counter.statements += 1;
           const recorded: RecordedQuery = { sql: query, params: [] };
           counter.queries.push(recorded);
-          const statement = countRuns(target.prepare(query));
+          const statement = target.prepare(query);
           const bind = statement.bind.bind(statement);
           statement.bind = (...values: unknown[]) => {
             recorded.params = values;
-            return countRuns(bind(...values));
+            return bind(...values);
           };
           return statement;
         };
@@ -71,7 +65,6 @@ export function countingEnv(base: Bindings = env): { env: Bindings; counter: Que
       if (prop === "batch") {
         return (statements: D1PreparedStatement[]) => {
           counter.batches += 1;
-          counter.roundTrips += 1;
           return target.batch(statements);
         };
       }
@@ -79,7 +72,9 @@ export function countingEnv(base: Bindings = env): { env: Bindings; counter: Que
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
-  return { env: { ...base, DB }, counter };
+  const counted = countQueries(recording);
+  trips = counted.count;
+  return { env: { ...base, DB: counted.d1 }, counter };
 }
 
 /** The lines of `EXPLAIN QUERY PLAN` for a recorded statement, with its bound values. */
