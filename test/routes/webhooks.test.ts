@@ -20,6 +20,7 @@ import {
   SEND_EMAIL_JOB,
   sendDocument,
 } from "../../src/worker/services/email";
+import { trackRunSoonForTesting } from "../../src/worker/services/jobs";
 import { setPdfRendererForTesting } from "../../src/worker/services/pdf";
 import { apiFetch, buildRequest, clearUsers, seedUser } from "../helpers/auth";
 import { countingEnv } from "../helpers/d1";
@@ -149,7 +150,12 @@ beforeAll(() => {
   registerEmailJobHandlers();
 });
 
+/** The owner emails that the webhook route starts after its response. */
+let runSoon: Promise<void>[] = [];
+
 beforeEach(async () => {
+  runSoon = [];
+  trackRunSoonForTesting(runSoon);
   await resetDocuments();
   await resetPdfState();
   await resetEmailState();
@@ -164,7 +170,11 @@ beforeEach(async () => {
   await saveProvider("primary", "tosend", TOSEND_SECRET);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // A run that outlives its test would write into the next test's rows, and it would
+  // send through the real adapter once the fakes are gone.
+  await Promise.all(runSoon);
+  trackRunSoonForTesting(null);
   setPdfRendererForTesting(null);
   restoreEmail();
   vi.restoreAllMocks();

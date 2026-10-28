@@ -40,7 +40,7 @@ export default defineConfig(async () => {
           test: {
             name: "worker",
             include: ["test/**/*.test.ts"],
-            setupFiles: ["./test/apply-migrations.ts"],
+            setupFiles: ["./test/apply-migrations.ts", "./test/drain-run-soon.ts"],
             // Route tests create real sessions and hit local D1; under machine load they can pass 5 s.
             testTimeout: 15_000,
           },

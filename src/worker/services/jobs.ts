@@ -510,6 +510,16 @@ export async function runJobById(
   return job ? runJob(env, db, job, now) : null;
 }
 
+let runSoonForTesting: Promise<void>[] | null = null;
+
+/**
+ * Tests only: collects the runs that `runJobSoon` starts, so a test can await them before
+ * the next test resets the database. Pass null to stop.
+ */
+export function trackRunSoonForTesting(runs: Promise<void>[] | null): void {
+  runSoonForTesting = runs;
+}
+
 /**
  * Runs a job right after the response, so interactive actions do not wait for the next
  * cron tick. The cron tick stays the backstop if this run fails or the isolate stops.
@@ -519,12 +529,12 @@ export function runJobSoon(
   env: Bindings,
   jobId: string,
 ): void {
-  ctx.waitUntil(
-    runJobById(env, jobId).then(
-      () => undefined,
-      (err: unknown) => console.error(`runJobSoon(${jobId}) failed`, err),
-    ),
+  const run = runJobById(env, jobId).then(
+    () => undefined,
+    (err: unknown) => console.error(`runJobSoon(${jobId}) failed`, err),
   );
+  runSoonForTesting?.push(run);
+  ctx.waitUntil(run);
 }
 
 /**
