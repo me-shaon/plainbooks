@@ -131,7 +131,14 @@ export type EmailKind = (typeof EMAIL_KINDS)[number];
  * `failed`: the provider did not send it (`not_sent`). `unknown`: the email may have gone
  * out, so it counts like a sent email and is never retried automatically.
  */
-export const EMAIL_STATUSES = ["sent", "failed", "unknown", "bounced", "complained"] as const;
+export const EMAIL_STATUSES = [
+  "sent",
+  "failed",
+  "unknown",
+  "bounced",
+  "complained",
+  "unsubscribed",
+] as const;
 export type EmailStatus = (typeof EMAIL_STATUSES)[number];
 
 /** The primary provider sends first. The fallback sends only after a `not_sent` result. */

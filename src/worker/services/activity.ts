@@ -29,6 +29,7 @@ export const ACTIVITY_TYPES = [
   "send_failed",
   "email_bounced",
   "email_complained",
+  "email_unsubscribed",
   "reminder_sent",
   "link_reset",
   "email_marked_sent",

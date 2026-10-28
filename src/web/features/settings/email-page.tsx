@@ -444,7 +444,7 @@ function ProviderForm({
                 id={`${fieldId("webhook-url")}-hint`}
                 className="m-0 text-xs text-muted-foreground"
               >
-                Give this URL to {provider.name} for bounce and complaint events.
+                Give this URL to {provider.name} for bounce, complaint, and unsubscribe events.
               </p>
             </div>
             <TextField

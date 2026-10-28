@@ -343,7 +343,7 @@ export async function manualSendKey(db: Db, documentId: string): Promise<string>
       and(
         eq(emailLog.documentId, documentId),
         eq(emailLog.kind, "document"),
-        inArray(emailLog.status, ["sent", "bounced", "complained"]),
+        inArray(emailLog.status, ["sent", "bounced", "complained", "unsubscribed"]),
       ),
     );
   return `document:${documentId}:send:${row?.count ?? 0}`;

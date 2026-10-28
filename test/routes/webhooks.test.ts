@@ -607,6 +607,26 @@ describe("POST /api/webhooks/email/:role with a batch of events", () => {
     expect(counter.roundTrips).toBeLessThanOrEqual(50);
   });
 
+  it("records an unsubscribe like a complaint: status, activity, notice, and owner email", async () => {
+    await insertLog("mj-guid-u", "mailjet");
+    const body = JSON.stringify([
+      {
+        event: "unsub",
+        time: 1761200000,
+        MessageID: 2000,
+        Message_GUID: "mj-guid-u",
+        email: "ap@northwind.test",
+        mj_list_id: "",
+      },
+    ]);
+    const { res } = await mailjetPost(body);
+    expect(res.status).toBe(200);
+    expect(await logStatus("mj-guid-u")).toBe("unsubscribed");
+    expect(await count("activity WHERE type = 'email_unsubscribed'")).toBe(1);
+    expect(await count("notifications WHERE type = 'email_unsubscribed'")).toBe(1);
+    expect(await count("jobs WHERE type = 'send_email'")).toBe(1);
+  });
+
   it("refuses an unsigned large batch with 401, not 500", async () => {
     const res = await post("primary", mailjetBounces(20), {
       authorization: mailjetWebhookAuthorization("another-password-0123456789"),

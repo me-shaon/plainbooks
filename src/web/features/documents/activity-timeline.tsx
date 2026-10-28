@@ -3,7 +3,13 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../components/ui/utils";
 import { activityText, formatTimestamp } from "./labels";
 
-const DANGER_TYPES = new Set(["send_failed", "email_bounced", "email_complained", "voided"]);
+const DANGER_TYPES = new Set([
+  "send_failed",
+  "email_bounced",
+  "email_complained",
+  "email_unsubscribed",
+  "voided",
+]);
 
 /** The activity history, newest first. The dashboard can reuse it for a feed. */
 export function ActivityTimeline({

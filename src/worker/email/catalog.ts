@@ -217,17 +217,17 @@ export const WEBHOOK_SECRET_HINTS: Readonly<Partial<Record<EmailProviderId, stri
   tosend: "Copy it from the webhook in toSend.",
   mailgun: "Copy it from the Webhooks page in Mailgun.",
   postmark:
-    "Make a random value of at least 22 characters. In Postmark, set the webhook Basic auth username to mailswitch and the password to this value.",
+    "Make a random value of at least 22 characters. In Postmark, set the webhook Basic auth username to mailswitch and the password to this value. Select the Bounce and Spam complaint events, and Subscription change for unsubscribes.",
   brevo:
     "Make a random value of at least 22 characters. Give it to Brevo as the bearer token of the webhook. Select only the hard bounce, soft bounce, invalid email, and spam events.",
   mailersend:
-    "Copy it from the webhook in MailerSend. Select only the activity.hard_bounced, activity.soft_bounced, and activity.spam_complaint events.",
+    "Copy it from the webhook in MailerSend. Select only the activity.hard_bounced, activity.soft_bounced, activity.spam_complaint, and activity.unsubscribed events.",
   mailjet:
-    "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password. Add the URL only for the bounce and spam events, and turn off event grouping.",
+    "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password. Add the URL only for the bounce, spam, and unsub events, and turn off event grouping.",
   smtp2go:
-    "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook. Select only the bounce and spam events.",
+    "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook. Select only the bounce, spam, and unsubscribe events.",
   sendgrid:
-    "The public key of the signed Event Webhook in SendGrid. Select only the bounced and spam report events.",
+    "The public key of the signed Event Webhook in SendGrid. Select only the bounced, spam report, and unsubscribe events.",
   ses: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused. Send only the bounce and complaint events to these topics.",
 };
 

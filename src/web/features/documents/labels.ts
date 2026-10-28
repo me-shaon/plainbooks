@@ -51,6 +51,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   send_failed: "Send failed",
   email_bounced: "Email bounced",
   email_complained: "Marked as spam",
+  email_unsubscribed: "Recipient unsubscribed",
   reminder_sent: "Reminder sent",
   link_reset: "Public link reset",
   email_marked_sent: "Email marked as sent after review",

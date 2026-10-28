@@ -193,6 +193,8 @@ Some providers need a setting that is not a key:
 - **MailChannels:** Enter the customer handle of your MailChannels account. The webhook refuses events for any other account.
 - **Generic HTTP:** Use it for a JSON email API that the list does not have. Enter the JSON config of the API, and the token in the token field. The config format is in the mailswitch docs for the generic HTTP provider. Before you save, set the `EMAIL_HTTP_ALLOW_HOSTS` secret to the hosts that the config names, separated by commas. For example, run `npx wrangler secret put EMAIL_HTTP_ALLOW_HOSTS` and enter `api.mail.example`. This provider has no webhooks.
 
+The app records bounces, spam complaints, and unsubscribes. For each one, it adds a row to the document history, shows a notification, and emails the Owner. Resend, toSend, and Amazon SES send no unsubscribe events.
+
 To make a random value, use `openssl rand -base64 32`.
 
 ### Fallback provider and daily caps

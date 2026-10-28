@@ -61,7 +61,7 @@ export function quoteDecisionEmail(
 
 export function bounceEmail(
   input: OwnerBase & {
-    event: "bounced" | "complained";
+    event: "bounced" | "complained" | "unsubscribed";
     recipients: string[];
     subject: string;
     number?: string | null;
@@ -70,6 +70,13 @@ export function bounceEmail(
 ): EmailContent {
   const who = input.recipients.join(", ") || "the recipient";
   const what = input.number ? ` for ${input.number}` : "";
+  if (input.event === "unsubscribed") {
+    return ownerEmail(input, `Recipient unsubscribed${what}`, [
+      `${who} unsubscribed from all email from you, after an email${what}.`,
+      `Subject: ${input.subject}`,
+      "The provider may not deliver more email to this address. Ask the client for another way to send documents.",
+    ]);
+  }
   const lines =
     input.event === "bounced"
       ? [`An email${what} to ${who} bounced.`, `Subject: ${input.subject}`]

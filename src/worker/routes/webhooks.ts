@@ -63,7 +63,7 @@ async function readCappedBody(request: Request, max: number): Promise<Uint8Array
  * - before the events: the provider row, the workspace, and the owner emails (3);
  * - the dedupe claim and commit: one batch each per 500 keys. An adapter with body-bound
  *   keys (Mailgun) claims two keys per event;
- * - per bounce or complaint group: the email_log read, the document read,
+ * - per bounce, complaint, or unsubscribe group: the email_log read, the document read,
  *   and one batch of writes (3);
  * - per SNS subscription: the activity row (1).
  */
@@ -114,9 +114,25 @@ function unauthorized(c: Context<AppEnv>) {
   return c.json({ error: "Invalid signature", code: "invalid_signature" }, 401);
 }
 
-/** The bounces or complaints of one message in one request. */
+/** The event types that the app records. */
+type RecordedKind = "bounced" | "complained" | "unsubscribed";
+
+const RECORDED_KINDS: ReadonlySet<string> = new Set<RecordedKind>([
+  "bounced",
+  "complained",
+  "unsubscribed",
+]);
+
+/** The activity and notification type of each recorded kind. */
+const ACTIVITY_TYPES = {
+  bounced: "email_bounced",
+  complained: "email_complained",
+  unsubscribed: "email_unsubscribed",
+} as const satisfies Record<RecordedKind, string>;
+
+/** The bounces, complaints, or unsubscribes of one message in one request. */
 interface EventGroup {
-  kind: "bounced" | "complained";
+  kind: RecordedKind;
   messageId: string;
   /** The key of the first event. The job guard uses it, so a replay writes nothing. */
   eventKey: string;
@@ -124,11 +140,14 @@ interface EventGroup {
   bounce: "hard" | "soft" | null;
 }
 
-/** Groups the bounces and complaints by message, so one SES bounce of 3 recipients is one notice. */
+/**
+ * Groups the bounces, complaints, and unsubscribes by message, so one SES bounce of 3
+ * recipients is one notice.
+ */
 function groupEvents(events: readonly NormalizedEvent[]): EventGroup[] {
   const groups = new Map<string, EventGroup>();
   for (const event of events) {
-    if (event.type !== "bounced" && event.type !== "complained") continue;
+    if (!RECORDED_KINDS.has(event.type)) continue;
     // Without a message ID the app cannot find the email. Today's handler ignored these too.
     const messageId = event.providerMessageId;
     if (!messageId) continue;
@@ -136,7 +155,7 @@ function groupEvents(events: readonly NormalizedEvent[]): EventGroup[] {
     let group = groups.get(id);
     if (!group) {
       group = {
-        kind: event.type,
+        kind: event.type as RecordedKind,
         messageId,
         eventKey: event.eventKey,
         recipients: new Set(),
@@ -168,7 +187,7 @@ interface RecordContext {
 }
 
 /**
- * Writes one bounce or complaint: the activity row, the in-app notification, the
+ * Writes one bounce, complaint, or unsubscribe: the activity row, the in-app notification, the
  * email_log status, and an email job to the owners, in one D1 batch. Returns the job ID
  * when the job must run soon.
  */
@@ -219,7 +238,7 @@ async function recordGroup(ctx: RecordContext, group: EventGroup): Promise<strin
   // The dedupe store stops a replay first. This guard also makes a second delivery of
   // the same event a no-op, for example after the dedupe row expired.
   const fresh = "NOT EXISTS (SELECT 1 FROM jobs WHERE idempotency_key = ?)";
-  const activityType = kind === "bounced" ? "email_bounced" : "email_complained";
+  const activityType = ACTIVITY_TYPES[kind];
   const statements: D1PreparedStatement[] = [];
   if (doc && !ownerNotice) {
     statements.push(
@@ -331,8 +350,9 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
       console.error(
         `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
           `which needs up to ${queries} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
-          "Nothing was recorded. In the provider webhook settings, select only the bounce " +
-          "and spam complaint events, and turn off event grouping where the provider has it.",
+          "Nothing was recorded. In the provider webhook settings, select only the bounce, " +
+          "spam complaint, and unsubscribe events, and turn off event grouping where the " +
+          "provider has it.",
       );
       return c.json({ error: "The webhook has too many events", code: "too_many_events" }, 500);
     }
