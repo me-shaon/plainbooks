@@ -355,6 +355,47 @@ describe("POST /api/webhooks/email/:role refusals", () => {
     expect(await count("notifications")).toBe(0);
   });
 
+  it("gives 401, not 500, for a saved setting that mailswitch refuses", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // A generic HTTP provider has no webhooks. Its adapter is never built here.
+    await saveEmailProvider(
+      db,
+      env.ENCRYPTION_KEY,
+      "primary",
+      {
+        providerId: "http",
+        credentials: { token: "http-token-0123456789" },
+        config: {
+          config: JSON.stringify({
+            id: "examplemail",
+            name: "Example Mail",
+            endpoint: "https://api.mail.example/v1/send",
+            auth: { type: "bearer" },
+            fields: { from: "from", to: "to", subject: "subject", attachments: "attachments" },
+            verify: { endpoint: "https://api.mail.example/v1/account", method: "GET" },
+          }),
+        },
+        webhookSecret: "a-secret-value-0123456789",
+      },
+      { httpAllowHosts: ["api.mail.example"] },
+    );
+    expect((await tosendPost("primary", tosendBounce("ts_123"))).status).toBe(401);
+
+    // A MailChannels row whose customer handle went missing: the adapter throws a TypeError.
+    await saveEmailProvider(db, env.ENCRYPTION_KEY, "primary", {
+      providerId: "mailchannels",
+      credentials: { apiKey: "mc-api-key-0123456789" },
+      config: { customerHandle: "studio-one" },
+      webhookSecret: MAILCHANNELS_FIXTURE_PUBLIC_KEY,
+    });
+    await env.DB.prepare("UPDATE email_providers SET config = NULL WHERE role = 'primary'").run();
+    expect((await tosendPost("primary", [mailchannelsEvent("hard-bounced")])).status).toBe(401);
+    expect(error).toHaveBeenCalledWith(
+      "The primary webhook settings are not valid",
+      expect.any(String),
+    );
+  });
+
   it("gives 401 for a provider with no webhooks", async () => {
     await saveEmailProvider(db, env.ENCRYPTION_KEY, "primary", {
       providerId: "zeptomail",
@@ -551,7 +592,7 @@ describe("POST /api/webhooks/email/:role with a batch of events", () => {
       })),
     );
 
-  async function mailjetPost(body: string) {
+  async function mailjetPost(body: string, ctx?: ExecutionContext) {
     const { env: counted, counter } = countingEnv();
     const res = await app.fetch(
       await buildRequest("/api/webhooks/email/primary", {
@@ -563,9 +604,31 @@ describe("POST /api/webhooks/email/:role with a batch of events", () => {
         body,
       }),
       counted,
+      ctx,
     );
     return { res, counter };
   }
+
+  /** An execution context that keeps the waitUntil promises, so a test can await them. */
+  function collectingCtx() {
+    const pending: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+      passThroughOnException: () => undefined,
+      props: {},
+    } as unknown as ExecutionContext;
+    return { ctx, pending };
+  }
+
+  /** One Mailjet event for message `guid`. */
+  const mailjetEvent = (event: string, guid: string, fields: Record<string, unknown> = {}) => ({
+    event,
+    time: 1761200000,
+    MessageID: 3000,
+    Message_GUID: guid,
+    email: "ap@northwind.test",
+    ...fields,
+  });
 
   beforeEach(async () => {
     await saveProvider("primary", "mailjet", MAILJET_SECRET);
@@ -625,6 +688,38 @@ describe("POST /api/webhooks/email/:role with a batch of events", () => {
     expect(await count("activity WHERE type = 'email_unsubscribed'")).toBe(1);
     expect(await count("notifications WHERE type = 'email_unsubscribed'")).toBe(1);
     expect(await count("jobs WHERE type = 'send_email'")).toBe(1);
+  });
+
+  it("runs only the owner emails that fit the query budget of the request", async () => {
+    for (let i = 0; i < 3; i++) await insertLog(`mj-guid-${i}`, "mailjet");
+    const { ctx, pending } = collectingCtx();
+    const { res, counter } = await mailjetPost(mailjetBounces(3), ctx);
+    expect(res.status).toBe(200);
+    expect(await count("jobs WHERE type = 'send_email'")).toBe(3);
+    // 3 groups need up to 3 + 2 + 9 = 14 queries, so 36 are left: room for 2 jobs of 17.
+    expect(pending).toHaveLength(2);
+    await Promise.all(pending);
+    expect(counter.roundTrips).toBeLessThanOrEqual(50);
+    expect(await count("jobs WHERE type = 'send_email' AND status = 'done'")).toBe(2);
+  });
+
+  it("keeps a complaint when the same message also unsubscribes, and sends one notice", async () => {
+    await insertLog("mj-guid-s", "mailjet");
+    const both = JSON.stringify([
+      mailjetEvent("unsub", "mj-guid-s", { mj_list_id: "" }),
+      mailjetEvent("spam", "mj-guid-s", { source: "JMRPP" }),
+    ]);
+    expect((await mailjetPost(both)).res.status).toBe(200);
+    expect(await logStatus("mj-guid-s")).toBe("complained");
+    expect(await count("notifications")).toBe(1);
+
+    // A later unsubscribe for the same message changes nothing.
+    const later = JSON.stringify([
+      mailjetEvent("unsub", "mj-guid-s", { mj_list_id: "", time: 1761200100 }),
+    ]);
+    expect((await mailjetPost(later)).res.status).toBe(200);
+    expect(await logStatus("mj-guid-s")).toBe("complained");
+    expect(await count("notifications")).toBe(1);
   });
 
   it("refuses an unsigned large batch with 401, not 500", async () => {

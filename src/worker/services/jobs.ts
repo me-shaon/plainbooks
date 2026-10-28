@@ -34,6 +34,8 @@ export const TICK_QUERY_BUDGET = 50;
 export const LIGHT_JOB_QUERIES = 14;
 /** Queries kept free for the retry or failure write after a job. */
 export const JOB_FAILURE_RESERVE = 2;
+/** The most queries that claiming and running one light job can use. */
+export const LIGHT_JOB_RUN_QUERIES = 1 + LIGHT_JOB_QUERIES + JOB_FAILURE_RESERVE;
 /** A claimed job is leased for this long. After that, another tick can claim it again. */
 export const JOB_LEASE_MS = 10 * 60 * 1000;
 export const DEFAULT_MAX_ATTEMPTS = 3;

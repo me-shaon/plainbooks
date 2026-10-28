@@ -21,9 +21,8 @@ import {
   getEnqueueHooks,
   getHeavyJobTypes,
   JOB_BATCH_SIZE,
-  JOB_FAILURE_RESERVE,
   type JobRunStatus,
-  LIGHT_JOB_QUERIES,
+  LIGHT_JOB_RUN_QUERIES,
   runJob,
   TICK_QUERY_BUDGET,
 } from "./jobs";
@@ -216,9 +215,8 @@ export async function runTick(
 
   // 4 and 5. Claim and run light jobs one at a time, while the budget can pay for one more.
   const limit = options.batchSize ?? JOB_BATCH_SIZE;
-  const perJob = 1 + LIGHT_JOB_QUERIES + JOB_FAILURE_RESERVE;
   let claimed = 0;
-  while (claimed < limit && queries.count() + perJob <= TICK_QUERY_BUDGET) {
+  while (claimed < limit && queries.count() + LIGHT_JOB_RUN_QUERIES <= TICK_QUERY_BUDGET) {
     const [job] = await claimJobs(db, { owner, now: nowMs, limit: 1, excludeTypes: heavy });
     if (!job) break;
     claimed += 1;

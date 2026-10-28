@@ -4,10 +4,10 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { NormalizedEvent, ProviderAdapter } from "mailswitch";
 import { snsConfirmAction } from "mailswitch/ses";
 import { D1DedupeStore } from "mailswitch/stores/d1";
-import { handleWebhook } from "mailswitch/webhooks";
+import { handleWebhook, type WebhookOutcome } from "mailswitch/webhooks";
 import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domain";
 import { createRequestDb, type Db, schema } from "../db/client";
-import { createAdapter } from "../email/catalog";
+import { createAdapter, emailProviderMeta } from "../email/catalog";
 import { loadEmailProvider, type ReadyEmailProvider } from "../email/settings";
 import { bounceEmail } from "../email/templates";
 import type { AppEnv } from "../env";
@@ -19,7 +19,12 @@ import {
   SEND_EMAIL_JOB,
   type SendEmailJobPayload,
 } from "../services/email";
-import { enqueueStatement, runJobSoon, TICK_QUERY_BUDGET } from "../services/jobs";
+import {
+  enqueueStatement,
+  LIGHT_JOB_RUN_QUERIES,
+  runJobSoon,
+  TICK_QUERY_BUDGET,
+} from "../services/jobs";
 
 /**
  * The largest webhook body, in bytes. One provider event is a few KB. A larger body is
@@ -114,21 +119,24 @@ function unauthorized(c: Context<AppEnv>) {
   return c.json({ error: "Invalid signature", code: "invalid_signature" }, 401);
 }
 
-/** The event types that the app records. */
-type RecordedKind = "bounced" | "complained" | "unsubscribed";
-
-const RECORDED_KINDS: ReadonlySet<string> = new Set<RecordedKind>([
-  "bounced",
-  "complained",
-  "unsubscribed",
-]);
-
-/** The activity and notification type of each recorded kind. */
-const ACTIVITY_TYPES = {
+/** The activity and notification type of each event type that the app records. */
+const KIND_ACTIVITY = {
   bounced: "email_bounced",
   complained: "email_complained",
   unsubscribed: "email_unsubscribed",
-} as const satisfies Record<RecordedKind, string>;
+} as const;
+
+type RecordedKind = keyof typeof KIND_ACTIVITY;
+
+function isRecordedKind(type: string): type is RecordedKind {
+  return Object.hasOwn(KIND_ACTIVITY, type);
+}
+
+/**
+ * The email_log statuses that an unsubscribe must not replace. A recipient who reports
+ * spam and unsubscribes in one action sends both events; the complaint is the one to keep.
+ */
+const SEVERE_STATUSES = ["bounced", "complained"] as const;
 
 /** The bounces, complaints, or unsubscribes of one message in one request. */
 interface EventGroup {
@@ -142,20 +150,22 @@ interface EventGroup {
 
 /**
  * Groups the bounces, complaints, and unsubscribes by message, so one SES bounce of 3
- * recipients is one notice.
+ * recipients is one notice. Unsubscribes come last, so a complaint for the same message
+ * in the same request is recorded first and the unsubscribe is then skipped.
  */
 function groupEvents(events: readonly NormalizedEvent[]): EventGroup[] {
   const groups = new Map<string, EventGroup>();
   for (const event of events) {
-    if (!RECORDED_KINDS.has(event.type)) continue;
+    const kind = event.type;
+    if (!isRecordedKind(kind)) continue;
     // Without a message ID the app cannot find the email. Today's handler ignored these too.
     const messageId = event.providerMessageId;
     if (!messageId) continue;
-    const id = `${event.type}:${messageId}`;
+    const id = `${kind}:${messageId}`;
     let group = groups.get(id);
     if (!group) {
       group = {
-        kind: event.type as RecordedKind,
+        kind,
         messageId,
         eventKey: event.eventKey,
         recipients: new Set(),
@@ -168,7 +178,8 @@ function groupEvents(events: readonly NormalizedEvent[]): EventGroup[] {
       group.bounce = event.bounce;
     }
   }
-  return [...groups.values()];
+  const last = (group: EventGroup) => (group.kind === "unsubscribed" ? 1 : 0);
+  return [...groups.values()].sort((a, b) => last(a) - last(b));
 }
 
 function bounceReason(bounce: EventGroup["bounce"]): string | null {
@@ -203,6 +214,13 @@ async function recordGroup(ctx: RecordContext, group: EventGroup): Promise<strin
   const log = logs.find(
     (row) => row.emailProvider === null || row.emailProvider === provider.providerId,
   );
+  // The Owner already got the bounce or complaint notice for this email.
+  if (
+    kind === "unsubscribed" &&
+    (SEVERE_STATUSES as readonly string[]).includes(log?.status ?? "")
+  ) {
+    return null;
+  }
   const recipients = group.recipients.size > 0 ? [...group.recipients] : (log?.recipients ?? []);
   const subject = log?.subject ?? "";
   const reason = bounceReason(group.bounce);
@@ -238,7 +256,7 @@ async function recordGroup(ctx: RecordContext, group: EventGroup): Promise<strin
   // The dedupe store stops a replay first. This guard also makes a second delivery of
   // the same event a no-op, for example after the dedupe row expired.
   const fresh = "NOT EXISTS (SELECT 1 FROM jobs WHERE idempotency_key = ?)";
-  const activityType = ACTIVITY_TYPES[kind];
+  const activityType = KIND_ACTIVITY[kind];
   const statements: D1PreparedStatement[] = [];
   if (doc && !ownerNotice) {
     statements.push(
@@ -279,7 +297,12 @@ async function recordGroup(ctx: RecordContext, group: EventGroup): Promise<strin
       ),
   );
   if (log) {
-    statements.push(d1.prepare("UPDATE email_log SET status = ? WHERE id = ?").bind(kind, log.id));
+    // The guard repeats the check above inside the batch, for a complaint that a
+    // concurrent request wrote after the read.
+    const keep = kind === "unsubscribed" ? " AND status NOT IN ('bounced', 'complained')" : "";
+    statements.push(
+      d1.prepare(`UPDATE email_log SET status = ? WHERE id = ?${keep}`).bind(kind, log.id),
+    );
   }
   const insertJob = enqueueStatement(
     db,
@@ -330,43 +353,58 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
   const db = createRequestDb(c.env.DB);
   const provider = await loadEmailProvider(db, c.env.ENCRYPTION_KEY, role);
   if (provider?.status !== "ready" || !provider.webhookSecret) return unauthorized(c);
-  // One adapter per isolate for SES, so its certificate cache lives between requests.
-  const adapter = createAdapter(provider.providerId, { config: provider.config });
-  if (!adapter.webhooks) return unauthorized(c);
+  // A provider with no webhooks never builds its adapter here, so a saved config that
+  // does not fit (for example a generic HTTP config) cannot turn into a 500.
+  if (!emailProviderMeta(provider.providerId)?.webhooks) return unauthorized(c);
 
-  // A request that would pass the D1 query limit fails part way, after some events
-  // are claimed or written. Refuse it before any write. Only a verified request gets the
-  // 500, so an unsigned request still gets the 401 below.
-  const parsed = parseForCount(adapter, body, c.req.raw.headers);
-  const queries = parsed ? webhookQueries(adapter, parsed) : 0;
-  if (queries > TICK_QUERY_BUDGET) {
-    const verified = await adapter.webhooks.verify({
-      headers: c.req.raw.headers,
-      body,
-      secret: provider.webhookSecret,
-      now: Date.now(),
-    });
-    if (verified.ok) {
-      console.error(
-        `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
-          `which needs up to ${queries} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
-          "Nothing was recorded. In the provider webhook settings, select only the bounce, " +
-          "spam complaint, and unsubscribe events, and turn off event grouping where the " +
-          "provider has it.",
-      );
-      return c.json({ error: "The webhook has too many events", code: "too_many_events" }, 500);
+  let queries = 0;
+  let outcome: WebhookOutcome;
+  try {
+    // One adapter per isolate for SES, so its certificate cache lives between requests.
+    const adapter = createAdapter(provider.providerId, { config: provider.config });
+    if (!adapter.webhooks) return unauthorized(c);
+
+    // A request that would pass the D1 query limit fails part way, after some events
+    // are claimed or written. Refuse it before any write. Only a verified request gets the
+    // 500, so an unsigned request still gets the 401 below.
+    const parsed = parseForCount(adapter, body, c.req.raw.headers);
+    queries = parsed ? webhookQueries(adapter, parsed) : 0;
+    if (queries > TICK_QUERY_BUDGET) {
+      const verified = await adapter.webhooks.verify({
+        headers: c.req.raw.headers,
+        body,
+        secret: provider.webhookSecret,
+        now: Date.now(),
+      });
+      if (verified.ok) {
+        console.error(
+          `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
+            `which needs up to ${queries} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
+            "Nothing was recorded. In the provider webhook settings, select only the bounce, " +
+            "spam complaint, and unsubscribe events, and turn off event grouping where the " +
+            "provider has it.",
+        );
+        return c.json({ error: "The webhook has too many events", code: "too_many_events" }, 500);
+      }
     }
+    outcome = await handleWebhook(
+      new Request(c.req.url, { method: "POST", headers: c.req.raw.headers, body }),
+      {
+        adapter,
+        secret: provider.webhookSecret,
+        dedupe: new D1DedupeStore(c.env.DB),
+        endpointId: role,
+        maxBodyBytes: WEBHOOK_MAX_BODY_BYTES,
+      },
+    );
+  } catch (err) {
+    // A saved setting that mailswitch refuses, for example a blank MailChannels customer
+    // handle. The message names the setting, never a value. The same 401 as a bad
+    // signature keeps an unsigned caller from learning that the role is set up.
+    if (!(err instanceof TypeError)) throw err;
+    console.error(`The ${role} webhook settings are not valid`, err.message);
+    return unauthorized(c);
   }
-  const outcome = await handleWebhook(
-    new Request(c.req.url, { method: "POST", headers: c.req.raw.headers, body }),
-    {
-      adapter,
-      secret: provider.webhookSecret,
-      dedupe: new D1DedupeStore(c.env.DB),
-      endpointId: role,
-      maxBodyBytes: WEBHOOK_MAX_BODY_BYTES,
-    },
-  );
   if (!outcome.ok) {
     if (outcome.status === 401) return unauthorized(c);
     // The saved secret does not fit the provider, for example a short Postmark password
@@ -414,7 +452,10 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
   // Only after the writes, so a failed write never marks an event as handled.
   await outcome.ack();
 
-  for (const jobId of jobIds) {
+  // The jobs that run soon use D1 in this invocation too. Run only as many as the query
+  // budget has room for after this request. The cron tick runs the rest.
+  const room = Math.max(0, Math.floor((TICK_QUERY_BUDGET - queries) / LIGHT_JOB_RUN_QUERIES));
+  for (const jobId of jobIds.slice(0, room)) {
     try {
       runJobSoon(c.executionCtx, c.env, jobId);
     } catch {
