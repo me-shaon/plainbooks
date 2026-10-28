@@ -23,13 +23,15 @@ export const JOB_BATCH_SIZE = 5;
  */
 export const TICK_QUERY_BUDGET = 50;
 /**
- * The most queries a light job (for example send_email) may use, its done marker included.
- * The worst email is a capped primary that takes a unit, answers `not_sent`, and falls
- * back to a capped fallback: the workspace and provider reads (2), the mailswitch claim
- * batch (1), the heartbeat before the fallback (1), two cap reservation batches (2), the
- * refund (1), the final record (1), the email_log row (1), and the done marker (1).
+ * The most queries a light job (for example send_email) may use, its result write
+ * included. The worst email has a capped primary and a capped fallback that both answer
+ * `not_sent` with the reason `quota`: the workspace and provider reads (2), the mailswitch
+ * claim batch (1), the heartbeat before the fallback (1), and for each provider the cap
+ * reservation, the refund, and the counter fill (6). Then the final record (1), the
+ * email_log row (1), and the retry write (1). That is 13, measured as 12. One query is
+ * spare.
  */
-export const LIGHT_JOB_QUERIES = 10;
+export const LIGHT_JOB_QUERIES = 14;
 /** Queries kept free for the retry or failure write after a job. */
 export const JOB_FAILURE_RESERVE = 2;
 /** A claimed job is leased for this long. After that, another tick can claim it again. */

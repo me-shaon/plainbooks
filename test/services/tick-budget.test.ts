@@ -162,4 +162,51 @@ describe("tick query budget with the real handlers", () => {
     expect(await runBudgetScenario()).toEqual(Array(5).fill("tosend"));
     expect(email.primary.sends).toHaveLength(5);
   });
+
+  it("stays under 50 when both capped providers answer not_sent quota for every email", async () => {
+    // The most expensive light job: both providers reserve, refund, and fill their
+    // counters, and the job is written back for a retry.
+    const quota = () => ({
+      status: "not_sent" as const,
+      reason: "quota" as const,
+      message: "Quota.",
+    });
+    email = await useFakeEmail({
+      primary: { providerId: "resend", dailyCap: 50, outcomes: quota },
+      fallback: { providerId: "tosend", dailyCap: 50, outcomes: quota },
+    });
+    const now = at("2026-11-02");
+    for (let i = 0; i < 5; i++) {
+      await enqueue(
+        db,
+        {
+          type: SEND_EMAIL_JOB,
+          idempotencyKey: `quota:${i}`,
+          payload: { to: ["owner@studio.test"], subject: `Q ${i}`, html: "<p>x</p>", text: "x" },
+        },
+        now,
+      );
+    }
+    const { env: counted, counter } = countingEnv();
+    const summary = await runTick(counted, now);
+    expect(summary.errors).toBe(0);
+    // The first job fills both counters, so the later jobs wait for the window.
+    expect(summary.retried + summary.deferred).toBe(summary.claimed);
+    expect(summary.claimed).toBeGreaterThan(0);
+    expect(counter.roundTrips).toBeLessThan(TICK_QUERY_BUDGET);
+  });
+
+  it("stays under 50 when a capped primary answers not_sent quota, and a capped fallback sends", async () => {
+    // A quota answer gives the unit back and fills the counter: two more queries than
+    // rate_limited on the primary.
+    email = await useFakeEmail({
+      primary: {
+        providerId: "resend",
+        dailyCap: 50,
+        outcomes: () => ({ status: "not_sent", reason: "quota", message: "Daily quota reached." }),
+      },
+      fallback: { providerId: "tosend", dailyCap: 50 },
+    });
+    expect(await runBudgetScenario()).toEqual(Array(5).fill("tosend"));
+  });
 });
