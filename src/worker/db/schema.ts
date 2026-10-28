@@ -687,6 +687,11 @@ export const emailProviders = sqliteTable(
     credentials: text("credentials").notNull(),
     /** The encrypted webhook signing secret. */
     webhookSecret: text("webhook_secret"),
+    /**
+     * The JSON of the provider settings that are not secret and are not credential fields,
+     * for example the MailChannels customer handle. Null means none.
+     */
+    config: text("config"),
     /** Null means the default cap of the provider or preset. */
     dailyCap: integer("daily_cap"),
     updatedAt: updatedAt(),

@@ -8,7 +8,7 @@ import type { Db } from "../db/client";
 import type { Bindings } from "../env";
 import { AppError } from "../errors";
 import { FAKE_EMAIL_CREDENTIALS, fakeExternals } from "../externals";
-import { createAdapter } from "./catalog";
+import { createAdapter, parseHttpAllowHosts } from "./catalog";
 import { type ReadyEmailProvider, usableEmailProviders } from "./settings";
 
 /**
@@ -50,8 +50,13 @@ function entryFactory(env: Bindings): MailerEntryFactory {
       credentials: FAKE_EMAIL_CREDENTIALS,
     });
   }
+  const httpAllowHosts = parseHttpAllowHosts(env.EMAIL_HTTP_ALLOW_HOSTS);
   return (provider) => ({
-    adapter: createAdapter(provider.providerId, { connect: socketConnect }),
+    adapter: createAdapter(provider.providerId, {
+      connect: socketConnect,
+      config: provider.config,
+      httpAllowHosts,
+    }),
     credentials: provider.credentials,
     preset: provider.presetId ?? undefined,
   });
@@ -75,6 +80,7 @@ const FAKE_PRIMARY: ReadyEmailProvider = {
   presetId: null,
   dailyCap: null,
   defaultDailyCap: null,
+  config: {},
   updatedAt: 0,
   status: "ready",
   credentials: FAKE_EMAIL_CREDENTIALS,

@@ -43,6 +43,13 @@
       "when": 1793093314075,
       "tag": "0005_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793186191439,
+      "tag": "0006_email_provider_config",
+      "breakpoints": true
     }
   ]
 }

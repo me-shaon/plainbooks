@@ -34,7 +34,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AuthRateLimiter"] }],
   // Secrets (set with `wrangler secret put` or `pnpm run ship`): SETUP_TOKEN, AUTH_SECRET,
-  // ENCRYPTION_KEY, APP_URL, and the optional GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+  // ENCRYPTION_KEY, APP_URL, and the optional GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and
+  // EMAIL_HTTP_ALLOW_HOSTS (the hosts of a generic HTTP email provider).
   // They are secrets, not vars, so a deploy keeps them: `wrangler deploy` replaces every var
   // with the values in this file. Email provider keys are saved in Settings, not here.
   // Optional var: PBKDF2_ITERATIONS (default 100000, the Workers maximum).

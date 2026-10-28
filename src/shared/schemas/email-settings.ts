@@ -10,6 +10,7 @@ export const MAX_DAILY_CAP = 1_000_000;
  *
  * - An empty secret field keeps the saved value when the provider stays the same.
  * - `webhookSecret` undefined keeps the saved secret. Null or "" removes it.
+ * - `config` undefined keeps the saved config when the provider stays the same.
  * - `dailyCap` null or undefined means the default cap.
  */
 export const emailProviderInput = z.object({
@@ -17,6 +18,7 @@ export const emailProviderInput = z.object({
   presetId: z.string().trim().max(64).nullish(),
   credentials: z.record(z.string(), z.string().max(4096, "Use 4096 characters or fewer")),
   webhookSecret: z.string().max(4096, "Use 4096 characters or fewer").nullish(),
+  config: z.record(z.string(), z.string().max(16384, "Use 16384 characters or fewer")).optional(),
   dailyCap: z
     .int("Enter a whole number")
     .min(1, "Enter 1 or more, or leave it empty for the default")
@@ -40,6 +42,16 @@ export interface EmailCredentialField {
   placeholder?: string;
   defaultValue?: string;
   options?: readonly { value: string; label: string }[];
+}
+
+/** A provider setting that is not a credential field, for example the MailChannels customer handle. */
+export interface EmailConfigField {
+  name: string;
+  label: string;
+  hint: string;
+  required: boolean;
+  /** True for a JSON value that the form shows in a text area. */
+  multiline: boolean;
 }
 
 /** A preset of a provider form, for example SMTP with Gmail. */
@@ -66,6 +78,8 @@ export interface EmailProviderOption {
   docsUrl: string;
   credentialFields: readonly EmailCredentialField[];
   presets: readonly EmailProviderPreset[];
+  /** The settings besides the credential fields. Most providers have none. */
+  configFields: readonly EmailConfigField[];
   /** Null when the provider has no webhooks that PlainBooks reads. */
   webhookSecret: WebhookSecretField | null;
   /** The provider cap when no preset applies, or null for no cap. */
@@ -83,6 +97,8 @@ export interface EmailProviderView {
   configured: true;
   /** True when the stored keys do not decrypt. The form then asks for every key. */
   needsReentry: boolean;
+  /** The saved provider config, by config field name. */
+  config: Record<string, string>;
   /** The values of the fields that are not secret. */
   values: Record<string, string>;
   /** For each secret field, true when a value is saved. */

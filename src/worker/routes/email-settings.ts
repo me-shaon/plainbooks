@@ -15,7 +15,11 @@ import {
 } from "../../shared/schemas/email-settings";
 import { requireOwner } from "../auth/middleware";
 import type { Db } from "../db/client";
-import { DEFAULT_EMAIL_PROVIDER_ID, emailProviderOptions } from "../email/catalog";
+import {
+  DEFAULT_EMAIL_PROVIDER_ID,
+  emailProviderOptions,
+  parseHttpAllowHosts,
+} from "../email/catalog";
 import { mailerEntry, mailProviders, smtpConnect } from "../email/mailer";
 import {
   type CheckedEmailProvider,
@@ -73,12 +77,24 @@ function failure(timedOut: boolean) {
   };
 }
 
-/** The adapter and a send context with a 10 s timeout, for one direct adapter call. */
+/**
+ * The adapter and a send context with a 10 s timeout, for one direct adapter call.
+ * Throws 422 `email_not_configured` when the saved config no longer builds an adapter,
+ * for example after `EMAIL_HTTP_ALLOW_HOSTS` lost a host.
+ */
 function directCall(
   env: Bindings,
   provider: ReadyEmailProvider,
 ): { adapter: ProviderAdapter; ctx: SendContext } {
-  const entry = mailerEntry(env, provider);
+  let entry: ReturnType<typeof mailerEntry>;
+  try {
+    entry = mailerEntry(env, provider);
+  } catch (err) {
+    // The mailswitch TypeError names the refused option, never a key value.
+    if (!(err instanceof TypeError)) throw err;
+    console.error("email provider config refused", err.message);
+    throw new AppError(422, "email_not_configured", "Check the email provider config in Settings");
+  }
   const ctx = createSendContext({
     credentials: entry.credentials as Readonly<Record<string, string>>,
     timeoutMs: VERIFY_TIMEOUT_MS,
@@ -173,6 +189,7 @@ export const emailSettingsRoutes = new Hono<AppEnv>()
     const input = await parseJson(c, emailProviderInput);
     const view = await saveEmailProvider(c.var.db, c.env.ENCRYPTION_KEY, role, input, {
       check: saveCheck(c.env),
+      httpAllowHosts: parseHttpAllowHosts(c.env.EMAIL_HTTP_ALLOW_HOSTS),
     });
     return c.json(view);
   })

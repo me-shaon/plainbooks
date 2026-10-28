@@ -312,7 +312,7 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
   const provider = await loadEmailProvider(db, c.env.ENCRYPTION_KEY, role);
   if (provider?.status !== "ready" || !provider.webhookSecret) return unauthorized(c);
   // One adapter per isolate for SES, so its certificate cache lives between requests.
-  const adapter = createAdapter(provider.providerId);
+  const adapter = createAdapter(provider.providerId, { config: provider.config });
   if (!adapter.webhooks) return unauthorized(c);
 
   // A request that would pass the D1 query limit fails part way, after some events

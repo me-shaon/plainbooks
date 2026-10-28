@@ -18,7 +18,7 @@ import { NumberField } from "../../components/ui/number-field";
 import { Section } from "../../components/ui/section";
 import { Select } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
-import { TextField } from "../../components/ui/text-field";
+import { TextArea, TextField } from "../../components/ui/text-field";
 import { toast } from "../../components/ui/toast";
 import { ApiError, issuesByPath, toastError } from "../../lib/api";
 import { type FieldErrors, fieldError } from "../../lib/form";
@@ -174,6 +174,9 @@ function ProviderForm({
   const [values, setValues] = useState<Record<string, string>>(() => ({
     ...(saved?.values ?? {}),
   }));
+  const [config, setConfig] = useState<Record<string, string>>(() => ({
+    ...(saved?.config ?? {}),
+  }));
   const [webhookSecret, setWebhookSecret] = useState("");
   const [dailyCap, setDailyCap] = useState<number | null>(saved?.dailyCap ?? null);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -196,6 +199,7 @@ function ProviderForm({
     setProviderId(id);
     setPresetId(initialPreset(next, saved));
     setValues(saved?.providerId === id ? { ...saved.values } : {});
+    setConfig(saved?.providerId === id ? { ...saved.config } : {});
     setWebhookSecret("");
     setErrors({});
     setBanner(null);
@@ -212,6 +216,13 @@ function ProviderForm({
       providerId: provider.id,
       presetId: preset?.id ?? null,
       credentials,
+      ...(provider.configFields.length > 0
+        ? {
+            config: Object.fromEntries(
+              provider.configFields.map((field) => [field.name, config[field.name] ?? ""]),
+            ),
+          }
+        : {}),
       dailyCap,
       // Undefined keeps the saved secret. A new provider starts with none.
       ...(webhookSecret.trim() ? { webhookSecret: webhookSecret.trim() } : {}),
@@ -380,6 +391,33 @@ function ProviderForm({
             );
           })}
         </div>
+
+        {provider.configFields.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {provider.configFields.map((field) => {
+              const shared = {
+                id: fieldId(`config-${field.name}`),
+                label: field.label,
+                isRequired: field.required,
+                value: config[field.name] ?? "",
+                onChange: (text: string) => setConfig({ ...config, [field.name]: text }),
+                description: field.hint,
+                ...fieldError(errors, `config.${field.name}`),
+              };
+              return field.multiline ? (
+                <TextArea
+                  key={field.name}
+                  className="sm:col-span-2"
+                  rows={10}
+                  inputClassName="figure text-[13px]"
+                  {...shared}
+                />
+              ) : (
+                <TextField key={field.name} autoComplete="off" {...shared} />
+              );
+            })}
+          </div>
+        ) : null}
 
         {provider.webhookSecret ? (
           <div className="flex flex-col gap-4 border-t border-row-border pt-5">

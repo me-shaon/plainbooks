@@ -5,7 +5,13 @@ import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domai
 import { type Db, isRequestScoped, schema } from "../db/client";
 import type { EmailProviderRow } from "../db/schema";
 import { AppError } from "../errors";
-import { defaultDailyCap, type EmailProviderId, emailProviderMeta } from "./catalog";
+import {
+  CONFIG_FIELDS,
+  defaultDailyCap,
+  type EmailProviderId,
+  emailProviderMeta,
+  providerConfigIssues,
+} from "./catalog";
 
 const { emailProviders } = schema;
 
@@ -68,6 +74,8 @@ interface ProviderBase {
   dailyCap: number | null;
   /** The cap of the provider or preset, or null for no cap. */
   defaultDailyCap: number | null;
+  /** The provider settings besides the keys, by config field name. They are not secret. */
+  config: Readonly<Record<string, string>>;
   updatedAt: number;
 }
 
@@ -125,6 +133,7 @@ async function decryptRow(
     presetId: row.presetId,
     dailyCap: row.dailyCap,
     defaultDailyCap: defaultDailyCap(row.providerId, row.presetId),
+    config: parseConfig(row.config),
     updatedAt: row.updatedAt,
   };
   if (!meta || !ring) return { ...base, status: "needs_reentry" };
@@ -153,6 +162,17 @@ async function decryptRow(
     // A CredentialDecryptError or bad JSON. The error text holds no secret, but the
     // Owner only needs to know that the keys must be entered again.
     return { ...base, status: "needs_reentry" };
+  }
+}
+
+/** The stored config column. A missing or unreadable value is no config. */
+function parseConfig(text: string | null): Record<string, string> {
+  if (!text) return {};
+  try {
+    const value = JSON.parse(text) as unknown;
+    return isStringRecord(value) ? value : {};
+  } catch {
+    return {};
   }
 }
 
@@ -248,6 +268,7 @@ function maskProvider(stored: StoredEmailProvider): EmailProviderView {
     dailyCap: base.dailyCap,
     defaultDailyCap: base.defaultDailyCap,
     updatedAt: base.updatedAt,
+    config: { ...base.config },
     configured: true,
     needsReentry: !ready,
     values,
@@ -284,6 +305,8 @@ export interface EmailProviderInput {
   credentials: Readonly<Record<string, unknown>>;
   /** Undefined keeps the saved secret (same provider only). Null or "" removes it. */
   webhookSecret?: string | null;
+  /** The config field values. Undefined keeps the saved config (same provider only). */
+  config?: Readonly<Record<string, string>>;
   /** Null or undefined means the default cap. */
   dailyCap?: number | null;
 }
@@ -310,6 +333,24 @@ function keepSavedSecrets(
   return merged;
 }
 
+/**
+ * The config to save: the input values of the provider's config fields, trimmed. With no
+ * input, the saved config when the provider stays the same.
+ */
+function providerConfig(
+  id: EmailProviderId,
+  input: Readonly<Record<string, string>> | undefined,
+  saved: StoredEmailProvider | undefined,
+): Record<string, string> {
+  if (input === undefined) return saved?.providerId === id ? { ...saved.config } : {};
+  const config: Record<string, string> = {};
+  for (const field of CONFIG_FIELDS[id] ?? []) {
+    const value = input[field.name]?.trim();
+    if (value) config[field.name] = value;
+  }
+  return config;
+}
+
 /** Input that passed `parseCredentials`, before it is encrypted and saved. */
 export interface CheckedEmailProvider {
   role: EmailProviderRole;
@@ -317,6 +358,8 @@ export interface CheckedEmailProvider {
   presetId: string | null;
   /** The parsed keys, with preset values and field defaults applied. */
   credentials: Readonly<Record<string, string>>;
+  /** The checked config, with only the config fields of the provider. */
+  config: Readonly<Record<string, string>>;
   dailyCap: number | null;
 }
 
@@ -326,6 +369,8 @@ export interface SaveEmailProviderOptions {
    * `verify()`. Throw an AppError to stop the save. `stored` holds both saved roles.
    */
   check?: (candidate: CheckedEmailProvider, stored: StoredEmailProviders) => Promise<void>;
+  /** The hosts that a generic HTTP config may name, from `EMAIL_HTTP_ALLOW_HOSTS`. */
+  httpAllowHosts?: readonly string[];
 }
 
 /**
@@ -371,14 +416,22 @@ export async function saveEmailProvider(
     );
   }
 
+  const providerId = meta.id as EmailProviderId;
+  const config = providerConfig(providerId, input.config, saved);
+  const configIssues = providerConfigIssues(providerId, config, {
+    httpAllowHosts: options.httpAllowHosts,
+  });
+  if (configIssues) {
+    throw new AppError(
+      400,
+      "invalid_provider_config",
+      `Check these fields: ${configIssues.map((issue) => issue.field).join(", ")}`,
+      configIssues.map((issue) => ({ path: `config.${issue.field}`, message: issue.message })),
+    );
+  }
+
   await options.check?.(
-    {
-      role,
-      providerId: meta.id as EmailProviderId,
-      presetId,
-      credentials: parsed.values,
-      dailyCap,
-    },
+    { role, providerId, presetId, credentials: parsed.values, config, dailyCap },
     stored,
   );
 
@@ -397,7 +450,14 @@ export async function saveEmailProvider(
     ? await encrypt(ring, webhookSecretText, secretScope(role, meta.id, "webhookSecret"))
     : null;
 
-  const values = { providerId: meta.id, presetId, credentials, webhookSecret, dailyCap };
+  const values = {
+    providerId: meta.id,
+    presetId,
+    credentials,
+    webhookSecret,
+    config: Object.keys(config).length > 0 ? JSON.stringify(config) : null,
+    dailyCap,
+  };
   const [row] = await db
     .insert(emailProviders)
     .values({ role, ...values })

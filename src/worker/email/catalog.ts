@@ -4,6 +4,8 @@ import { autosend } from "mailswitch/autosend";
 import { brevo } from "mailswitch/brevo";
 import { getProviderMeta, isProviderId, PROVIDER_IDS, type ProviderId } from "mailswitch/catalog";
 import { cloudflareRest } from "mailswitch/cloudflare";
+import { httpProviderFromConfig } from "mailswitch/http";
+import { mailchannels } from "mailswitch/mailchannels";
 import { mailersend } from "mailswitch/mailersend";
 import { mailgun } from "mailswitch/mailgun";
 import { mailjet } from "mailswitch/mailjet";
@@ -17,16 +19,17 @@ import { smtp } from "mailswitch/smtp";
 import { smtp2go } from "mailswitch/smtp2go";
 import { tosend } from "mailswitch/tosend";
 import { zeptomail } from "mailswitch/zeptomail";
-import type { EmailProviderOption, WebhookSecretField } from "../../shared/schemas/email-settings";
+import type {
+  EmailConfigField,
+  EmailProviderOption,
+  WebhookSecretField,
+} from "../../shared/schemas/email-settings";
 
 /**
- * The catalog providers that Settings does not offer:
- * - `cloudflare-binding`: the deploy declares no `send_email` binding.
- * - `mailchannels`: its webhooks need the `customerHandle` adapter option, which the app
- *   does not store yet.
- * - `http`: it needs a JSON config with `allowHosts`, which the app does not store yet.
+ * The catalog providers that Settings does not offer. `cloudflare-binding` needs a
+ * `send_email` binding, which the deploy does not declare.
  */
-const UNOFFERED_PROVIDER_IDS = ["cloudflare-binding", "mailchannels", "http"] as const;
+const UNOFFERED_PROVIDER_IDS = ["cloudflare-binding"] as const;
 
 export type EmailProviderId = Exclude<ProviderId, (typeof UNOFFERED_PROVIDER_IDS)[number]>;
 
@@ -44,6 +47,10 @@ export const DEFAULT_EMAIL_PROVIDER_ID: EmailProviderId = "tosend";
 export interface AdapterDeps {
   /** `connect` from `cloudflare:sockets`, for SMTP. Tests pass a fake. */
   connect?: SocketConnect;
+  /** The saved provider config, by config field name. See `CONFIG_FIELDS`. */
+  config?: Readonly<Record<string, string>>;
+  /** The hosts that a generic HTTP config may name, from `EMAIL_HTTP_ALLOW_HOSTS`. */
+  httpAllowHosts?: readonly string[];
 }
 
 export type AdapterFactory = (deps: AdapterDeps) => ProviderAdapter;
@@ -80,6 +87,13 @@ export const ADAPTER_FACTORIES: Readonly<Record<EmailProviderId, AdapterFactory>
   mailtrap: () => mailtrap(),
   autosend: () => autosend(),
   scaleway: () => scaleway(),
+  mailchannels: ({ config }) => mailchannels({ customerHandle: config?.customerHandle }),
+  http: ({ config, httpAllowHosts }) =>
+    // A bad config, or an empty or missing allowlist, throws a TypeError that names the
+    // field and holds no value.
+    httpProviderFromConfig(JSON.parse(config?.config ?? "null"), {
+      allowHosts: httpAllowHosts ?? [],
+    }),
 };
 
 /**
@@ -91,6 +105,79 @@ export const DEFAULT_DAILY_CAPS: Readonly<Partial<Record<EmailProviderId, number
   // The Resend free plan allows 100 emails a day.
   resend: 100,
 };
+
+/**
+ * The settings that some adapters need besides the credential fields. They are not
+ * secret, so the app stores them as plain JSON and Settings shows the saved values.
+ */
+export const CONFIG_FIELDS: Readonly<
+  Partial<Record<EmailProviderId, readonly EmailConfigField[]>>
+> = {
+  mailchannels: [
+    {
+      name: "customerHandle",
+      label: "Customer handle",
+      hint: "The customer handle of your MailChannels account. The webhooks refuse events for any other account.",
+      required: true,
+      multiline: false,
+    },
+  ],
+  http: [
+    {
+      name: "config",
+      label: "Provider config (JSON)",
+      hint: "The JSON config of the generic HTTP provider of mailswitch. The token goes in the field above, never in the config. Each host in the config must be in the EMAIL_HTTP_ALLOW_HOSTS secret of the deploy.",
+      required: true,
+      multiline: true,
+    },
+  ],
+};
+
+/** Splits `EMAIL_HTTP_ALLOW_HOSTS`, a comma-separated list of hosts. */
+export function parseHttpAllowHosts(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter((host) => host !== "");
+}
+
+/** Why a provider config was refused, by config field name. Null when it is valid. */
+export function providerConfigIssues(
+  id: EmailProviderId,
+  config: Readonly<Record<string, string>>,
+  deps: Pick<AdapterDeps, "httpAllowHosts"> = {},
+): { field: string; message: string }[] | null {
+  const fields = CONFIG_FIELDS[id] ?? [];
+  if (fields.length === 0) return null;
+  const missing = fields.filter((field) => field.required && !config[field.name]?.trim());
+  if (missing.length > 0) {
+    return missing.map((field) => ({ field: field.name, message: "required" }));
+  }
+  if (id === "http") {
+    if (!deps.httpAllowHosts?.length) {
+      return [
+        {
+          field: "config",
+          message: "Set the EMAIL_HTTP_ALLOW_HOSTS secret of the deploy to the API host first",
+        },
+      ];
+    }
+    try {
+      JSON.parse(config.config ?? "");
+    } catch {
+      return [{ field: "config", message: "Enter valid JSON" }];
+    }
+  }
+  try {
+    createAdapter(id, { config, ...deps });
+  } catch (err) {
+    // The mailswitch TypeError names the refused field and never holds a value.
+    if (err instanceof TypeError)
+      return [{ field: fields[0]?.name ?? "config", message: err.message }];
+    throw err;
+  }
+  return null;
+}
 
 export function isEmailProviderId(id: string): id is EmailProviderId {
   return isProviderId(id) && isOffered(id);
@@ -164,6 +251,7 @@ export function emailProviderOptions(): EmailProviderOption[] {
       docsUrl: meta.docsUrl,
       credentialFields: meta.credentialFields.map((field) => ({ ...field })),
       presets: (meta.presets ?? []).map((preset) => ({ ...preset })),
+      configFields: (CONFIG_FIELDS[id] ?? []).map((field) => ({ ...field })),
       webhookSecret: webhookSecretField(meta, id),
       defaultDailyCap: DEFAULT_DAILY_CAPS[id] ?? null,
     };

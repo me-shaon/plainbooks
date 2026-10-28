@@ -1,5 +1,11 @@
 import { env } from "cloudflare:workers";
 import { createSnsSigner, type SnsMessage } from "mailswitch/conformance";
+import {
+  MAILCHANNELS_FIXTURE_CUSTOMER_HANDLE,
+  MAILCHANNELS_FIXTURE_PUBLIC_KEY,
+  mailchannelsEvent,
+  signMailchannelsWebhook,
+} from "mailswitch/conformance/fixtures";
 import { mailjetWebhookAuthorization } from "mailswitch/mailjet";
 import { postmarkWebhookAuthorization } from "mailswitch/postmark";
 import { svixSignedPayload } from "mailswitch/resend";
@@ -497,6 +503,37 @@ describe("POST /api/webhooks/email/:role with Amazon SES", () => {
     expect(notes.results).toEqual([
       { body: "To a@northwind.test, b@x.test: Invoice INV-0001 from Studio One" },
     ]);
+  });
+});
+
+describe("POST /api/webhooks/email/:role with MailChannels", () => {
+  async function saveMailchannels(customerHandle: string) {
+    await saveEmailProvider(db, env.ENCRYPTION_KEY, "primary", {
+      providerId: "mailchannels",
+      credentials: { apiKey: "mc-api-key-0123456789" },
+      config: { customerHandle },
+      webhookSecret: MAILCHANNELS_FIXTURE_PUBLIC_KEY,
+    });
+  }
+
+  async function mailchannelsPost() {
+    const body = encoder.encode(JSON.stringify([mailchannelsEvent("hard-bounced")]));
+    const signed = await signMailchannelsWebhook({
+      body,
+      secret: MAILCHANNELS_FIXTURE_PUBLIC_KEY,
+      at: Date.now(),
+    });
+    return post("primary", signed.body, Object.fromEntries(signed.headers));
+  }
+
+  it("passes the saved customer handle to the adapter", async () => {
+    await saveMailchannels(MAILCHANNELS_FIXTURE_CUSTOMER_HANDLE);
+    expect((await mailchannelsPost()).status).toBe(200);
+  });
+
+  it("refuses an event for another customer handle with 401", async () => {
+    await saveMailchannels("another-handle");
+    expect((await mailchannelsPost()).status).toBe(401);
   });
 });
 

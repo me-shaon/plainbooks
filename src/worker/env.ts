@@ -33,6 +33,12 @@ export type Bindings = Env & {
    * A sign-in rehashes a password that uses another count.
    */
   PBKDF2_ITERATIONS?: string;
+  /**
+   * Secret. The hosts that a generic HTTP provider config may name, separated by commas,
+   * for example "api.mail.example". The generic HTTP provider cannot be saved without it.
+   * It is not sensitive, but a secret survives `wrangler deploy`.
+   */
+  EMAIL_HTTP_ALLOW_HOSTS?: string;
   /** Local development only. "1" swaps the email provider, Frankfurter, and Browser Run for fakes. */
   FAKE_EXTERNALS?: string;
 };

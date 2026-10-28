@@ -177,7 +177,7 @@ The app encrypts the API key and the webhook secret before it saves them. The se
 
 ### Other providers
 
-You can choose any provider in the list instead of toSend. The list includes Resend, Cloudflare Email (REST API), Mailgun, Postmark, Brevo, MailerSend, Mailjet, SMTP2GO, ZeptoMail, SendGrid, Amazon SES, SMTP, AhaSend, Mailtrap, AutoSend, and Scaleway Transactional Email. SMTP has presets for common services.
+You can choose any provider in the list instead of toSend. The list includes Resend, Cloudflare Email (REST API), Mailgun, Postmark, Brevo, MailerSend, Mailjet, SMTP2GO, ZeptoMail, SendGrid, Amazon SES, SMTP, MailChannels, AhaSend, Mailtrap, AutoSend, Scaleway Transactional Email, and a generic HTTP provider. SMTP has presets for common services.
 
 Each provider shows its own key fields. Each field has a hint that tells you where to find the value. For the webhook, use the webhook URL from the settings page.
 
@@ -187,6 +187,11 @@ Some providers need a value that you make yourself:
 - **Brevo and SMTP2GO:** Make a random value of at least 22 characters. Give it to the provider as the bearer token of the webhook.
 - **Mailjet:** Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password.
 - **Amazon SES:** Enter the ARNs of the SNS topics that send the SES events. Subscribe the webhook URL to each topic as an HTTPS endpoint. The app confirms the subscription for you.
+
+Some providers need a setting that is not a key:
+
+- **MailChannels:** Enter the customer handle of your MailChannels account. The webhook refuses events for any other account.
+- **Generic HTTP:** Use it for a JSON email API that the list does not have. Enter the JSON config of the API, and the token in the token field. The config format is in the mailswitch docs for the generic HTTP provider. Before you save, set the `EMAIL_HTTP_ALLOW_HOSTS` secret to the hosts that the config names, separated by commas. For example, run `npx wrangler secret put EMAIL_HTTP_ALLOW_HOSTS` and enter `api.mail.example`. This provider has no webhooks.
 
 To make a random value, use `openssl rand -base64 32`.
 

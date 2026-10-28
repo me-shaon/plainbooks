@@ -15,6 +15,7 @@ import {
 import {
   deleteEmailProvider,
   getEmailSettingsView,
+  loadEmailProvider,
   loadEmailProviders,
   loadKeyRing,
   saveEmailProvider,
@@ -48,14 +49,23 @@ function saveToSend(key = KEY) {
   });
 }
 
+/** A generic HTTP provider config, from the mailswitch docs. */
+const HTTP_CONFIG = {
+  id: "examplemail",
+  name: "Example Mail",
+  endpoint: "https://api.mail.example/v1/send",
+  auth: { type: "bearer" },
+  fields: { from: "from", to: "to", subject: "subject", attachments: "attachments", html: "html" },
+  verify: { endpoint: "https://api.mail.example/v1/account", method: "GET" },
+};
+
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM email_providers").run();
 });
 
 describe("email catalog", () => {
-  it("lists every installed catalog provider except cloudflare-binding, mailchannels, and http", () => {
-    const unoffered = ["cloudflare-binding", "mailchannels", "http"];
-    const installed = catalog.map((meta) => meta.id).filter((id) => !unoffered.includes(id));
+  it("lists every installed catalog provider except cloudflare-binding", () => {
+    const installed = catalog.map((meta) => meta.id).filter((id) => id !== "cloudflare-binding");
     expect([...EMAIL_PROVIDER_IDS]).toEqual(installed);
     expect(Object.keys(ADAPTER_FACTORIES).sort()).toEqual([...installed].sort());
     expect(emailProviderCatalog().map((meta) => meta.id)).toEqual(installed);
@@ -64,8 +74,15 @@ describe("email catalog", () => {
 
   it("builds an adapter for every provider, with meta that matches its ID", () => {
     for (const id of EMAIL_PROVIDER_IDS) {
+      if (id === "http") continue;
       expect(createAdapter(id).meta.id, id).toBe(id);
     }
+    // A generic HTTP adapter takes its ID from the config.
+    const http = createAdapter("http", {
+      config: { config: JSON.stringify(HTTP_CONFIG) },
+      httpAllowHosts: ["api.mail.example"],
+    });
+    expect(http.meta.id).toBe("examplemail");
   });
 
   it("reuses one SES adapter per isolate", () => {
@@ -231,6 +248,72 @@ describe("email provider settings", () => {
         "invalid_daily_cap",
       );
     }
+  });
+
+  it("saves the MailChannels customer handle as plain config, and keeps it on a later save", async () => {
+    const input = { providerId: "mailchannels", credentials: { apiKey: "mc-api-key-0123456789" } };
+    const missing = await expectAppError(
+      saveEmailProvider(db, KEY, "primary", { ...input, config: { customerHandle: " " } }),
+      400,
+      "invalid_provider_config",
+    );
+    expect(missing.issues).toEqual([{ path: "config.customerHandle", message: "required" }]);
+
+    const view = await saveEmailProvider(db, KEY, "primary", {
+      ...input,
+      config: { customerHandle: " studio-one ", unknown: "dropped" },
+    });
+    expect(view.config).toEqual({ customerHandle: "studio-one" });
+    const [row] = await db.select().from(schema.emailProviders);
+    expect(row?.config).toBe('{"customerHandle":"studio-one"}');
+
+    // No config in the input keeps the saved config for the same provider.
+    const again = await saveEmailProvider(db, KEY, "primary", input);
+    expect(again.config).toEqual({ customerHandle: "studio-one" });
+    const stored = await loadEmailProvider(db, KEY, "primary");
+    expect(stored?.config).toEqual({ customerHandle: "studio-one" });
+  });
+
+  it("saves a generic HTTP config only when EMAIL_HTTP_ALLOW_HOSTS names its hosts", async () => {
+    const input = {
+      providerId: "http",
+      credentials: { token: "http-token-0123456789" },
+      config: { config: JSON.stringify(HTTP_CONFIG) },
+    };
+    const noHosts = await expectAppError(
+      saveEmailProvider(db, KEY, "primary", input),
+      400,
+      "invalid_provider_config",
+    );
+    expect(noHosts.issues?.[0]?.message).toContain("EMAIL_HTTP_ALLOW_HOSTS");
+
+    const otherHost = await expectAppError(
+      saveEmailProvider(db, KEY, "primary", input, { httpAllowHosts: ["api.other.example"] }),
+      400,
+      "invalid_provider_config",
+    );
+    expect(otherHost.issues?.[0]).toMatchObject({ path: "config.config" });
+    expect(otherHost.issues?.[0]?.message).toContain("allowHosts");
+
+    const badJson = await expectAppError(
+      saveEmailProvider(
+        db,
+        KEY,
+        "primary",
+        { ...input, config: { config: "{ not json" } },
+        { httpAllowHosts: ["api.mail.example"] },
+      ),
+      400,
+      "invalid_provider_config",
+    );
+    expect(badJson.issues).toEqual([{ path: "config.config", message: "Enter valid JSON" }]);
+    expect(await db.select().from(schema.emailProviders)).toHaveLength(0);
+
+    const view = await saveEmailProvider(db, KEY, "primary", input, {
+      httpAllowHosts: ["api.mail.example"],
+    });
+    expect(view.providerId).toBe("http");
+    expect(JSON.parse(view.config.config ?? "")).toEqual(HTTP_CONFIG);
   });
 
   it("refuses to save without a usable ENCRYPTION_KEY", async () => {

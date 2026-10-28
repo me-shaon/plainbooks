@@ -29,6 +29,7 @@ const providers: EmailProviderOption[] = [
     docsUrl: "https://resend.com/docs",
     credentialFields: [apiKeyField("^re_")],
     presets: [],
+    configFields: [],
     webhookSecret: { label: "Signing secret", hint: "Starts with whsec_." },
     defaultDailyCap: 100,
   },
@@ -38,7 +39,26 @@ const providers: EmailProviderOption[] = [
     docsUrl: "https://tosend.com/docs",
     credentialFields: [apiKeyField("^tsend_")],
     presets: [],
+    configFields: [],
     webhookSecret: { label: "Webhook signing secret", hint: "Copy it from toSend." },
+    defaultDailyCap: null,
+  },
+  {
+    id: "mailchannels",
+    name: "MailChannels",
+    docsUrl: "https://example.com/mailchannels",
+    credentialFields: [apiKeyField("^.+$")],
+    presets: [],
+    configFields: [
+      {
+        name: "customerHandle",
+        label: "Customer handle",
+        hint: "The customer handle of your account.",
+        required: true,
+        multiline: false,
+      },
+    ],
+    webhookSecret: { label: "Webhook public key", hint: "From MailChannels." },
     defaultDailyCap: null,
   },
   {
@@ -72,6 +92,7 @@ const providers: EmailProviderOption[] = [
       },
       { id: "custom", name: "Custom server", fixed: { preset: "custom" } },
     ],
+    configFields: [],
     webhookSecret: null,
     defaultDailyCap: null,
   },
@@ -87,6 +108,7 @@ function view(overrides: Partial<EmailProviderView> = {}): EmailProviderView {
     updatedAt: 1,
     configured: true,
     needsReentry: false,
+    config: {},
     values: {},
     secrets: { apiKey: true },
     webhookSecretConfigured: true,
@@ -171,6 +193,28 @@ describe("EmailSettingsView", () => {
       presetId: null,
       credentials: { apiKey: "tsend_wrong" },
       dailyCap: null,
+    });
+  });
+
+  it("shows the saved config of a provider and sends it with the save", async () => {
+    const fetchSpy = vi.fn(async () => Response.json(view({ providerId: "mailchannels" })));
+    vi.stubGlobal("fetch", fetchSpy);
+    const user = userEvent.setup();
+    renderView(
+      settings(view({ providerId: "mailchannels", config: { customerHandle: "studio-one" } })),
+    );
+    const form = primaryForm();
+    const handle = form.getByLabelText(/Customer handle/) as HTMLInputElement;
+    expect(handle.value).toBe("studio-one");
+    await user.clear(handle);
+    await user.type(handle, "studio-two");
+    await user.click(form.getByRole("button", { name: "Save primary" }));
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      providerId: "mailchannels",
+      config: { customerHandle: "studio-two" },
     });
   });
 

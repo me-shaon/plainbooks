@@ -102,8 +102,8 @@ describe("GET /api/settings/email", () => {
     expect(ids).toContain("tosend");
     expect(ids).toContain("smtp");
     expect(ids).not.toContain("cloudflare-binding");
-    expect(ids).not.toContain("mailchannels");
-    expect(ids).not.toContain("http");
+    expect(ids).toContain("mailchannels");
+    expect(ids).toContain("http");
     expect(body.webhookUrls).toEqual({
       primary: "https://invoices.example.com/api/webhooks/email/primary",
       fallback: "https://invoices.example.com/api/webhooks/email/fallback",
