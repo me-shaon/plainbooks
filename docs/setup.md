@@ -177,7 +177,7 @@ The app encrypts the API key and the webhook secret before it saves them. The se
 
 ### Other providers
 
-You can choose any provider in the list instead of toSend. The list includes Resend, Cloudflare Email (REST API), Mailgun, Postmark, Brevo, MailerSend, Mailjet, SMTP2GO, ZeptoMail, SendGrid, Amazon SES, and SMTP. SMTP has presets for common services.
+You can choose any provider in the list instead of toSend. The list includes Resend, Cloudflare Email (REST API), Mailgun, Postmark, Brevo, MailerSend, Mailjet, SMTP2GO, ZeptoMail, SendGrid, Amazon SES, SMTP, AhaSend, Mailtrap, AutoSend, and Scaleway Transactional Email. SMTP has presets for common services.
 
 Each provider shows its own key fields. Each field has a hint that tells you where to find the value. For the webhook, use the webhook URL from the settings page.
 

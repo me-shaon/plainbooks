@@ -53,8 +53,9 @@ beforeEach(async () => {
 });
 
 describe("email catalog", () => {
-  it("lists every installed catalog provider except cloudflare-binding", () => {
-    const installed = catalog.map((meta) => meta.id).filter((id) => id !== "cloudflare-binding");
+  it("lists every installed catalog provider except cloudflare-binding, mailchannels, and http", () => {
+    const unoffered = ["cloudflare-binding", "mailchannels", "http"];
+    const installed = catalog.map((meta) => meta.id).filter((id) => !unoffered.includes(id));
     expect([...EMAIL_PROVIDER_IDS]).toEqual(installed);
     expect(Object.keys(ADAPTER_FACTORIES).sort()).toEqual([...installed].sort());
     expect(emailProviderCatalog().map((meta) => meta.id)).toEqual(installed);

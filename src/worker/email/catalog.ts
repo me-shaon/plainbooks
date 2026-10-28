@@ -1,12 +1,16 @@
 import type { ProviderAdapter, ProviderMeta, SocketConnect } from "mailswitch";
+import { ahasend } from "mailswitch/ahasend";
+import { autosend } from "mailswitch/autosend";
 import { brevo } from "mailswitch/brevo";
-import { getProviderMeta } from "mailswitch/catalog";
+import { getProviderMeta, isProviderId, PROVIDER_IDS, type ProviderId } from "mailswitch/catalog";
 import { cloudflareRest } from "mailswitch/cloudflare";
 import { mailersend } from "mailswitch/mailersend";
 import { mailgun } from "mailswitch/mailgun";
 import { mailjet } from "mailswitch/mailjet";
+import { mailtrap } from "mailswitch/mailtrap";
 import { postmark } from "mailswitch/postmark";
 import { resend } from "mailswitch/resend";
+import { scaleway } from "mailswitch/scaleway";
 import { sendgrid } from "mailswitch/sendgrid";
 import { ses } from "mailswitch/ses";
 import { smtp } from "mailswitch/smtp";
@@ -16,26 +20,22 @@ import { zeptomail } from "mailswitch/zeptomail";
 import type { EmailProviderOption, WebhookSecretField } from "../../shared/schemas/email-settings";
 
 /**
- * The providers the Owner can pick in Settings, in the mailswitch catalog order. It is the
- * mailswitch@0.2.0 catalog without `cloudflare-binding`, because the deploy declares no
- * `send_email` binding. A test fails when the installed catalog differs from this list.
+ * The catalog providers that Settings does not offer:
+ * - `cloudflare-binding`: the deploy declares no `send_email` binding.
+ * - `mailchannels`: its webhooks need the `customerHandle` adapter option, which the app
+ *   does not store yet.
+ * - `http`: it needs a JSON config with `allowHosts`, which the app does not store yet.
  */
-export const EMAIL_PROVIDER_IDS = [
-  "resend",
-  "tosend",
-  "cloudflare-rest",
-  "mailgun",
-  "postmark",
-  "brevo",
-  "mailersend",
-  "mailjet",
-  "smtp2go",
-  "zeptomail",
-  "sendgrid",
-  "ses",
-  "smtp",
-] as const;
-export type EmailProviderId = (typeof EMAIL_PROVIDER_IDS)[number];
+const UNOFFERED_PROVIDER_IDS = ["cloudflare-binding", "mailchannels", "http"] as const;
+
+export type EmailProviderId = Exclude<ProviderId, (typeof UNOFFERED_PROVIDER_IDS)[number]>;
+
+function isOffered(id: ProviderId): id is EmailProviderId {
+  return !(UNOFFERED_PROVIDER_IDS as readonly string[]).includes(id);
+}
+
+/** The providers the Owner can pick in Settings, in the mailswitch catalog order. */
+export const EMAIL_PROVIDER_IDS: readonly EmailProviderId[] = PROVIDER_IDS.filter(isOffered);
 
 /** The provider that a fresh Settings form selects. */
 export const DEFAULT_EMAIL_PROVIDER_ID: EmailProviderId = "tosend";
@@ -56,7 +56,8 @@ let sesAdapter: ProviderAdapter | undefined;
 
 /**
  * Catalog ID to adapter factory. Credentials come from the send context, so no factory
- * takes keys. A new catalog provider needs one entry here and in `EMAIL_PROVIDER_IDS`.
+ * takes keys. A new catalog provider needs one entry here, or an entry in
+ * `UNOFFERED_PROVIDER_IDS`.
  */
 export const ADAPTER_FACTORIES: Readonly<Record<EmailProviderId, AdapterFactory>> = {
   resend: () => resend(),
@@ -75,12 +76,16 @@ export const ADAPTER_FACTORIES: Readonly<Record<EmailProviderId, AdapterFactory>
     return sesAdapter;
   },
   smtp: ({ connect }) => smtp({ connect }),
+  ahasend: () => ahasend(),
+  mailtrap: () => mailtrap(),
+  autosend: () => autosend(),
+  scaleway: () => scaleway(),
 };
 
 /**
  * Default daily caps by provider ID, for the plan the Owner most likely has. A preset
- * cap (for example SMTP Gmail, 500) takes precedence. mailswitch 0.2.0 has caps only on
- * presets, so the app keeps this table.
+ * cap (for example SMTP Gmail, 500) takes precedence. The built-in mailswitch meta sets
+ * no `defaultDailyCap`, so the app keeps this table.
  */
 export const DEFAULT_DAILY_CAPS: Readonly<Partial<Record<EmailProviderId, number>>> = {
   // The Resend free plan allows 100 emails a day.
@@ -88,7 +93,7 @@ export const DEFAULT_DAILY_CAPS: Readonly<Partial<Record<EmailProviderId, number
 };
 
 export function isEmailProviderId(id: string): id is EmailProviderId {
-  return (EMAIL_PROVIDER_IDS as readonly string[]).includes(id);
+  return isProviderId(id) && isOffered(id);
 }
 
 /** The catalog meta of a provider the Owner can pick, or undefined. */
@@ -98,11 +103,7 @@ export function emailProviderMeta(id: string): ProviderMeta | undefined {
 
 /** The catalog meta of every provider the Owner can pick, in catalog order. */
 export function emailProviderCatalog(): ProviderMeta[] {
-  return EMAIL_PROVIDER_IDS.map((id) => {
-    const meta = getProviderMeta(id);
-    if (!meta) throw new Error(`mailswitch has no provider "${id}"`);
-    return meta;
-  });
+  return EMAIL_PROVIDER_IDS.map((id) => getProviderMeta(id));
 }
 
 export function createAdapter(id: EmailProviderId, deps: AdapterDeps = {}): ProviderAdapter {
@@ -117,62 +118,41 @@ export function defaultDailyCap(id: string, presetId?: string | null): number | 
 }
 
 /**
- * How Settings asks for the webhook secret of each provider with webhooks. mailswitch
- * 0.2.0 meta has `webhooks: true` but no field description, so the app keeps these labels.
- * A provider with webhooks and no entry here gets the generic label. A hint asks the Owner
- * to select only the events that the app records, so a batch of events stays under the
- * D1 query limit of one request.
+ * The hints that Settings shows for the webhook secret, where the app needs other text
+ * than the mailswitch meta. The meta hints name the mailswitch generate helpers, which
+ * the Owner cannot run. A hint here also asks the Owner to select only the events that
+ * the app records, so a batch of events stays under the D1 query limit of one request.
+ * A provider with no entry gets the meta hint. The label and placeholder always come
+ * from the meta.
  */
-export const WEBHOOK_SECRET_FIELDS: Readonly<Partial<Record<EmailProviderId, WebhookSecretField>>> =
-  {
-    resend: {
-      label: "Signing secret",
-      hint: "Copy it from the webhook in Resend. It starts with whsec_.",
-      placeholder: "whsec_...",
-    },
-    tosend: {
-      label: "Webhook signing secret",
-      hint: "Copy it from the webhook in toSend.",
-    },
-    mailgun: {
-      label: "HTTP webhook signing key",
-      hint: "Copy it from the Webhooks page in Mailgun.",
-    },
-    postmark: {
-      label: "Webhook password",
-      hint: "Make a random value of at least 22 characters. In Postmark, set the webhook Basic auth username to mailswitch and the password to this value.",
-    },
-    brevo: {
-      label: "Webhook token",
-      hint: "Make a random value of at least 22 characters. Give it to Brevo as the bearer token of the webhook. Select only the hard bounce, soft bounce, invalid email, and spam events.",
-    },
-    mailersend: {
-      label: "Signing secret",
-      hint: "Copy it from the webhook in MailerSend. Select only the activity.hard_bounced, activity.soft_bounced, and activity.spam_complaint events.",
-    },
-    mailjet: {
-      label: "Webhook password",
-      hint: "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password. Add the URL only for the bounce and spam events, and turn off event grouping.",
-    },
-    smtp2go: {
-      label: "Webhook secret",
-      hint: "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook. Select only the bounce and spam events.",
-    },
-    sendgrid: {
-      label: "Verification key",
-      hint: "The public key of the signed Event Webhook in SendGrid. Select only the bounced and spam report events.",
-    },
-    ses: {
-      label: "SNS topic ARNs",
-      hint: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused. Send only the bounce and complaint events to these topics.",
-      placeholder: "arn:aws:sns:us-east-1:123456789012:ses-events",
-    },
-  };
-
-const GENERIC_WEBHOOK_SECRET: WebhookSecretField = {
-  label: "Webhook secret",
-  hint: "The secret that signs the webhook requests of this provider.",
+export const WEBHOOK_SECRET_HINTS: Readonly<Partial<Record<EmailProviderId, string>>> = {
+  resend: "Copy it from the webhook in Resend. It starts with whsec_.",
+  tosend: "Copy it from the webhook in toSend.",
+  mailgun: "Copy it from the Webhooks page in Mailgun.",
+  postmark:
+    "Make a random value of at least 22 characters. In Postmark, set the webhook Basic auth username to mailswitch and the password to this value.",
+  brevo:
+    "Make a random value of at least 22 characters. Give it to Brevo as the bearer token of the webhook. Select only the hard bounce, soft bounce, invalid email, and spam events.",
+  mailersend:
+    "Copy it from the webhook in MailerSend. Select only the activity.hard_bounced, activity.soft_bounced, and activity.spam_complaint events.",
+  mailjet:
+    "Make a random value of at least 22 characters. Put it in the webhook URL that you give Mailjet as the Basic auth password. Add the URL only for the bounce and spam events, and turn off event grouping.",
+  smtp2go:
+    "Make a random value of at least 22 characters. Give it to SMTP2GO as the bearer token of the webhook. Select only the bounce and spam events.",
+  sendgrid:
+    "The public key of the signed Event Webhook in SendGrid. Select only the bounced and spam report events.",
+  ses: "The ARNs of the SNS topics that send SES events, separated by commas. Other topics are refused. Send only the bounce and complaint events to these topics.",
 };
+
+function webhookSecretField(meta: ProviderMeta, id: EmailProviderId): WebhookSecretField | null {
+  const secret = meta.webhookSecret;
+  if (!meta.webhooks || !secret) return null;
+  return {
+    label: secret.label,
+    hint: WEBHOOK_SECRET_HINTS[id] ?? secret.hint ?? "",
+    ...(secret.placeholder === undefined ? {} : { placeholder: secret.placeholder }),
+  };
+}
 
 /** The provider list that Settings shows, from the catalog plus the app's own tables. */
 export function emailProviderOptions(): EmailProviderOption[] {
@@ -184,7 +164,7 @@ export function emailProviderOptions(): EmailProviderOption[] {
       docsUrl: meta.docsUrl,
       credentialFields: meta.credentialFields.map((field) => ({ ...field })),
       presets: (meta.presets ?? []).map((preset) => ({ ...preset })),
-      webhookSecret: meta.webhooks ? (WEBHOOK_SECRET_FIELDS[id] ?? GENERIC_WEBHOOK_SECRET) : null,
+      webhookSecret: webhookSecretField(meta, id),
       defaultDailyCap: DEFAULT_DAILY_CAPS[id] ?? null,
     };
   });

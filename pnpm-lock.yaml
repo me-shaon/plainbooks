@@ -200,8 +200,8 @@ importers:
         specifier: 1.61.0
         version: 1.61.0(@types/react@19.3.0)(react@19.3.1)
       mailswitch:
-        specifier: 0.2.0
-        version: 0.2.0(vitest@5.0.5(@types/node@22.20.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)))
+        specifier: 1.0.0
+        version: 1.0.0(vitest@5.0.5(@types/node@22.20.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)))
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -2321,8 +2321,8 @@ packages:
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
 
-  mailswitch@0.2.0:
-    resolution: {integrity: sha512-cEU44Bg6GSopOPoe9RQNqb5B8SdCIF6d8Xmqdq1M/+PUF9NtIydkLjtOqoZc69HX97GJ67srtErHp9P9gpXseg==}
+  mailswitch@1.0.0:
+    resolution: {integrity: sha512-FAHkhBISkRmvMpoCzfgeudscV+xtuAxjGml8E+bhE9MEn6F14RBAAcRKLdSVxlGeIM11VbSF63ZfRZzSVJpI5g==}
     engines: {node: '>=22'}
     hasBin: true
     peerDependencies:
@@ -4180,7 +4180,7 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  mailswitch@0.2.0(vitest@5.0.5(@types/node@22.20.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))):
+  mailswitch@1.0.0(vitest@5.0.5(@types/node@22.20.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))):
     optionalDependencies:
       vitest: 5.0.5(@types/node@22.20.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 

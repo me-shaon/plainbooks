@@ -346,9 +346,6 @@ export async function saveEmailProvider(
     throw new AppError(400, "unknown_email_provider", "This email provider is not available");
   }
   const presetId = input.presetId || null;
-  if (presetId && !meta.presets?.some((preset) => preset.id === presetId)) {
-    throw new AppError(400, "unknown_email_preset", "This preset is not available");
-  }
   const dailyCap = input.dailyCap ?? null;
   if (dailyCap !== null && !(Number.isSafeInteger(dailyCap) && dailyCap > 0)) {
     throw new AppError(400, "invalid_daily_cap", "The daily cap must be a whole number above 0");
@@ -362,6 +359,9 @@ export async function saveEmailProvider(
     presetId ?? undefined,
   );
   if (!parsed.ok) {
+    if (parsed.errors.some((error) => error.code === "preset")) {
+      throw new AppError(400, "unknown_email_preset", "This preset is not available");
+    }
     const fields = parsed.errors.map((error) => error.field).join(", ");
     throw new AppError(
       400,

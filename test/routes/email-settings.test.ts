@@ -102,6 +102,8 @@ describe("GET /api/settings/email", () => {
     expect(ids).toContain("tosend");
     expect(ids).toContain("smtp");
     expect(ids).not.toContain("cloudflare-binding");
+    expect(ids).not.toContain("mailchannels");
+    expect(ids).not.toContain("http");
     expect(body.webhookUrls).toEqual({
       primary: "https://invoices.example.com/api/webhooks/email/primary",
       fallback: "https://invoices.example.com/api/webhooks/email/fallback",
@@ -114,8 +116,18 @@ describe("GET /api/settings/email", () => {
     expect(byId.get("tosend")?.credentialFields).toEqual([
       expect.objectContaining({ name: "apiKey", secret: true, required: true }),
     ]);
-    expect(byId.get("tosend")?.webhookSecret?.label).toBe("Webhook signing secret");
-    expect(byId.get("ses")?.webhookSecret?.label).toBe("SNS topic ARNs");
+    expect(byId.get("tosend")?.webhookSecret).toEqual({
+      label: "Webhook secret",
+      hint: "Copy it from the webhook in toSend.",
+    });
+    expect(byId.get("ses")?.webhookSecret?.label).toBe("Allowed SNS topic ARNs");
+    // A provider with no app hint gets the mailswitch meta hint and placeholder.
+    expect(byId.get("ahasend")?.webhookSecret).toMatchObject({
+      label: "Webhook secret",
+      placeholder: "aha-whsec-...",
+      hint: expect.stringContaining("aha-whsec-"),
+    });
+    expect(byId.get("scaleway")?.webhookSecret).toBeNull();
     expect(byId.get("smtp")?.webhookSecret).toBeNull();
     expect(byId.get("resend")?.defaultDailyCap).toBe(100);
     expect(byId.get("tosend")?.defaultDailyCap).toBeNull();

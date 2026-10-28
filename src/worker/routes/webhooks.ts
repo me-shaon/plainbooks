@@ -4,7 +4,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { NormalizedEvent, ProviderAdapter } from "mailswitch";
 import { snsConfirmAction } from "mailswitch/ses";
 import { D1DedupeStore } from "mailswitch/stores/d1";
-import { handleWebhook, type WebhookOutcome } from "mailswitch/webhooks";
+import { handleWebhook } from "mailswitch/webhooks";
 import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domain";
 import { createRequestDb, type Db, schema } from "../db/client";
 import { createAdapter } from "../email/catalog";
@@ -316,52 +316,48 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
   const adapter = createAdapter(provider.providerId);
   if (!adapter.webhooks) return unauthorized(c);
 
-  let outcome: WebhookOutcome;
-  try {
-    // A request that would pass the D1 statement limit fails part way, after some events
-    // are claimed or written. Refuse it before any write. Only a verified request gets the
-    // 500, so an unsigned request still gets the 401 below.
-    const parsed = parseForCount(adapter, body, c.req.raw.headers);
-    const statements = parsed ? webhookStatements(adapter, parsed) : 0;
-    if (statements > TICK_QUERY_BUDGET) {
-      const verified = await adapter.webhooks.verify({
-        headers: c.req.raw.headers,
-        body,
-        secret: provider.webhookSecret,
-        now: Date.now(),
-      });
-      if (verified.ok) {
-        console.error(
-          `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
-            `which needs up to ${statements} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
-            "Nothing was recorded. In the provider webhook settings, select only the bounce " +
-            "and spam complaint events, and turn off event grouping where the provider has it.",
-        );
-        return c.json({ error: "The webhook has too many events", code: "too_many_events" }, 500);
-      }
+  // A request that would pass the D1 statement limit fails part way, after some events
+  // are claimed or written. Refuse it before any write. Only a verified request gets the
+  // 500, so an unsigned request still gets the 401 below.
+  const parsed = parseForCount(adapter, body, c.req.raw.headers);
+  const statements = parsed ? webhookStatements(adapter, parsed) : 0;
+  if (statements > TICK_QUERY_BUDGET) {
+    const verified = await adapter.webhooks.verify({
+      headers: c.req.raw.headers,
+      body,
+      secret: provider.webhookSecret,
+      now: Date.now(),
+    });
+    if (verified.ok) {
+      console.error(
+        `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
+          `which needs up to ${statements} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
+          "Nothing was recorded. In the provider webhook settings, select only the bounce " +
+          "and spam complaint events, and turn off event grouping where the provider has it.",
+      );
+      return c.json({ error: "The webhook has too many events", code: "too_many_events" }, 500);
     }
-    outcome = await handleWebhook(
-      new Request(c.req.url, { method: "POST", headers: c.req.raw.headers, body }),
-      {
-        adapter,
-        secret: provider.webhookSecret,
-        dedupe: new D1DedupeStore(c.env.DB),
-        endpointId: role,
-        maxBodyBytes: WEBHOOK_MAX_BODY_BYTES,
-      },
-    );
-  } catch (err) {
-    // A TypeError means the saved secret does not fit the provider, for example a short
-    // Postmark password or a Resend secret that is not whsec_ base64. The message holds
-    // no secret. The Owner must save a new secret.
-    if (err instanceof TypeError) {
-      console.error(`The ${role} webhook secret is not valid`, err.message);
-      return unauthorized(c);
-    }
-    throw err;
   }
+  const outcome = await handleWebhook(
+    new Request(c.req.url, { method: "POST", headers: c.req.raw.headers, body }),
+    {
+      adapter,
+      secret: provider.webhookSecret,
+      dedupe: new D1DedupeStore(c.env.DB),
+      endpointId: role,
+      maxBodyBytes: WEBHOOK_MAX_BODY_BYTES,
+    },
+  );
   if (!outcome.ok) {
     if (outcome.status === 401) return unauthorized(c);
+    // The saved secret does not fit the provider, for example a short Postmark password
+    // or a Resend secret that is not whsec_ base64. mailswitch checks it before the
+    // signature, so the 401 keeps an unsigned caller from learning that the role is set
+    // up. The Owner must save a new secret.
+    if (outcome.rejection === "invalid_secret") {
+      console.error(`The ${role} webhook secret is not valid`);
+      return unauthorized(c);
+    }
     if (outcome.status === 200) return c.json({ ok: true });
     return c.json(
       { error: "The webhook was refused", code: outcome.rejection },
