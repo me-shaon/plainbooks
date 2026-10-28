@@ -85,6 +85,16 @@ describe("email catalog", () => {
     expect(http.meta.id).toBe("examplemail");
   });
 
+  it("throws a TypeError for a stored HTTP config that is not JSON", () => {
+    // Callers catch TypeError for a refused config. A SyntaxError would escape as a 500.
+    expect(() =>
+      createAdapter("http", {
+        config: { config: "{ not json" },
+        httpAllowHosts: ["api.mail.example"],
+      }),
+    ).toThrow(TypeError);
+  });
+
   it("reuses one SES adapter per isolate", () => {
     expect(createAdapter("ses")).toBe(createAdapter("ses"));
   });

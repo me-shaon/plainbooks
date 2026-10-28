@@ -116,8 +116,10 @@ export function capScope(provider: { providerId: string; role: EmailProviderRole
 
 /**
  * Builds the mailer for one send. The stores use the D1 binding under `db`, so the
- * scheduler counts their statements. The clock starts at `now`, so tests can fix it.
- * Throws 422 `email_not_configured` when mailswitch refuses the stored settings.
+ * scheduler counts their queries. The clock starts at `now`, so tests can fix it.
+ * A fallback whose saved config no longer builds an adapter is left out, so the primary
+ * still sends. Throws 422 `email_not_configured` when the primary cannot be built or
+ * mailswitch refuses the stored settings.
  */
 export function createAppMailer(
   env: Bindings,
@@ -127,17 +129,36 @@ export function createAppMailer(
 ): Mailer {
   const d1 = db.$client;
   const toEntry = entryFactory(env);
+  const entries = [];
+  for (const [index, provider] of providers.entries()) {
+    let entry: MailerEntry;
+    try {
+      entry = toEntry(provider);
+    } catch (err) {
+      // A config that no longer fits, for example after EMAIL_HTTP_ALLOW_HOSTS lost a
+      // host. The mailswitch TypeError names the refused option, never a key value.
+      if (!(err instanceof TypeError)) throw err;
+      console.error(`The ${provider.role} email provider config is refused`, err.message);
+      if (index === 0) {
+        throw new AppError(
+          422,
+          "email_not_configured",
+          "Check the email provider config in Settings",
+        );
+      }
+      continue;
+    }
+    const cap = dailyCapOf(provider);
+    entries.push({
+      ...entry,
+      scope: capScope(provider),
+      ...(cap === null ? {} : { dailyCap: cap }),
+    });
+  }
   const started = Date.now();
   try {
     return createMailer({
-      providers: providers.map((provider) => {
-        const cap = dailyCapOf(provider);
-        return {
-          ...toEntry(provider),
-          scope: capScope(provider),
-          ...(cap === null ? {} : { dailyCap: cap }),
-        };
-      }),
+      providers: entries,
       namespace: MAILER_NAMESPACE,
       idempotency: new D1IdempotencyStore(d1),
       dailyCaps: new D1DailyCapStore(d1),

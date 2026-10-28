@@ -4,7 +4,7 @@ import { autosend } from "mailswitch/autosend";
 import { brevo } from "mailswitch/brevo";
 import { getProviderMeta, isProviderId, PROVIDER_IDS, type ProviderId } from "mailswitch/catalog";
 import { cloudflareRest } from "mailswitch/cloudflare";
-import { httpProviderFromConfig } from "mailswitch/http";
+import { type HttpProviderConfig, httpProviderFromConfig } from "mailswitch/http";
 import { mailchannels } from "mailswitch/mailchannels";
 import { mailersend } from "mailswitch/mailersend";
 import { mailgun } from "mailswitch/mailgun";
@@ -88,12 +88,10 @@ export const ADAPTER_FACTORIES: Readonly<Record<EmailProviderId, AdapterFactory>
   autosend: () => autosend(),
   scaleway: () => scaleway(),
   mailchannels: ({ config }) => mailchannels({ customerHandle: config?.customerHandle }),
+  // A bad config, or an empty or missing allowlist, throws a TypeError that names the
+  // field and holds no value.
   http: ({ config, httpAllowHosts }) =>
-    // A bad config, or an empty or missing allowlist, throws a TypeError that names the
-    // field and holds no value.
-    httpProviderFromConfig(JSON.parse(config?.config ?? "null"), {
-      allowHosts: httpAllowHosts ?? [],
-    }),
+    httpProviderFromConfig(parseHttpConfig(config?.config), { allowHosts: httpAllowHosts ?? [] }),
 };
 
 /**
@@ -133,6 +131,19 @@ export const CONFIG_FIELDS: Readonly<
   ],
 };
 
+/**
+ * The stored JSON config of the generic HTTP provider. Bad JSON throws a TypeError, like
+ * every other refused config, so callers catch one error type.
+ */
+function parseHttpConfig(text: string | undefined): HttpProviderConfig {
+  try {
+    // httpProviderFromConfig checks the shape, so the cast only names the type.
+    return JSON.parse(text ?? "null") as HttpProviderConfig;
+  } catch {
+    throw new TypeError("The generic HTTP config is not valid JSON.");
+  }
+}
+
 /** Splits `EMAIL_HTTP_ALLOW_HOSTS`, a comma-separated list of hosts. */
 export function parseHttpAllowHosts(value: string | undefined): string[] {
   return (value ?? "")
@@ -163,7 +174,7 @@ export function providerConfigIssues(
       ];
     }
     try {
-      JSON.parse(config.config ?? "");
+      parseHttpConfig(config.config);
     } catch {
       return [{ field: "config", message: "Enter valid JSON" }];
     }

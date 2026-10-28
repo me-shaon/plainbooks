@@ -4,7 +4,8 @@ import { fakeProvider } from "mailswitch/testing";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { documentUpdateInput } from "../../src/shared/schemas/document";
 import { schema } from "../../src/worker/db/client";
-import { setMailerEntriesForTesting } from "../../src/worker/email/mailer";
+import { createAppMailer, setMailerEntriesForTesting } from "../../src/worker/email/mailer";
+import type { ReadyEmailProvider } from "../../src/worker/email/settings";
 import { QUOTE_DECISION_JOB } from "../../src/worker/routes/public";
 import { decideQuote, revise, voidDocument } from "../../src/worker/services/documents";
 import {
@@ -403,6 +404,47 @@ describe("sendDocument", () => {
       status: 422,
       code: "email_not_configured",
     });
+  });
+
+  it("leaves out a fallback whose config no longer builds, and sends through the primary", async () => {
+    const primary = fakeProvider();
+    setMailerEntriesForTesting((provider) => {
+      // The http adapter throws this TypeError when EMAIL_HTTP_ALLOW_HOSTS lost its host.
+      if (provider.role === "fallback")
+        throw new TypeError("allowHosts must name at least one host.");
+      return { adapter: primary, credentials: { apiKey: "fk_test" } };
+    });
+    const base = {
+      presetId: null,
+      dailyCap: null,
+      defaultDailyCap: null,
+      config: {},
+      updatedAt: 0,
+      status: "ready",
+      credentials: { apiKey: "fk_test" },
+      webhookSecret: null,
+    } as const;
+    const providers: ReadyEmailProvider[] = [
+      { ...base, role: "primary", providerId: "tosend" },
+      { ...base, role: "fallback", providerId: "http" },
+    ];
+    const mailer = createAppMailer(env, db, providers, NOW);
+    const result = await mailer.send({
+      from: "billing@studio.test",
+      to: ["ap@northwind.test"],
+      subject: "Hello",
+      text: "Hello",
+      idempotencyKey: "fallback-config-test",
+    });
+    expect(result.status).toBe("sent");
+
+    // A primary that does not build stops the send with 422.
+    setMailerEntriesForTesting(() => {
+      throw new TypeError("allowHosts must name at least one host.");
+    });
+    expect(() => createAppMailer(env, db, providers, NOW)).toThrow(
+      expect.objectContaining({ status: 422, code: "email_not_configured" }),
+    );
   });
 
   it("requires a sender address", async () => {
