@@ -77,6 +77,11 @@ describe("versions", () => {
     expect(parseVersion("v1.2.3-beta.1")).toBeNull();
   });
 
+  it("has a release version in src/worker/version.ts", () => {
+    // release.yml and update.yml read this exact format.
+    expect(parseVersion(APP_VERSION)).not.toBeNull();
+  });
+
   it("compares each part as a number", () => {
     expect(isNewerVersion("0.10.0", "0.9.9")).toBe(true);
     expect(isNewerVersion("1.0.0", "0.99.99")).toBe(true);

@@ -17,11 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check that the tag matches package.json
+      - name: Check that the tag matches src/worker/version.ts
         run: |
-          version="$(jq -r .version package.json)"
+          version="$(sed -n 's/^export const APP_VERSION = "\(.*\)";$/\1/p' src/worker/version.ts)"
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME, but package.json has version $version."
+            echo "::error::The tag is $GITHUB_REF_NAME, but src/worker/version.ts has version '$version'."
             exit 1
           fi
 

@@ -75,7 +75,7 @@ A maintainer reviews each pull request. You may get requests for changes before 
 
 A maintainer publishes each release. Copies of the app learn about a release from its tag. The in-app update check and the update workflow (`.github/workflows/update.yml`) both read the newest release.
 
-1. Set `version` in `package.json` to the new version, for example `0.2.0`. Use [semantic versions](https://semver.org/).
+1. Set `APP_VERSION` in `src/worker/version.ts` to the new version, for example `0.2.0`. Use [semantic versions](https://semver.org/). Keep `version` in `package.json` at `0.0.0`. The Deploy button sets it to `0.0.0` in each copy, and the same value keeps updates free of conflicts.
 2. Commit the change with the message `chore: release v0.2.0`, and push it to `main`.
 3. Tag the commit and push the tag:
 
@@ -84,7 +84,7 @@ A maintainer publishes each release. Copies of the app learn about a release fro
    git push origin v0.2.0
    ```
 
-The release workflow (`.github/workflows/release.yml`) checks that the tag matches `package.json`. Then it publishes the release with notes from the merged pull requests. Do not tag a pre-release with this format. The workflows read only `vX.Y.Z` tags.
+The release workflow (`.github/workflows/release.yml`) checks that the tag matches `src/worker/version.ts`. Then it publishes the release with notes from the merged pull requests. Do not tag a pre-release with this format. The workflows read only `vX.Y.Z` tags.
 
 ## Write docs
 

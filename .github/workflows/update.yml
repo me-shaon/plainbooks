@@ -1,5 +1,6 @@
-# Keeps a copy of Plainbooks up to date. The Deploy to Cloudflare button copies this file
-# into your repository. Once a week it compares your version with the newest release of
+# Keeps a copy of Plainbooks up to date. The Deploy to Cloudflare button does not copy the
+# .github folder, so add this file to your copy by hand (docs/updating.md). Once a week it
+# finds the release that your copy runs and compares it with the newest release of
 # me-shaon/plainbooks. When a release is newer, it opens a pull request with the update.
 # Merge the pull request, and Cloudflare deploys the new version.
 # When it cannot make the pull request, it opens an issue with the manual steps.
@@ -37,14 +38,34 @@ jobs:
         id: prepare
         run: |
           set -euo pipefail
-          current="v$(jq -r .version package.json)"
           if ! latest="$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName)"; then
             echo "$UPSTREAM has no release yet."
             exit 0
           fi
+          remote="https://github.com/$UPSTREAM.git"
+          git fetch --quiet --no-tags "$remote" "+refs/tags/v*:refs/upstream/v*"
+
+          # Find the release that this copy runs: the release tag with the fewest changed
+          # lines. No tag matches exactly, because the Deploy button changes the copy: it
+          # leaves out .github, and it edits package.json and wrangler.jsonc. On a tie, the
+          # newer tag wins.
+          current=""
+          fewest=""
+          for tag in $(git for-each-ref --sort=v:refname --format='%(refname:lstrip=2)' refs/upstream/); do
+            lines="$(git diff --numstat "refs/upstream/$tag" HEAD -- . ':(exclude).github' | awk '{ n += $1 + $2 } END { print n + 0 }')"
+            if [ -z "$fewest" ] || [ "$lines" -le "$fewest" ]; then
+              fewest="$lines"
+              current="$tag"
+            fi
+          done
+          if [ -z "$current" ]; then
+            echo "$UPSTREAM has no release tags yet."
+            exit 0
+          fi
+          echo "This copy runs $current ($fewest changed lines). The newest release is $latest."
           newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)"
           if [ "$latest" = "$current" ] || [ "$newest" != "$latest" ]; then
-            echo "This copy runs $current. That is the newest version."
+            echo "This copy has the newest version."
             exit 0
           fi
           {
@@ -53,37 +74,51 @@ jobs:
             echo "url=https://github.com/$UPSTREAM/releases/tag/$latest"
           } >> "$GITHUB_OUTPUT"
 
-          remote="https://github.com/$UPSTREAM.git"
-          git fetch --no-tags "$remote" "+refs/tags/$latest:refs/upstream/latest"
-          theirs="$(git rev-parse "refs/upstream/latest^{commit}")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Each side of the merge first gets two changes that the Deploy button also makes:
+          # - The update leaves .github as it is in this copy, because GitHub refuses a push
+          #   from Actions that changes a workflow file. Each side gets this copy's .github
+          #   folder, or no .github folder when the copy has none.
+          # - The button sets the package.json version to 0.0.0. Older releases had their
+          #   version there, and the change next to the name line would be a conflict.
+          index="$RUNNER_TEMP/update-index"
+          like_this_copy() {
+            GIT_INDEX_FILE="$index" git read-tree "$1"
+            GIT_INDEX_FILE="$index" git rm -r -q --cached --ignore-unmatch .github
+            if git cat-file -e HEAD:.github 2>/dev/null; then
+              GIT_INDEX_FILE="$index" git read-tree --prefix=.github/ HEAD:.github
+            fi
+            package="$(git show "$1:package.json" | perl -pe 's/^  "version": "[^"]*"/  "version": "0.0.0"/' | git hash-object -w --stdin)"
+            GIT_INDEX_FILE="$index" git update-index --cacheinfo "100644,$package,package.json"
+            git commit-tree "$(GIT_INDEX_FILE="$index" git write-tree)" -m "$1"
+          }
+          base="$(like_this_copy "refs/upstream/$current^{commit}")"
+          theirs="$(like_this_copy "refs/upstream/$latest^{commit}")"
 
           # The merge base is the release that this copy runs. Then the merge keeps the
           # edits that Cloudflare and you made to this copy, for example the database ID
           # in wrangler.jsonc.
-          if git fetch --no-tags "$remote" "+refs/tags/$current:refs/upstream/current"; then
-            base="$(git rev-parse "refs/upstream/current^{commit}")"
-          elif base="$(git merge-base HEAD "$theirs")"; then
-            :
-          else
-            echo "reason=Git cannot find the release that this copy started from." >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           if ! tree="$(git merge-tree --write-tree --merge-base="$base" HEAD "$theirs")"; then
             echo "reason=The update changes lines that this copy also changed." >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # One commit on top of this copy, with no upstream history. GitHub refuses a push
-          # from Actions that adds commits that change a workflow file, and the upstream
-          # history has such commits. The next update finds its base by the version tag.
-          commit="$(git commit-tree "$tree" -p HEAD -m "Update Plainbooks to $latest")"
-          if ! git push --force origin "$commit:refs/heads/$BRANCH"; then
-            echo "reason=GitHub Actions cannot push the update branch. This happens when the update changes a workflow file." >> "$GITHUB_OUTPUT"
+          if [ "$(git rev-parse HEAD^{tree})" = "$tree" ]; then
+            echo "The update makes no change to this copy."
             exit 0
           fi
+
+          # Tell the reader when the update workflow itself changed. It must be copied by hand.
+          if [ "$(git rev-parse -q --verify "HEAD:.github/workflows/update.yml" || true)" != \
+               "$(git rev-parse -q --verify "refs/upstream/$latest:.github/workflows/update.yml" || true)" ]; then
+            echo "workflow_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # One commit on top of this copy, with no upstream history. The next update finds
+          # its base by comparing files again.
+          commit="$(git commit-tree "$tree" -p HEAD -m "Update Plainbooks to $latest")"
+          git push --force origin "$commit:refs/heads/$BRANCH"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Open the pull request
@@ -94,9 +129,14 @@ jobs:
           CURRENT: ${{ steps.prepare.outputs.current }}
           URL: ${{ steps.prepare.outputs.url }}
           BASE: ${{ github.event.repository.default_branch }}
+          WORKFLOW_CHANGED: ${{ steps.prepare.outputs.workflow_changed }}
         run: |
           set -euo pipefail
           title="Update Plainbooks to $LATEST"
+          note=""
+          if [ "$WORKFLOW_CHANGED" = "true" ]; then
+            note="This pull request does not change .github/workflows/update.yml, because GitHub does not let a workflow change workflow files. The new version of the file is at https://github.com/$UPSTREAM/blob/$LATEST/.github/workflows/update.yml. Copy it to your repository by hand."
+          fi
           body="$(cat <<EOF
           This pull request updates Plainbooks from $CURRENT to $LATEST.
 
@@ -105,6 +145,8 @@ jobs:
           Merge this pull request to update. Cloudflare then builds the app, applies the new database migrations, and deploys it.
 
           This workflow updates the pull request when a newer release comes out.
+
+          $note
           EOF
           )"
           existing="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
@@ -140,11 +182,11 @@ jobs:
 
           \`\`\`sh
           git remote add upstream https://github.com/$UPSTREAM.git
-          git fetch upstream tag $LATEST
-          git merge $LATEST
+          git fetch upstream tag $CURRENT tag $LATEST
+          git diff $CURRENT $LATEST -- . ':(exclude).github' | git apply -3
           \`\`\`
 
-          If Git says "refusing to merge unrelated histories", run \`git merge --allow-unrelated-histories $LATEST\`. Fix the conflicts. Keep your own values in \`wrangler.jsonc\`, for example the database ID. Then commit and push. Cloudflare deploys the push.
+          The last command applies the changes between the two releases to your files. Where you changed the same lines, Git adds conflict markers. Fix each conflict, and keep your own values in \`wrangler.jsonc\`, for example the database ID. Then commit and push. Cloudflare deploys the push.
 
           If GitHub Actions cannot open pull requests, go to Settings > Actions > General and select "Allow GitHub Actions to create and approve pull requests". Then run this workflow again.
 

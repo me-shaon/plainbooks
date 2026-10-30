@@ -100,7 +100,7 @@ The Worker has no URL until you add the custom domain. This is intentional.
 
 The Deploy button stores the values as Worker secrets. Each push to the new repository deploys again and keeps the secrets. To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
 
-The new repository is a copy, not a fork. Its update workflow opens a pull request for each new release. Read [Update Plainbooks](updating.md).
+The new repository is a copy, not a fork. To get a pull request for each new release, add the update workflow to it. Read [Add the update workflow](updating.md#add-the-update-workflow).
 
 ## 3. Create the first Owner
 
