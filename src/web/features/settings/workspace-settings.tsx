@@ -22,6 +22,7 @@ import { useTaxRates, useTemplates } from "../../lib/reference-data";
 import { useMe } from "../../lib/session";
 import { useUpdateWorkspace, useWorkspaceSettings } from "./queries";
 import { SaveBar } from "./settings-layout";
+import { UpdatesSection } from "./updates-section";
 
 const NONE = "__none";
 
@@ -37,11 +38,14 @@ export function WorkspaceSettingsPage() {
   if (settings.isPending) return <Skeleton className="h-96 w-full" />;
   if (settings.isError) return null;
   return (
-    <WorkspaceSettingsForm
-      key={JSON.stringify(settings.data)}
-      settings={settings.data}
-      readOnly={!isOwner}
-    />
+    <div className="flex flex-col gap-5">
+      <WorkspaceSettingsForm
+        key={JSON.stringify(settings.data)}
+        settings={settings.data}
+        readOnly={!isOwner}
+      />
+      {isOwner ? <UpdatesSection /> : null}
+    </div>
   );
 }
 

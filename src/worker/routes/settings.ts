@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
   brandKitInput,
   MAX_LOGO_BYTES,
+  updateSettingsInput,
   workspaceSettingsInput,
 } from "../../shared/schemas/settings";
 import { requireOwner } from "../auth/middleware";
@@ -15,7 +16,9 @@ import {
   getBrandKit,
   getWorkspaceSettings,
   isHomeCurrencyLocked,
+  loadWorkspace,
 } from "../services/settings";
+import { updateStatus } from "../services/updates";
 
 const { workspace, taxRates, templates } = schema;
 
@@ -135,4 +138,15 @@ export const settingsRoutes = new Hono<AppEnv>()
       .where(eq(workspace.id, 1));
     forgetWorkspace(c.var.db);
     return c.json(await getBrandKit(c.var.db));
+  })
+  /** The running version, the newest release, and the update check switch. Owner only. */
+  .get("/updates", requireOwner, async (c) => c.json(updateStatus(await loadWorkspace(c.var.db))))
+  .patch("/updates", requireOwner, async (c) => {
+    const { enabled } = await parseJson(c, updateSettingsInput);
+    await c.var.db
+      .update(workspace)
+      .set({ updateCheck: enabled, updatedAt: Date.now() })
+      .where(eq(workspace.id, 1));
+    forgetWorkspace(c.var.db);
+    return c.json(updateStatus(await loadWorkspace(c.var.db)));
   });

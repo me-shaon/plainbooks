@@ -1,5 +1,5 @@
 // The one place that picks real or fake adapters for the external services: the email
-// provider, Frankfurter, and Browser Run. The fakes exist for the end-to-end tests. They are
+// provider, Frankfurter, Browser Run, and the GitHub releases API. The fakes exist for the end-to-end tests. They are
 // used only when APP_ENV is exactly "development" and FAKE_EXTERNALS is "1".
 import type { AddressInput, ProviderAdapter } from "mailswitch";
 import { type FakeProvider, fakeProvider } from "mailswitch/testing";
@@ -26,6 +26,8 @@ export const FAKE_EMAIL_CREDENTIALS: Readonly<Record<string, string>> = { apiKey
 
 export interface FakeExternals {
   fxFetch: Fetcher;
+  /** The GitHub releases API. The fake has no releases. */
+  releaseFetch: Fetcher;
   /** The fake adapter for a catalog provider ID. It records each email in `fakeOutbox`. */
   emailAdapter: (providerId: string) => ProviderAdapter;
   pdfRenderer: PdfRenderer;
@@ -41,6 +43,7 @@ export function fakeExternals(env: ExternalsEnv): FakeExternals | null {
   if (!fakeExternalsEnabled(env)) return null;
   return {
     fxFetch: fakeFrankfurter,
+    releaseFetch: fakeReleases,
     emailAdapter: fakeEmailAdapter,
     pdfRenderer: fakePdfRenderer,
   };
@@ -51,6 +54,11 @@ const realFetch: Fetcher = (input, init) => fetch(input, init);
 /** The fetch for Frankfurter exchange rates. */
 export function fxFetcher(env: ExternalsEnv): Fetcher {
   return fakeExternals(env)?.fxFetch ?? realFetch;
+}
+
+/** The fetch for the GitHub releases API (src/worker/services/updates.ts). */
+export function releaseFetcher(env: ExternalsEnv): Fetcher {
+  return fakeExternals(env)?.releaseFetch ?? realFetch;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +72,9 @@ const fakeFrankfurter: Fetcher = async (input) => {
   const date = url.searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
   return Response.json({ date, base: from, quote: to, rate: FAKE_FX_RATE });
 };
+
+/** GitHub answers 404 for /releases/latest when a repository has no releases. */
+const fakeReleases: Fetcher = async () => Response.json({ message: "Not Found" }, { status: 404 });
 
 function addressText(input: AddressInput): string {
   return typeof input === "string" ? input : input.email;

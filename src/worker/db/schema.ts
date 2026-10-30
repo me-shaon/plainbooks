@@ -117,6 +117,14 @@ export const workspace = sqliteTable(
     /** The verified Resend sender address, for example "billing@studio.example". */
     emailFromAddress: text("email_from_address"),
     replyToEmail: text("reply_to_email"),
+    // Update check (src/worker/services/updates.ts)
+    /** When false, the scheduler does not ask GitHub for new releases. */
+    updateCheck: bool("update_check").notNull().default(true),
+    /** The newest release version seen on GitHub, for example "0.2.0". */
+    latestVersion: text("latest_version"),
+    latestReleaseUrl: text("latest_release_url"),
+    /** Epoch ms of the last successful check. */
+    updateCheckedAt: integer("update_checked_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

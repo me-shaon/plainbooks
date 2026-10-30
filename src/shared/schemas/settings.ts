@@ -260,3 +260,20 @@ export function reminderStepLabel(offsetDays: number): string {
   const unit = days === 1 ? "day" : "days";
   return offsetDays < 0 ? `${days} ${unit} before due` : `${days} ${unit} after due`;
 }
+
+/** PATCH /api/settings/updates. Owner only. */
+export const updateSettingsInput = z.object({ enabled: z.boolean() });
+export type UpdateSettingsInput = z.infer<typeof updateSettingsInput>;
+
+/** GET /api/settings/updates. Owner only. */
+export interface UpdateStatus {
+  /** When false, the app does not ask GitHub for new releases. */
+  enabled: boolean;
+  currentVersion: string;
+  /** The newest release on GitHub at the last check. Null before the first check. */
+  latestVersion: string | null;
+  releaseUrl: string | null;
+  updateAvailable: boolean;
+  /** Epoch ms of the last successful check. */
+  checkedAt: number | null;
+}

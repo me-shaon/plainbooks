@@ -12,6 +12,8 @@ import type {
   MemberLink,
   TeamMember,
   TeamMemberInput,
+  UpdateSettingsInput,
+  UpdateStatus,
   WorkspaceSettings,
   WorkspaceSettingsInput,
 } from "../../../shared/schemas/settings";
@@ -203,5 +205,23 @@ export function useSendTestEmail() {
         json: { role },
         toastOnError: false,
       }),
+  });
+}
+
+/** The running version and the newest release. Owner only. */
+export function useUpdateStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.settings.updates,
+    queryFn: () => api<UpdateStatus>("/settings/updates"),
+    enabled,
+  });
+}
+
+export function useSetUpdateCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateSettingsInput) =>
+      api<UpdateStatus>("/settings/updates", { method: "PATCH", json: input }),
+    onSuccess: (data) => queryClient.setQueryData(queryKeys.settings.updates, data),
   });
 }

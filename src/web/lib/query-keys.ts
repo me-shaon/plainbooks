@@ -77,6 +77,7 @@ export const queryKeys = {
     workspace: ["settings", "workspace"] as const,
     brandKit: ["settings", "brand-kit"] as const,
     email: ["settings", "email"] as const,
+    updates: ["settings", "updates"] as const,
   },
   team: {
     all: ["team"] as const,
