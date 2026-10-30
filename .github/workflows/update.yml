@@ -1,0 +1,154 @@
+# Keeps a copy of Plainbooks up to date. The Deploy to Cloudflare button copies this file
+# into your repository. Once a week it compares your version with the newest release of
+# me-shaon/plainbooks. When a release is newer, it opens a pull request with the update.
+# Merge the pull request, and Cloudflare deploys the new version.
+# When it cannot make the pull request, it opens an issue with the manual steps.
+# See docs/updating.md.
+name: Update Plainbooks
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: update-plainbooks
+
+jobs:
+  update:
+    # The upstream repository publishes the releases. It has nothing to update.
+    if: github.repository != 'me-shaon/plainbooks'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: me-shaon/plainbooks
+      BRANCH: plainbooks-update
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Prepare the update
+        id: prepare
+        run: |
+          set -euo pipefail
+          current="v$(jq -r .version package.json)"
+          if ! latest="$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName)"; then
+            echo "$UPSTREAM has no release yet."
+            exit 0
+          fi
+          newest="$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)"
+          if [ "$latest" = "$current" ] || [ "$newest" != "$latest" ]; then
+            echo "This copy runs $current. That is the newest version."
+            exit 0
+          fi
+          {
+            echo "current=$current"
+            echo "latest=$latest"
+            echo "url=https://github.com/$UPSTREAM/releases/tag/$latest"
+          } >> "$GITHUB_OUTPUT"
+
+          remote="https://github.com/$UPSTREAM.git"
+          git fetch --no-tags "$remote" "+refs/tags/$latest:refs/upstream/latest"
+          theirs="$(git rev-parse "refs/upstream/latest^{commit}")"
+
+          # The merge base is the release that this copy runs. Then the merge keeps the
+          # edits that Cloudflare and you made to this copy, for example the database ID
+          # in wrangler.jsonc.
+          if git fetch --no-tags "$remote" "+refs/tags/$current:refs/upstream/current"; then
+            base="$(git rev-parse "refs/upstream/current^{commit}")"
+          elif base="$(git merge-base HEAD "$theirs")"; then
+            :
+          else
+            echo "reason=Git cannot find the release that this copy started from." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! tree="$(git merge-tree --write-tree --merge-base="$base" HEAD "$theirs")"; then
+            echo "reason=The update changes lines that this copy also changed." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # One commit on top of this copy, with no upstream history. GitHub refuses a push
+          # from Actions that adds commits that change a workflow file, and the upstream
+          # history has such commits. The next update finds its base by the version tag.
+          commit="$(git commit-tree "$tree" -p HEAD -m "Update Plainbooks to $latest")"
+          if ! git push --force origin "$commit:refs/heads/$BRANCH"; then
+            echo "reason=GitHub Actions cannot push the update branch. This happens when the update changes a workflow file." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pull request
+        id: pr
+        if: steps.prepare.outputs.pushed == 'true'
+        env:
+          LATEST: ${{ steps.prepare.outputs.latest }}
+          CURRENT: ${{ steps.prepare.outputs.current }}
+          URL: ${{ steps.prepare.outputs.url }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          title="Update Plainbooks to $LATEST"
+          body="$(cat <<EOF
+          This pull request updates Plainbooks from $CURRENT to $LATEST.
+
+          Read what changed: $URL
+
+          Merge this pull request to update. Cloudflare then builds the app, applies the new database migrations, and deploys it.
+
+          This workflow updates the pull request when a newer release comes out.
+          EOF
+          )"
+          existing="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body "$body"
+          elif ! gh pr create --head "$BRANCH" --base "$BASE" --title "$title" --body "$body"; then
+            echo "reason=GitHub Actions cannot open pull requests in this repository. The branch $BRANCH has the update." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open an issue with the manual steps
+        if: steps.prepare.outputs.reason != '' || steps.pr.outputs.reason != ''
+        env:
+          LATEST: ${{ steps.prepare.outputs.latest }}
+          CURRENT: ${{ steps.prepare.outputs.current }}
+          URL: ${{ steps.prepare.outputs.url }}
+          REASON: ${{ steps.prepare.outputs.reason || steps.pr.outputs.reason }}
+        run: |
+          set -euo pipefail
+          title="Plainbooks $LATEST is available"
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing already tells about $LATEST."
+            exit 0
+          fi
+          body="$(cat <<EOF
+          This copy runs Plainbooks $CURRENT. The newest release is $LATEST.
+
+          Read what changed: $URL
+
+          The update workflow could not open a pull request. $REASON
+
+          To update by hand, run these commands in a clone of this repository:
+
+          \`\`\`sh
+          git remote add upstream https://github.com/$UPSTREAM.git
+          git fetch upstream tag $LATEST
+          git merge $LATEST
+          \`\`\`
+
+          If Git says "refusing to merge unrelated histories", run \`git merge --allow-unrelated-histories $LATEST\`. Fix the conflicts. Keep your own values in \`wrangler.jsonc\`, for example the database ID. Then commit and push. Cloudflare deploys the push.
+
+          If GitHub Actions cannot open pull requests, go to Settings > Actions > General and select "Allow GitHub Actions to create and approve pull requests". Then run this workflow again.
+
+          Read docs/updating.md for more help.
+          EOF
+          )"
+          gh issue create --title "$title" --body "$body"

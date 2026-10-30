@@ -100,6 +100,8 @@ The Worker has no URL until you add the custom domain. This is intentional.
 
 The Deploy button stores the values as Worker secrets. Each push to the new repository deploys again and keeps the secrets. To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
 
+The new repository is a copy, not a fork. Its update workflow opens a pull request for each new release. Read [Update Plainbooks](updating.md).
+
 ## 3. Create the first Owner
 
 1. Open `https://invoices.example.com/setup`. Until an Owner exists, every page of the app opens the setup screen.

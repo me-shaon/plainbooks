@@ -71,6 +71,21 @@ Common types are `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, and `chore`.
 
 A maintainer reviews each pull request. You may get requests for changes before the merge.
 
+## Releases
+
+A maintainer publishes each release. Copies of the app learn about a release from its tag. The in-app update check and the update workflow (`.github/workflows/update.yml`) both read the newest release.
+
+1. Set `version` in `package.json` to the new version, for example `0.2.0`. Use [semantic versions](https://semver.org/).
+2. Commit the change with the message `chore: release v0.2.0`, and push it to `main`.
+3. Tag the commit and push the tag:
+
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The release workflow (`.github/workflows/release.yml`) checks that the tag matches `package.json`. Then it publishes the release with notes from the merged pull requests. Do not tag a pre-release with this format. The workflows read only `vX.Y.Z` tags.
+
 ## Write docs
 
 Use short, plain sentences. Use one term for one thing. Write instructions in the imperative, for example "Run `pnpm dev`".

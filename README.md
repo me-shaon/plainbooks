@@ -118,7 +118,7 @@ Local email, exchange rates, and PDFs call the real services. To send real email
 
 You can deploy in two ways:
 
-- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for `SETUP_TOKEN`, `AUTH_SECRET`, `ENCRYPTION_KEY`, and `APP_URL`, and stores them as Worker secrets. Make each random value with `openssl rand -base64 32`. To change a secret later, edit it in the dashboard, not in `wrangler.jsonc`. Each push to your copy deploys again and keeps the secrets.
+- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for `SETUP_TOKEN`, `AUTH_SECRET`, `ENCRYPTION_KEY`, and `APP_URL`, and stores them as Worker secrets. Make each random value with `openssl rand -base64 32`. To change a secret later, edit it in the dashboard, not in `wrangler.jsonc`. Each push to your copy deploys again and keeps the secrets. The copy is not a fork. A weekly workflow in the copy opens a pull request for each new release.
 - **The script.** Run `pnpm run ship` on your computer. The first run asks for your host, creates the D1 database and the R2 bucket, and deploys. It makes the random secrets for you and shows the setup token one time. Later runs only build, migrate, and deploy.
 
 After the deploy, open `/setup` on your host and enter the setup token to create the first Owner. Then set up email in **Settings** > **Email**. Read [docs/setup.md](docs/setup.md) for each step.
@@ -129,7 +129,8 @@ On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command fo
 
 | Task | How |
 | --- | --- |
-| Update the app | Pull the new version, then run `pnpm run ship`. If you used the button, push to your copy. Database migrations run as part of the deploy. |
+| Update the app | If you used the button, merge the **Update Plainbooks** pull request in your copy. If you used the script, pull the new release, then run `pnpm run ship`. Database migrations run as part of the deploy. Read [docs/updating.md](docs/updating.md). |
+| Learn about new releases | The Owner gets a notification, and **Settings** > **General** shows the new version. You can also watch the releases on GitHub. Read [How you learn about a new release](docs/updating.md#how-you-learn-about-a-new-release). |
 | Upgrade from the Cloudflare Access version | Read [Upgrade from the Cloudflare Access version](docs/setup.md#upgrade-from-the-cloudflare-access-version). |
 | Back up the data | Run `pnpm wrangler d1 export plainbooks --remote --output=backup-$(date +%F).sql`. D1 Time Travel also keeps 7 days of history. |
 | Add a team member | Add the email in **Settings** > **Team**. The app creates an invite link. |
