@@ -89,7 +89,7 @@ The Worker runs only on the custom domain. The config turns off the `workers.dev
 2. Select the button.
 3. Connect your GitHub or GitLab account. Cloudflare copies this repository to a new repository in your account.
 4. Keep the new D1 database and the new R2 bucket that Cloudflare suggests.
-5. Set `SETUP_TOKEN` to the first random value. Keep this value for step 3.
+5. Set `SETUP_TOKEN` to the first random value. Save this value now, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
 6. Set `AUTH_SECRET` to the second random value.
 7. Set `ENCRYPTION_KEY` to the third random value.
 8. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash.
@@ -341,6 +341,17 @@ Keep the file in a safe place. It contains client data. D1 Time Travel also keep
 ### The setup screen says that setup is turned off
 
 The `SETUP_TOKEN` secret is missing or has fewer than 32 characters. Set a new value with 32 characters or more, then reload the page.
+
+### You forgot the setup token
+
+Cloudflare does not show a secret after you save it. Set a new value instead:
+
+1. Make a new value with `openssl rand -base64 32`.
+2. In the Cloudflare dashboard, open the Worker, then go to **Settings** > **Variables and Secrets**.
+3. Edit `SETUP_TOKEN`, paste the new value, and select **Deploy**.
+4. Reload `/setup` and enter the new value.
+
+If you deployed with the script, run `pnpm wrangler secret put SETUP_TOKEN` and paste the new value instead.
 
 ### The setup screen does not accept the token
 

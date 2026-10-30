@@ -17,6 +17,9 @@ import type { Me } from "../../lib/session";
 import { setupErrorMessage } from "../../lib/setup";
 import { AuthCard, FormAlert } from "./auth-card";
 
+const FORGOT_TOKEN_HELP =
+  "https://github.com/me-shaon/plainbooks/blob/main/docs/setup.md#you-forgot-the-setup-token";
+
 /** The first-run screen: claims a fresh deploy with the setup token and creates the Owner. */
 export function SetupPage() {
   const queryClient = useQueryClient();
@@ -89,6 +92,21 @@ export function SetupPage() {
           autoFocus
           value={values.token}
           onChange={set("token")}
+          description={
+            <>
+              Forgot it? Cloudflare does not show a secret again. Set a new <code>SETUP_TOKEN</code>{" "}
+              on the Worker in the Cloudflare dashboard, under Settings &gt; Variables and Secrets.
+              Then use the new value.{" "}
+              <a
+                href={FORGOT_TOKEN_HELP}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                Read the steps
+              </a>
+            </>
+          }
           {...fieldError(errors, "token")}
         />
         <TextField

@@ -59,6 +59,20 @@ async function fillSetup(overrides: Partial<Record<string, string>> = {}) {
 }
 
 describe("SetupPage", () => {
+  it("tells how to replace a forgotten setup token", async () => {
+    stubFetch(200, {});
+    await renderPage(SetupPage);
+    const field = screen.getByLabelText(/Setup token/);
+    expect(field.getAttribute("aria-describedby")).toBeTruthy();
+    const description = document.getElementById(field.getAttribute("aria-describedby") ?? "");
+    expect(description?.textContent).toMatch(
+      /^Forgot it\? Cloudflare does not show a secret again\./,
+    );
+    expect(screen.getByRole("link", { name: "Read the steps" }).getAttribute("href")).toMatch(
+      /docs\/setup\.md#you-forgot-the-setup-token$/,
+    );
+  });
+
   it("labels every field and sets the autocomplete values", async () => {
     await renderPage(SetupPage);
     expect(screen.getByLabelText(/^Email/).getAttribute("autocomplete")).toBe("email");
