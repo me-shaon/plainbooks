@@ -434,7 +434,12 @@ function RecipientsEditor({
 }) {
   return (
     <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-      <legend className="mb-1.5 p-0 text-[13px] font-medium text-ink">Recipients</legend>
+      <legend className="mb-1.5 p-0 text-[13px] font-medium text-ink">
+        Recipients
+        <span aria-hidden="true" className="ml-0.5 text-danger">
+          *
+        </span>
+      </legend>
       {recipients.map((email, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are edited in place
         <div key={index} className="flex items-start gap-2">

@@ -127,6 +127,7 @@ export function WorkspaceSettingsForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="Workspace name"
+            isRequired
             className="sm:col-span-2"
             isDisabled={disabled}
             value={values.name}
@@ -135,6 +136,7 @@ export function WorkspaceSettingsForm({
           />
           <ComboBox
             label="Home currency"
+            isRequired
             isDisabled={disabled || settings.homeCurrencyLocked}
             defaultItems={CURRENCY_CODES.map((code) => ({ id: code }))}
             value={values.homeCurrency}
@@ -150,6 +152,7 @@ export function WorkspaceSettingsForm({
           </ComboBox>
           <ComboBox
             label="Time zone"
+            isRequired
             isDisabled={disabled}
             defaultItems={zones.map((zone) => ({ id: zone }))}
             value={values.timezone}
@@ -185,6 +188,7 @@ export function WorkspaceSettingsForm({
           />
           <NumberField
             label="Digits"
+            isRequired
             isDisabled={disabled}
             minValue={1}
             maxValue={8}
@@ -201,6 +205,7 @@ export function WorkspaceSettingsForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <NumberField
             label="Payment terms (days)"
+            isRequired
             isDisabled={disabled}
             minValue={0}
             maxValue={365}
@@ -211,6 +216,7 @@ export function WorkspaceSettingsForm({
           />
           <NumberField
             label="Quotes valid for (days)"
+            isRequired
             isDisabled={disabled}
             minValue={1}
             maxValue={365}

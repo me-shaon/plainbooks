@@ -87,6 +87,7 @@ function PaymentForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <MoneyField
           label={`Amount (${doc.currency})`}
+          isRequired
           currency={doc.currency}
           autoFocus
           value={amount}
@@ -96,6 +97,7 @@ function PaymentForm({
         />
         <IsoDatePicker
           label="Paid on"
+          isRequired
           value={paidOn}
           onChange={setPaidOn}
           isInvalid={Boolean(errors.paidOn)}

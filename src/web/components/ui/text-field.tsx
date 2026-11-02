@@ -23,7 +23,7 @@ export function TextField({
 }: TextFieldProps) {
   return (
     <RACTextField {...props} className={composeTailwind(className, fieldStack)}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Label isRequired={props.isRequired}>{label}</Label> : null}
       <Input placeholder={placeholder} className={cn(inputBox, inputClassName)} />
       {description ? <Description>{description}</Description> : null}
       <FieldError>{errorMessage}</FieldError>
@@ -49,7 +49,7 @@ export function TextArea({
 }: TextAreaProps) {
   return (
     <RACTextField {...props} className={composeTailwind(className, fieldStack)}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Label isRequired={props.isRequired}>{label}</Label> : null}
       <RACTextArea
         placeholder={placeholder}
         rows={rows}

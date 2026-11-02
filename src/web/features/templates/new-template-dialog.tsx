@@ -180,6 +180,7 @@ export function NewTemplateDialog({
             <div className="flex flex-col gap-3 border-t border-row-border pt-4 sm:flex-row sm:items-end">
               <TextField
                 label="Name"
+                isRequired
                 className="sm:flex-1"
                 placeholder={preset?.name ?? "Agency standard"}
                 description="Leave it empty to use the design's name."

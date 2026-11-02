@@ -35,7 +35,7 @@ export function NumberField({
 }: NumberFieldProps) {
   return (
     <RACNumberField {...props} className={composeTailwind(className, fieldStack)}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Label isRequired={props.isRequired}>{label}</Label> : null}
       <Group className={cn(inputBox, "flex items-center gap-1 px-0 pr-1")}>
         <Input
           placeholder={placeholder}

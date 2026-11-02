@@ -32,7 +32,7 @@ export function ComboBox<T extends object>({
 }: ComboBoxProps<T>) {
   return (
     <RACComboBox {...props} items={items} className={composeTailwind(className, fieldStack)}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Label isRequired={props.isRequired}>{label}</Label> : null}
       <Group className={cn(inputBox, "flex items-center px-0")}>
         <Input
           placeholder={placeholder}

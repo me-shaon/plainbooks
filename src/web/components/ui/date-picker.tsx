@@ -82,7 +82,7 @@ export function DatePicker<T extends DateValue>({
 }: DatePickerProps<T>) {
   return (
     <RACDatePicker {...props} className={composeTailwind(className, fieldStack)}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Label isRequired={props.isRequired}>{label}</Label> : null}
       <Group className={cn(inputBox, "flex items-center pr-1")}>
         <DateInput className="figure flex flex-1 text-[13px]">
           {(segment) => (

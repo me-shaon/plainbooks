@@ -9,12 +9,24 @@ import {
 } from "react-aria-components";
 import { cn, composeTailwind } from "./utils";
 
-export function Label({ className, ...props }: LabelProps) {
+export interface FieldLabelProps extends LabelProps {
+  /** Shows a red asterisk. Screen readers get "required" from the field instead. */
+  isRequired?: boolean;
+}
+
+export function Label({ className, isRequired, children, ...props }: FieldLabelProps) {
   return (
     <RACLabel
       {...props}
       className={cn("w-fit text-[13px] font-medium text-ink cursor-default", className)}
-    />
+    >
+      {children}
+      {isRequired ? (
+        <span aria-hidden="true" className="ml-0.5 text-danger">
+          *
+        </span>
+      ) : null}
+    </RACLabel>
   );
 }
 

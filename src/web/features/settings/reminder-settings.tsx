@@ -140,6 +140,7 @@ function ReminderSettingsForm({
               <li key={step.key} className="flex items-end gap-3">
                 <NumberField
                   label={`Step ${index + 1}`}
+                  isRequired
                   className="w-32"
                   isDisabled={readOnly}
                   step={1}

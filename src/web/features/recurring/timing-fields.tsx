@@ -71,6 +71,7 @@ export function TimingFields({
       </Select>
       <IsoDatePicker
         label="First issue date"
+        isRequired
         value={values.startDate}
         onChange={(v) => set("startDate", v)}
         description="Days 29 to 31 fall back to the last day of shorter months."

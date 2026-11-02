@@ -8,6 +8,7 @@ import { Button } from "./button";
 import { Dialog, DialogTrigger, Modal } from "./dialog";
 import { Pill } from "./pill";
 import { contrastRatio, STATUS_LABELS, STATUS_TOKENS, STATUSES } from "./status";
+import { TextField } from "./text-field";
 
 // Vitest does not load CSS in tests, so read the stylesheet from disk.
 const styles = readFileSync(resolve(import.meta.dirname, "../../styles.css"), "utf8");
@@ -69,6 +70,20 @@ describe("Dialog", () => {
 
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+});
+
+describe("TextField", () => {
+  it("marks a required field with an asterisk that stays out of the accessible name", () => {
+    render(<TextField label="Client name" isRequired validationBehavior="aria" />);
+    const input = screen.getByRole("textbox", { name: "Client name" });
+    expect(input.getAttribute("aria-required")).toBe("true");
+    expect(screen.getByText("*").getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("shows no asterisk on an optional field", () => {
+    render(<TextField label="Tax ID" />);
+    expect(screen.queryByText("*")).toBeNull();
   });
 });
 

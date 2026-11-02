@@ -38,7 +38,7 @@ export function Select<T extends object>({
 }: SelectProps<T>) {
   return (
     <RACSelect {...props} className={composeTailwind(className, fieldStack)}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Label isRequired={props.isRequired}>{label}</Label> : null}
       <RACButton
         className={cn(
           inputBox,

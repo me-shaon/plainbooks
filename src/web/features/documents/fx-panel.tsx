@@ -97,6 +97,7 @@ export function FxPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField
             label={`Rate (1 ${currency} in ${homeCurrency})`}
+            isRequired
             description="Manual"
             inputMode="decimal"
             isDisabled={isDisabled}
@@ -108,6 +109,7 @@ export function FxPanel({
           />
           <IsoDatePicker
             label="Rate date"
+            isRequired
             isDisabled={isDisabled}
             value={manual.date}
             onChange={(date) => onManualChange({ ...manual, date: date ?? issueDate })}
