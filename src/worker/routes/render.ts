@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { DocumentSnapshot } from "../../shared/schemas/document";
+import { type DocumentSnapshot, documentCreateInput } from "../../shared/schemas/document";
 import { renderPreviewInput } from "../../shared/schemas/template";
 import type { AppEnv } from "../env";
 import { parseJson } from "../errors";
@@ -8,6 +8,7 @@ import { cspNonce, documentHeaders } from "../render/http";
 import { sampleSnapshot } from "../render/sample";
 import { listCustomFields } from "../services/custom-fields";
 import {
+  buildPreviewSnapshot,
   buildSnapshot,
   getRevision,
   loadDocument,
@@ -22,8 +23,8 @@ function html(body: string, nonce: string): Response {
 
 /**
  * In-app document previews, mounted at /render. `sessionAuth` covers every route. All
- * three render from a snapshot: a stored revision, a transient draft snapshot, or the
- * sample invoice.
+ * render from a snapshot: a stored revision, a transient draft snapshot, unsaved editor
+ * values, or the sample invoice.
  */
 export const renderRoutes = new Hono<AppEnv>()
   .get("/draft/:documentId", async (c) => {
@@ -36,6 +37,19 @@ export const renderRoutes = new Hono<AppEnv>()
     const snapshot = await buildSnapshot(db, doc.id, { now });
     const nonce = cspNonce();
     const state = renderStateOf(doc, ws.timezone, now);
+    return html(renderDocumentHtml(snapshot, { mode: "page", state, nonce }), nonce);
+  })
+  .post("/document-preview", async (c) => {
+    const db = c.var.db;
+    const now = Date.now();
+    const data = await parseJson(c, documentCreateInput);
+    const documentId = c.req.query("documentId") || undefined;
+    const [ws, snapshot] = await Promise.all([
+      loadWorkspace(db),
+      buildPreviewSnapshot(db, data, { now, documentId }),
+    ]);
+    const nonce = cspNonce();
+    const state = previewState(ws.timezone, now);
     return html(renderDocumentHtml(snapshot, { mode: "page", state, nonce }), nonce);
   })
   .post("/preview", async (c) => {

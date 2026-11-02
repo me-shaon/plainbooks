@@ -4,8 +4,8 @@ export const DOCUMENT_KINDS = ["invoice", "quote"] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 /**
- * Stored invoice statuses. "finalized" means a number is allocated but the send did not
- * complete ("Ready to send"). "Overdue" is derived from the due date and the balance, and
+ * Stored invoice statuses. "finalized" means a number is allocated but no email went out
+ * ("Ready to send"): the user finalized it to send it manually, or the send failed. "Overdue" is derived from the due date and the balance, and
  * the scheduler caches it in `documents.is_overdue` for list filters.
  */
 export const INVOICE_STATUSES = [

@@ -383,6 +383,38 @@ describe("/render routes", () => {
     expect(html).toContain("PO-5521");
   });
 
+  it("renders unsaved editor values and saves nothing", async () => {
+    const client = await seedClient();
+    const before = await env.DB.prepare("SELECT count(*) AS n FROM documents").first<{
+      n: number;
+    }>();
+    const res = await apiFetch("/render/document-preview", {
+      as: MEMBER,
+      method: "POST",
+      json: {
+        kind: "invoice",
+        clientId: client.id,
+        lines: [{ description: "Unsaved design work", unitPrice: 12500 }],
+        notes: "Thanks for the work",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("Unsaved design work");
+    expect(html).toContain("Thanks for the work");
+    expect(html).toContain(">Draft<");
+    const after = await env.DB.prepare("SELECT count(*) AS n FROM documents").first<{
+      n: number;
+    }>();
+    expect(after?.n).toBe(before?.n);
+  });
+
+  it("rejects a document preview without a session", async () => {
+    const res = await apiFetch("/render/document-preview", { method: "POST", json: {} });
+    expect(res.status).toBe(401);
+  });
+
   it("escapes a client name with a script tag", async () => {
     const client = await seedClient({ name: "<script>alert(1)</script>" });
     const id = await sentInvoice({ clientId: client.id });

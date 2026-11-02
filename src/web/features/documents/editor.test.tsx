@@ -17,6 +17,7 @@ import type { DocumentDetail, SendPreview } from "../../../shared/schemas/docume
 import type { TaxRate } from "../../../shared/schemas/tax-rate";
 import { Toaster, toastQueue } from "../../components/ui/toast";
 import { formatMoney } from "../../lib/format";
+import { documentActions } from "./document-detail-page";
 import { DocumentEditor, type DocumentEditorProps } from "./document-editor";
 import { EditDocumentPage } from "./editor-page";
 import { emptyValues, newLine } from "./editor-state";
@@ -257,6 +258,58 @@ describe("DocumentEditor", () => {
     await user.click(screen.getByRole("button", { name: /Reminders/ }));
     const option = await screen.findByRole("option", { name: "Auto-send reminders" });
     expect(option.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("saves with the finalize intent from Save and finalize", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor();
+    await user.click(screen.getByRole("button", { name: "Save and finalize" }));
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize");
+  });
+
+  it("offers no Save and finalize on a quote", () => {
+    const values = emptyValues("quote", "USD");
+    values.clientId = "c1";
+    renderEditor({ initialValues: values });
+    expect(screen.queryByRole("button", { name: "Save and finalize" })).toBeNull();
+  });
+
+  it("previews the unsaved values without saving", async () => {
+    const user = userEvent.setup();
+    const fetchFn = stubFetch((url, init) =>
+      url.pathname === "/render/document-preview" && init?.method === "POST"
+        ? new Response("<html><body>Rendered</body></html>", {
+            headers: { "content-type": "text/html" },
+          })
+        : undefined,
+    );
+    const { onSave } = renderEditor();
+    await user.type(field(/^Description.*line 1/), "Design");
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+
+    const frame = await screen.findByTitle("New invoice preview");
+    expect(frame.getAttribute("srcdoc")).toContain("Rendered");
+    const call = fetchFn.mock.calls.find(([input]) =>
+      String(input).startsWith("/render/document-preview"),
+    );
+    const init = call?.[1];
+    const body = JSON.parse(String(init?.body)) as { lines: { description: string }[] };
+    expect(body.lines[0]?.description).toBe("Design");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe("documentActions", () => {
+  it("lets a draft invoice be finalized, but not a quote or a sent invoice", () => {
+    const draft = { status: "draft", number: null, displayStatus: "draft" } as const;
+    expect(documentActions(sentInvoice({ ...draft })).canFinalize).toBe(true);
+    expect(documentActions(sentInvoice({ ...draft, kind: "quote" })).canFinalize).toBe(false);
+    expect(documentActions(sentInvoice()).canFinalize).toBe(false);
+  });
+
+  it("labels the send of a finalized invoice Send, not Retry send", () => {
+    const ready = sentInvoice({ status: "finalized", displayStatus: "finalized", sentAt: null });
+    expect(documentActions(ready).sendLabel).toBe("Send");
   });
 });
 

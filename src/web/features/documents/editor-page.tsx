@@ -29,6 +29,7 @@ import {
 import { documentPath } from "./labels";
 import {
   documentTitle,
+  finalizeDocument,
   kindLabel,
   useCreateDocument,
   useDocument,
@@ -156,6 +157,7 @@ function EditorContainer({
   initialValues: EditorValues;
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isOwner } = useMe();
   const settings = useWorkspaceSettings();
   const clients = useClients({ archived: "active" });
@@ -202,7 +204,20 @@ function EditorContainer({
       const input = toDocumentInput(values);
       const detail =
         mode === "create" ? await create.mutateAsync(input) : await update.mutateAsync(input);
-      toast({ title: mode === "create" ? "Draft saved" : "Changes saved", tone: "success" });
+      if (intent === "finalize") {
+        try {
+          const ready = await finalizeDocument(queryClient, detail.id);
+          toast({
+            title: `${documentTitle(ready)} is ready`,
+            description: "Download the PDF, or send it by email.",
+            tone: "success",
+          });
+        } catch {
+          // The API call already showed why. The draft is saved, so open it.
+        }
+      } else {
+        toast({ title: mode === "create" ? "Draft saved" : "Changes saved", tone: "success" });
+      }
       void navigate({
         to: detailPath,
         params: { documentId: detail.id },
@@ -233,6 +248,7 @@ function EditorContainer({
     <>
       <DocumentEditor
         mode={mode}
+        documentId={document?.id}
         title={title}
         initialValues={initialValues}
         clients={clients.data ?? []}

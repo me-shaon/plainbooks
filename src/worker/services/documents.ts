@@ -853,6 +853,76 @@ export async function buildSnapshot(
   });
 }
 
+/**
+ * Builds a snapshot from unsaved editor values, so the editor can show a preview before
+ * the user saves. Nothing is written. `documentId` is the draft being edited, if any.
+ */
+export async function buildPreviewSnapshot(
+  db: Db,
+  data: DocumentCreateData,
+  opts: { now: number; documentId?: string },
+): Promise<DocumentSnapshot> {
+  const ws = await loadWorkspace(db);
+  const client = await assertClient(db, data.clientId);
+  const currency = data.currency ?? client.defaultCurrency;
+  const doc: Document = {
+    id: opts.documentId ?? crypto.randomUUID(),
+    kind: data.kind,
+    status: "draft",
+    number: null,
+    clientId: data.clientId,
+    currency,
+    issueDate: data.issueDate,
+    dueDate: data.kind === "invoice" ? data.dueDate : null,
+    expiryDate: data.kind === "quote" ? data.expiryDate : null,
+    paymentTermsDays: data.paymentTermsDays,
+    ...discountColumns(data.discount),
+    notes: data.notes,
+    footerText: data.footerText,
+    templateId: data.templateId,
+    reminderMode: data.reminderMode,
+    ...fxColumns(data.fxRate),
+    publicToken: null,
+    currentRevisionId: null,
+    revisionCount: 0,
+    subtotal: 0,
+    discountTotal: 0,
+    taxTotal: 0,
+    total: 0,
+    amountPaid: 0,
+    isOverdue: false,
+    sourceQuoteId: null,
+    convertedInvoiceId: null,
+    recurringScheduleId: null,
+    recurringPeriodId: null,
+    decidedAt: null,
+    decisionComment: null,
+    finalizedAt: null,
+    sentAt: null,
+    paidAt: null,
+    voidedAt: null,
+    createdBy: null,
+    createdAt: opts.now,
+    updatedAt: opts.now,
+  };
+  const issueDate = doc.issueDate ?? workspaceToday(ws, opts.now);
+  let fx = storedFx(doc);
+  if (!fx && doc.currency === ws.homeCurrency) fx = manualIdentity(issueDate);
+  return assembleSnapshot(db, {
+    ws,
+    doc,
+    lines: data.lines,
+    number: null,
+    revisionNumber: 0,
+    issueDate,
+    dueDate: dueDateFor(ws, doc, issueDate, await clientTerms(db, doc.clientId)),
+    expiryDate: expiryDateFor(ws, doc, issueDate),
+    fx,
+    now: opts.now,
+    documentFieldValues: data.customFields,
+  });
+}
+
 function manualIdentity(date: string): FxRate {
   return {
     status: "ok",

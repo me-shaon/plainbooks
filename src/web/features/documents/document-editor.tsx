@@ -1,3 +1,4 @@
+import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { REMINDER_MODE_SETTINGS, type ReminderModeSetting } from "../../../shared/domain";
 import { CURRENCY_CODES, normalizePercent } from "../../../shared/money";
@@ -21,17 +22,20 @@ import { Section } from "../../components/ui/section";
 import { Segment, SegmentedControl } from "../../components/ui/segmented-control";
 import { Select } from "../../components/ui/select";
 import { TextArea, TextField } from "../../components/ui/text-field";
+import { toastError } from "../../lib/api";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { formatDate } from "../../lib/format";
 import { changeCurrency, type EditorValues, editorTotals, toDocumentInput } from "./editor-state";
 import { FxPanel } from "./fx-panel";
 import { LineItems } from "./line-items";
+import { DocumentPreviewDialog } from "./preview-dialog";
+import { fetchDocumentPreview } from "./queries";
 import { TotalsPanel } from "./totals-panel";
 
 const NONE = "__none";
 
 export type EditorMode = "create" | "edit" | "revise";
-export type SaveIntent = "save" | "send" | "revise";
+export type SaveIntent = "save" | "finalize" | "send" | "revise";
 
 export interface WorkspaceDefaults {
   homeCurrency: string;
@@ -43,6 +47,8 @@ export interface WorkspaceDefaults {
 
 export interface DocumentEditorProps {
   mode: EditorMode;
+  /** The draft or document being edited. Not set when creating. */
+  documentId?: string;
   initialValues: EditorValues;
   /** The page title, for example "New invoice" or "Revise invoice INV-0042". */
   title: string;
@@ -75,6 +81,7 @@ type ClientDefaults = Pick<
  */
 export function DocumentEditor({
   mode,
+  documentId,
   initialValues,
   title,
   clients,
@@ -92,6 +99,8 @@ export function DocumentEditor({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState<SaveIntent | null>(null);
   const [client, setClient] = useState<ClientDefaults | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const set = <K extends keyof EditorValues>(key: K, value: EditorValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
@@ -159,6 +168,21 @@ export function DocumentEditor({
     }
   };
 
+  const preview = async () => {
+    if (!values.clientId) {
+      setErrors((current) => ({ ...current, clientId: "Choose a client to see the preview" }));
+      return;
+    }
+    setPreviewing(true);
+    try {
+      setPreviewHtml(await fetchDocumentPreview(toDocumentInput(values), documentId));
+    } catch (err) {
+      toastError(err, "The preview did not load");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const clientOptions = clients.filter((c) => c.archivedAt === null || c.id === values.clientId);
   const termsDefault = client?.paymentTermsDays ?? defaults.paymentTermsDays;
   const templateDefaultId = client?.templateId ?? defaults.templateId;
@@ -189,6 +213,15 @@ export function DocumentEditor({
             <Button variant="secondary" onPress={onCancel}>
               Cancel
             </Button>
+            <Button
+              variant="secondary"
+              isPending={previewing}
+              isDisabled={pending !== null}
+              onPress={() => void preview()}
+            >
+              <Eye className="size-4" aria-hidden="true" />
+              Preview
+            </Button>
             {mode === "revise" ? (
               <Button isPending={pending === "revise"} onPress={() => void save("revise")}>
                 {saveLabel}
@@ -203,6 +236,16 @@ export function DocumentEditor({
                 >
                   {saveLabel}
                 </Button>
+                {isInvoice ? (
+                  <Button
+                    variant="secondary"
+                    isPending={pending === "finalize"}
+                    isDisabled={pending !== null}
+                    onPress={() => void save("finalize")}
+                  >
+                    Save and finalize
+                  </Button>
+                ) : null}
                 <Button
                   isPending={pending === "send"}
                   isDisabled={pending !== null}
@@ -455,6 +498,12 @@ export function DocumentEditor({
           </Section>
         </div>
       </div>
+      <DocumentPreviewDialog
+        isOpen={previewHtml !== null}
+        onOpenChange={(open) => !open && setPreviewHtml(null)}
+        html={previewHtml}
+        title={`${title} preview`}
+      />
     </>
   );
 }

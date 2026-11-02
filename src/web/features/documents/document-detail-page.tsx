@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   Ellipsis,
+  FileCheck,
   FileOutput,
   Link2,
   Link2Off,
@@ -48,7 +49,7 @@ import {
 import { SendDialog } from "./send-dialog";
 import { TotalsPanel } from "./totals-panel";
 
-type Confirm = "mark-sent" | "void" | "write-off" | "delete" | "reset-link" | null;
+type Confirm = "finalize" | "mark-sent" | "void" | "write-off" | "delete" | "reset-link" | null;
 
 /** What a document allows in its current state. */
 export function documentActions(doc: DocumentDetail) {
@@ -61,10 +62,12 @@ export function documentActions(doc: DocumentDetail) {
     isReady,
     canEdit: isDraft,
     canDelete: isDraft,
+    // Finalizing gives an invoice its number and PDF without an email.
+    canFinalize: invoice && isDraft,
     canSend: invoice
       ? ["draft", "finalized", "sent", "partially_paid"].includes(s)
       : s === "draft" || s === "sent",
-    sendLabel: isDraft ? "Send" : isReady ? "Retry send" : "Send again",
+    sendLabel: isDraft || isReady ? "Send" : "Send again",
     canMarkSent: isDraft || isReady,
     canRevise: invoice && s === "sent" && doc.payments.length === 0,
     canPay: invoice && (s === "sent" || s === "partially_paid"),
@@ -119,6 +122,7 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [paymentToDelete, setPaymentToDelete] = useState<string | null>(null);
 
+  const finalize = useDocumentAction(doc.id, "finalize");
   const markSent = useDocumentAction(doc.id, "mark-sent");
   const voidDoc = useDocumentAction(doc.id, "void");
   const writeOff = useDocumentAction(doc.id, "write-off");
@@ -317,6 +321,12 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
                 Edit
               </Button>
             ) : null}
+            {actions.canFinalize ? (
+              <Button variant="secondary" onPress={() => setConfirm("finalize")}>
+                <FileCheck className="size-4" aria-hidden="true" />
+                Finalize
+              </Button>
+            ) : null}
             {actions.hasPublicLink ? (
               <Button variant="secondary" onPress={() => void copyLink()}>
                 <Link2 className="size-4" aria-hidden="true" />
@@ -361,8 +371,8 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
           role="status"
           className="m-0 rounded-button border border-border bg-sidebar px-4 py-3 text-[13px] text-ink"
         >
-          This {kind.toLowerCase()} has its number but was not sent. Retry the send, or mark it as
-          sent if you delivered it yourself.
+          This {kind.toLowerCase()} has its number, but no email went out. Send it by email, or
+          download the PDF and send it yourself. Then use Mark as sent in the more actions menu.
         </p>
       ) : null}
 
@@ -534,6 +544,25 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
         <PaymentDialog isOpen={paying} onOpenChange={setPaying} document={doc} today={today} />
       ) : null}
 
+      <AlertDialog
+        isOpen={confirm === "finalize"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={`Finalize ${title}?`}
+        actionLabel="Finalize"
+        onAction={() =>
+          finalize.mutate(undefined, {
+            onSuccess: (detail) =>
+              toast({
+                title: `${documentTitle(detail)} is ready`,
+                description: "Download the PDF, or send it by email.",
+                tone: "success",
+              }),
+          })
+        }
+      >
+        The invoice gets its number and a PDF. No email is sent. After this, you can no longer edit
+        the draft. When you send the PDF yourself, use Mark as sent.
+      </AlertDialog>
       <AlertDialog
         isOpen={confirm === "mark-sent"}
         onOpenChange={(open) => !open && setConfirm(null)}

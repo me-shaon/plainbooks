@@ -90,6 +90,40 @@ export function refreshDocument(queryClient: QueryClient, detail?: DocumentDetai
   void queryClient.invalidateQueries({ queryKey: queryKeys.clients.all });
 }
 
+/** POST /documents/:id/finalize for a document that has no hook yet, such as a new draft. */
+export async function finalizeDocument(
+  queryClient: QueryClient,
+  id: string,
+): Promise<DocumentDetail> {
+  const data = await api<{ document: DocumentDetail }>(`/documents/${id}/finalize`, {
+    method: "POST",
+    json: {},
+  });
+  refreshDocument(queryClient, data.document);
+  return data.document;
+}
+
+/**
+ * Renders unsaved editor values as the document HTML. Nothing is saved. Pass the id of the
+ * draft being edited so its stored custom field values are used.
+ */
+export async function fetchDocumentPreview(
+  input: DocumentCreateInput,
+  documentId?: string,
+): Promise<string> {
+  const query = documentId ? `?documentId=${encodeURIComponent(documentId)}` : "";
+  const res = await fetch(`/render/document-preview${query}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/html" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? `The preview failed (${res.status})`);
+  }
+  return res.text();
+}
+
 export function useCreateDocument() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -146,7 +180,14 @@ export function useSendDocument(id: string) {
   });
 }
 
-type ActionName = "mark-sent" | "void" | "write-off" | "duplicate" | "convert" | "reset-link";
+type ActionName =
+  | "finalize"
+  | "mark-sent"
+  | "void"
+  | "write-off"
+  | "duplicate"
+  | "convert"
+  | "reset-link";
 
 /** POST /documents/:id/<action>. Returns the detail of the affected or new document. */
 export function useDocumentAction(id: string, action: ActionName) {
