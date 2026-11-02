@@ -8,7 +8,7 @@ import type {
   TemplateDetail,
   TemplateUpdateInput,
 } from "../../../shared/schemas/template";
-import { api } from "../../lib/api";
+import { api, REQUEST_TIMEOUT_MS, withTimeout } from "../../lib/api";
 import { queryKeys } from "../../lib/query-keys";
 
 export function useTemplate(id: string) {
@@ -136,7 +136,7 @@ export async function fetchPreview(
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/html" },
     body: JSON.stringify(input),
-    signal,
+    signal: withTimeout(signal, REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`The preview failed (${res.status})`);
   return res.text();

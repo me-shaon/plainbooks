@@ -35,6 +35,27 @@ export interface ApiOptions {
    */
   toastOnError?: boolean;
   signal?: AbortSignal;
+  /** Fails the call when the server does not answer in time. Defaults to REQUEST_TIMEOUT_MS. */
+  timeoutMs?: number;
+}
+
+/**
+ * A call that gets no answer fails after this time. Without a limit, a page waits on its
+ * loading state forever when one request stalls. A failed query then retries.
+ */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/** The caller's signal and the timeout, as one signal. */
+export function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([signal, timeout]);
+  const controller = new AbortController();
+  for (const source of [signal, timeout]) {
+    if (source.aborted) controller.abort(source.reason);
+    else source.addEventListener("abort", () => controller.abort(source.reason), { once: true });
+  }
+  return controller.signal;
 }
 
 function buildUrl(path: string, query: ApiOptions["query"]): string {
@@ -90,20 +111,26 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   }
 
   const toastOnError = options.toastOnError ?? method !== "GET";
+  const signal = withTimeout(options.signal, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(buildUrl(path, options.query), {
       method,
       headers,
       body,
-      signal: options.signal,
+      signal,
       credentials: "same-origin",
     });
   } catch (err) {
-    const error = new ApiError(0, "The server could not be reached. Check your connection.");
-    if (toastOnError && !(err instanceof DOMException && err.name === "AbortError")) {
-      toastError(error);
-    }
+    const timedOut = signal.aborted && !options.signal?.aborted;
+    const error = new ApiError(
+      0,
+      timedOut
+        ? "The server took too long to answer. Try again."
+        : "The server could not be reached. Check your connection.",
+    );
+    const cancelled = !timedOut && err instanceof DOMException && err.name === "AbortError";
+    if (toastOnError && !cancelled) toastError(error);
     throw error;
   }
 

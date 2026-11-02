@@ -15,7 +15,7 @@ import type {
 } from "../../../shared/schemas/document";
 import type { SendDocumentInput } from "../../../shared/schemas/email";
 import { todayIn, WORKSPACE_TIMEZONE } from "../../../shared/time";
-import { api } from "../../lib/api";
+import { api, REQUEST_TIMEOUT_MS, withTimeout } from "../../lib/api";
 import { queryKeys } from "../../lib/query-keys";
 import { useWorkspaceSettings } from "../settings/queries";
 
@@ -117,6 +117,7 @@ export async function fetchDocumentPreview(
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/html" },
     body: JSON.stringify(input),
+    signal: withTimeout(undefined, REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
