@@ -24,8 +24,14 @@ import { Select } from "../../components/ui/select";
 import { TextArea, TextField } from "../../components/ui/text-field";
 import { toastError } from "../../lib/api";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
-import { formatDate } from "../../lib/format";
-import { changeCurrency, type EditorValues, editorTotals, toDocumentInput } from "./editor-state";
+import { formatDate, formatMoney } from "../../lib/format";
+import {
+  changeCurrency,
+  type EditorValues,
+  editorTotals,
+  minorOf,
+  toDocumentInput,
+} from "./editor-state";
 import { FxPanel } from "./fx-panel";
 import { LineItems } from "./line-items";
 import { DocumentPreviewDialog } from "./preview-dialog";
@@ -36,6 +42,14 @@ const NONE = "__none";
 
 export type EditorMode = "create" | "edit" | "revise";
 export type SaveIntent = "save" | "finalize" | "send" | "revise";
+
+/** A payment the client already made, recorded when the invoice is finalized or sent. */
+export interface PaymentReceived {
+  /** Minor units in the invoice currency. */
+  amount: number;
+  paidOn: string;
+  note: string | null;
+}
 
 export interface WorkspaceDefaults {
   homeCurrency: string;
@@ -64,9 +78,14 @@ export interface DocumentEditorProps {
   loadClient: (id: string) => Promise<ClientDetail>;
   /**
    * Saves the values. The editor keeps its values whatever happens, so a server error never
-   * loses edits. Return field errors from the server to show them.
+   * loses edits. Return field errors from the server to show them. `payment` is set when
+   * the user entered a payment the client already made.
    */
-  onSave: (values: EditorValues, intent: SaveIntent) => Promise<FieldErrors | undefined>;
+  onSave: (
+    values: EditorValues,
+    intent: SaveIntent,
+    payment?: PaymentReceived,
+  ) => Promise<FieldErrors | undefined>;
   onCancel: () => void;
 }
 
@@ -101,6 +120,9 @@ export function DocumentEditor({
   const [client, setClient] = useState<ClientDefaults | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [paidAmount, setPaidAmount] = useState("");
+  const [paidOn, setPaidOn] = useState<string | null>(today);
+  const [paidNote, setPaidNote] = useState("");
   const set = <K extends keyof EditorValues>(key: K, value: EditorValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
@@ -108,6 +130,8 @@ export function DocumentEditor({
   const { totals, discountError } = editorTotals(values, taxRates);
   const issueDate = values.issueDate ?? today;
   const defaultTaxRateId = client?.defaultTaxRateId ?? defaults.taxRateId;
+  const canTakePayment = isInvoice && mode !== "revise";
+  const paidMinor = canTakePayment ? minorOf(paidAmount, values.currency) : 0;
 
   // Load the defaults of the client the document already has.
   const initialClientId = initialValues.clientId;
@@ -154,6 +178,19 @@ export function DocumentEditor({
     const nextErrors: FieldErrors = { ...(result.errors ?? {}) };
     if (!values.clientId) nextErrors.clientId = "Choose a client";
     if (discountError) nextErrors.discount = discountError;
+    if (canTakePayment && paidAmount.trim() && paidMinor <= 0) {
+      nextErrors.paidAmount = "Enter an amount above 0, or leave it empty";
+    } else if (paidMinor > 0) {
+      if (intent === "save") {
+        nextErrors.paidAmount =
+          "A draft cannot have a payment. Use Save and finalize or Save and send.";
+      } else if (paidMinor > totals.total) {
+        nextErrors.paidAmount = `The payment is more than the total of ${formatMoney(totals.total, values.currency)}`;
+      } else if (intent === "send" && paidMinor === totals.total) {
+        nextErrors.paidAmount = "A paid invoice cannot be sent by email. Use Save and finalize.";
+      }
+      if (!paidOn) nextErrors.paidOn = "Enter the payment date";
+    }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -161,7 +198,11 @@ export function DocumentEditor({
     setErrors({});
     setPending(intent);
     try {
-      const serverErrors = await onSave(values, intent);
+      const payment =
+        paidMinor > 0 && paidOn
+          ? { amount: paidMinor, paidOn, note: paidNote.trim() || null }
+          : undefined;
+      const serverErrors = await onSave(values, intent, payment);
       if (serverErrors) setErrors(serverErrors);
     } finally {
       setPending(null);
@@ -448,6 +489,49 @@ export function DocumentEditor({
               <TotalsPanel totals={totals} discountLabel={discountLabel(values)} />
             </div>
           </Section>
+
+          {canTakePayment ? (
+            <Section
+              title="Payment received"
+              description="Fill this in when the client already paid you."
+            >
+              <div className="flex flex-col gap-4">
+                <MoneyField
+                  label={`Amount paid (${values.currency})`}
+                  currency={values.currency}
+                  value={paidAmount}
+                  onChange={setPaidAmount}
+                  description={
+                    paidMinor > 0
+                      ? `Balance due ${formatMoney(Math.max(0, totals.total - paidMinor), values.currency)}.`
+                      : "Leave empty when nothing is paid yet."
+                  }
+                  {...fieldError(errors, "paidAmount")}
+                />
+                {paidMinor > 0 ? (
+                  <>
+                    <IsoDatePicker
+                      label="Paid on"
+                      isRequired
+                      value={paidOn}
+                      onChange={setPaidOn}
+                      {...fieldError(errors, "paidOn")}
+                    />
+                    <TextArea
+                      label="Payment note"
+                      rows={2}
+                      value={paidNote}
+                      onChange={setPaidNote}
+                    />
+                    <p className="m-0 text-xs text-muted-foreground">
+                      Save and finalize marks the invoice as sent with no email, then records the
+                      payment.
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            </Section>
+          ) : null}
 
           <Section title="Exchange rate">
             <FxPanel

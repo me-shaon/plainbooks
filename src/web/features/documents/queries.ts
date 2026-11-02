@@ -8,6 +8,7 @@ import type {
   DocumentSummary,
   DocumentUpdateInput,
   FxQuote,
+  MarkPaidInput,
   PaymentInput,
   RevisionSummary,
   SendPreview,
@@ -229,6 +230,31 @@ export function useRecordPayment(id: string) {
         toastOnError: false,
       }),
     onSuccess: (detail) => refreshDocument(queryClient, detail),
+  });
+}
+
+/**
+ * POST /documents/:id/mark-paid. Records a payment made outside the app. A draft or a
+ * finalized invoice is marked as sent first, with no email.
+ */
+export async function markPaidDocument(
+  queryClient: QueryClient,
+  id: string,
+  input: MarkPaidInput,
+): Promise<DocumentDetail> {
+  const detail = await api<DocumentDetail>(`/documents/${id}/mark-paid`, {
+    method: "POST",
+    json: input,
+  });
+  refreshDocument(queryClient, detail);
+  return detail;
+}
+
+/** Marks the invoice paid in full, dated today. */
+export function useMarkPaid(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MarkPaidInput = {}) => markPaidDocument(queryClient, id, input),
   });
 }
 

@@ -5,13 +5,16 @@ import { AppError } from "../../src/worker/errors";
 import { getDocumentDetail, loadDocument } from "../../src/worker/services/documents";
 import {
   deletePayment,
+  markPaid,
   recordPayment,
   writeOffRemainder,
 } from "../../src/worker/services/payments";
 import {
   activityTypes,
   db,
+  draft,
   NOW,
+  noFetch,
   resetDocuments,
   seedClient,
   sentInvoice,
@@ -130,5 +133,53 @@ describe("payments", () => {
       "written_off",
       "payment_deleted",
     ]);
+  });
+});
+
+describe("mark paid", () => {
+  it("marks a draft as sent with no email and pays the full total", async () => {
+    const id = await draft({ clientId });
+    const doc = await markPaid(db, id, { paidOn: "2026-10-01" }, { now: NOW, fetcher: noFetch });
+    expect(doc.status).toBe("paid");
+    expect(doc.number).not.toBeNull();
+    expect(doc.amountPaid).toBe(200000);
+    const [payment] = await paymentIds(id);
+    expect(payment?.amount).toBe(200000);
+    expect(await activityTypes(id)).toEqual(["created", "finalized", "sent", "payment_recorded"]);
+  });
+
+  it("records a partial amount on a draft and leaves the balance open", async () => {
+    const id = await draft({ clientId });
+    const doc = await markPaid(db, id, { amount: 50000 }, { now: NOW, fetcher: noFetch });
+    expect(doc.status).toBe("partially_paid");
+    const detail = await getDocumentDetail(db, id, { now: NOW });
+    expect(detail.balance).toBe(150000);
+    expect(detail.payments[0]?.paidOn).toBe(TODAY);
+  });
+
+  it("rejects an amount above the total and leaves the draft unchanged", async () => {
+    const id = await draft({ clientId });
+    const err = await markPaid(db, id, { amount: 300000 }, { now: NOW, fetcher: noFetch }).catch(
+      (e: unknown) => e,
+    );
+    expect((err as AppError).code).toBe("overpayment");
+    const doc = await loadDocument(db, id);
+    expect(doc.status).toBe("draft");
+    expect(doc.number).toBeNull();
+  });
+
+  it("pays the open balance of a partially paid invoice", async () => {
+    const id = await sentInvoice({ clientId });
+    await recordPayment(db, id, { amount: 50000, paidOn: TODAY }, { now: NOW });
+    const doc = await markPaid(db, id, {}, { now: NOW });
+    expect(doc.status).toBe("paid");
+    expect((await paymentIds(id)).map((r) => r.amount).sort()).toEqual([150000, 50000]);
+  });
+
+  it("refuses an invoice that is already paid", async () => {
+    const id = await sentInvoice({ clientId });
+    await markPaid(db, id, {}, { now: NOW });
+    const err = await markPaid(db, id, {}, { now: NOW }).catch((e: unknown) => e);
+    expect((err as AppError).status).toBe(409);
   });
 });

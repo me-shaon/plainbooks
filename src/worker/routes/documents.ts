@@ -4,6 +4,7 @@ import {
   documentCreateInput,
   documentUpdateInput,
   finalizeInput,
+  markPaidInput,
   paymentInput,
   writeOffInput,
 } from "../../shared/schemas/document";
@@ -29,7 +30,7 @@ import {
   voidDocument,
 } from "../services/documents";
 import { markSentManually, sendDocument, sendPreview } from "../services/email";
-import { deletePayment, recordPayment, writeOffRemainder } from "../services/payments";
+import { deletePayment, markPaid, recordPayment, writeOffRemainder } from "../services/payments";
 import { getPdf, pdfResponse } from "../services/pdf";
 
 /**
@@ -149,6 +150,16 @@ export const documentRoutes = new Hono<AppEnv>()
     const now = Date.now();
     await recordPayment(c.var.db, c.req.param("id"), input, { actor: c.var.user, now });
     return c.json(await getDocumentDetail(c.var.db, c.req.param("id"), { now }), 201);
+  })
+  .post("/:id/mark-paid", async (c) => {
+    const input = await parseJson(c, markPaidInput);
+    const now = Date.now();
+    await markPaid(c.var.db, c.req.param("id"), input, {
+      actor: c.var.user,
+      now,
+      fetcher: fxFetcher(c.env),
+    });
+    return c.json(await getDocumentDetail(c.var.db, c.req.param("id"), { now }));
   })
   .delete("/:id/payments/:paymentId", async (c) => {
     const now = Date.now();

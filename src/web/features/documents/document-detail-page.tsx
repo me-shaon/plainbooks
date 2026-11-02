@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Ban,
   CheckCheck,
+  CircleCheck,
   Copy,
   Download,
   Ellipsis,
@@ -44,12 +45,21 @@ import {
   useDocumentAction,
   useDocumentActivity,
   useDocumentRevisions,
+  useMarkPaid,
   useWorkspaceToday,
 } from "./queries";
 import { SendDialog } from "./send-dialog";
 import { TotalsPanel } from "./totals-panel";
 
-type Confirm = "finalize" | "mark-sent" | "void" | "write-off" | "delete" | "reset-link" | null;
+type Confirm =
+  | "finalize"
+  | "mark-sent"
+  | "mark-paid"
+  | "void"
+  | "write-off"
+  | "delete"
+  | "reset-link"
+  | null;
 
 /** What a document allows in its current state. */
 export function documentActions(doc: DocumentDetail) {
@@ -72,6 +82,9 @@ export function documentActions(doc: DocumentDetail) {
     canRevise: invoice && s === "sent" && doc.payments.length === 0,
     canPay: invoice && (s === "sent" || s === "partially_paid"),
     canWriteOff: invoice && s === "partially_paid",
+    // Records the open balance as paid. A draft or ready invoice is marked as sent first.
+    canMarkPaid:
+      invoice && (isDraft || isReady || s === "sent" || s === "partially_paid") && doc.balance > 0,
     canVoid: invoice && (s === "finalized" || s === "sent") && doc.amountPaid === 0,
     canConvert: !invoice && s === "accepted",
     hasPublicLink: Boolean(doc.publicToken && doc.number),
@@ -131,6 +144,7 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
   const resetLink = useDocumentAction(doc.id, "reset-link");
   const remove = useDeleteDocument(doc.id);
   const deletePayment = useDeletePayment(doc.id);
+  const markPaid = useMarkPaid(doc.id);
   const activity = useDocumentActivity(doc.id);
   const revisions = useDocumentRevisions(doc.id, doc.revisionCount > 0);
 
@@ -226,6 +240,14 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
       label: "Mark as sent",
       icon: <CheckCheck />,
       run: () => setConfirm("mark-sent"),
+    });
+  }
+  if (actions.canMarkPaid) {
+    menuItems.push({
+      id: "mark-paid",
+      label: "Mark as paid",
+      icon: <CircleCheck />,
+      run: () => setConfirm("mark-paid"),
     });
   }
   if (actions.canRevise) {
@@ -445,9 +467,14 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
               flush
               actions={
                 actions.canPay ? (
-                  <Button size="sm" variant="secondary" onPress={() => setPaying(true)}>
-                    Record payment
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onPress={() => setConfirm("mark-paid")}>
+                      Mark as paid
+                    </Button>
+                    <Button size="sm" variant="secondary" onPress={() => setPaying(true)}>
+                      Record payment
+                    </Button>
+                  </div>
                 ) : null
               }
             >
@@ -577,6 +604,26 @@ function DocumentDetailView({ doc, openSend }: { doc: DocumentDetail; openSend: 
       >
         Use this when you sent the link or the PDF yourself. The {kind.toLowerCase()} gets its
         number now, and no email is sent.
+      </AlertDialog>
+      <AlertDialog
+        isOpen={confirm === "mark-paid"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={`Mark ${title} as paid?`}
+        actionLabel="Mark as paid"
+        onAction={() =>
+          markPaid.mutate(
+            { paidOn: today },
+            {
+              onSuccess: (detail) =>
+                toast({ title: `${documentTitle(detail)} marked as paid`, tone: "success" }),
+            },
+          )
+        }
+      >
+        {`This records a payment of ${formatMoney(doc.balance, doc.currency)} dated today. No email is sent.`}
+        {actions.isDraft || actions.isReady
+          ? " The invoice gets its number and is marked as sent. After this, you can no longer edit it."
+          : " To record a different amount or date, use Record payment."}
       </AlertDialog>
       <AlertDialog
         isOpen={confirm === "void"}

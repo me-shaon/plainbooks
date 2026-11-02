@@ -18,7 +18,12 @@ import { useMe } from "../../lib/session";
 import { useClients } from "../clients/queries";
 import { useWorkspaceSettings } from "../settings/queries";
 import { useCustomFields } from "../templates/queries";
-import { DocumentEditor, type EditorMode, type SaveIntent } from "./document-editor";
+import {
+  DocumentEditor,
+  type EditorMode,
+  type PaymentReceived,
+  type SaveIntent,
+} from "./document-editor";
 import {
   changeCurrency,
   type EditorValues,
@@ -31,6 +36,7 @@ import {
   documentTitle,
   finalizeDocument,
   kindLabel,
+  markPaidDocument,
   useCreateDocument,
   useDocument,
   useReviseDocument,
@@ -195,6 +201,7 @@ function EditorContainer({
   const onSave = async (
     values: EditorValues,
     intent: SaveIntent,
+    payment?: PaymentReceived,
   ): Promise<FieldErrors | undefined> => {
     if (intent === "revise") {
       setRevising(values);
@@ -204,7 +211,25 @@ function EditorContainer({
       const input = toDocumentInput(values);
       const detail =
         mode === "create" ? await create.mutateAsync(input) : await update.mutateAsync(input);
-      if (intent === "finalize") {
+      if (payment) {
+        try {
+          const paid = await markPaidDocument(queryClient, detail.id, payment);
+          toast({
+            title:
+              paid.status === "paid"
+                ? `${documentTitle(paid)} is paid`
+                : `${documentTitle(paid)} is partially paid`,
+            description: "The invoice is marked as sent. No email was sent.",
+            tone: "success",
+          });
+        } catch {
+          // The API call already showed why. The invoice is saved, so open it.
+          toast({
+            title: "The payment was not recorded",
+            description: "Open the invoice and record the payment there.",
+          });
+        }
+      } else if (intent === "finalize") {
         try {
           const ready = await finalizeDocument(queryClient, detail.id);
           toast({

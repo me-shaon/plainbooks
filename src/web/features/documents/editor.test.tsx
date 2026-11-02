@@ -264,7 +264,41 @@ describe("DocumentEditor", () => {
     const user = userEvent.setup();
     const { onSave } = renderEditor();
     await user.click(screen.getByRole("button", { name: "Save and finalize" }));
-    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize");
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize", undefined);
+  });
+
+  it("blocks Save draft when a payment is entered", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor();
+    await user.type(field(/^Unit price.*line 1/), "100");
+    await user.type(field(/^Amount paid/), "50");
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(screen.getByText(/A draft cannot have a payment/)).toBeTruthy();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("passes the payment received to Save and finalize", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor();
+    await user.type(field(/^Unit price.*line 1/), "100");
+    await user.type(field(/^Amount paid/), "50");
+    expect(screen.getByText(`Balance due ${formatMoney(6500, "USD")}.`)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Save and finalize" }));
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize", {
+      amount: 5000,
+      paidOn: "2026-10-24",
+      note: null,
+    });
+  });
+
+  it("blocks a payment above the total", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor();
+    await user.type(field(/^Unit price.*line 1/), "100");
+    await user.type(field(/^Amount paid/), "200");
+    await user.click(screen.getByRole("button", { name: "Save and finalize" }));
+    expect(screen.getByText(/The payment is more than the total/)).toBeTruthy();
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("offers no Save and finalize on a quote", () => {
@@ -305,6 +339,16 @@ describe("documentActions", () => {
     expect(documentActions(sentInvoice({ ...draft })).canFinalize).toBe(true);
     expect(documentActions(sentInvoice({ ...draft, kind: "quote" })).canFinalize).toBe(false);
     expect(documentActions(sentInvoice()).canFinalize).toBe(false);
+  });
+
+  it("offers Mark as paid while a balance is open", () => {
+    const draft = { status: "draft", number: null, displayStatus: "draft" } as const;
+    expect(documentActions(sentInvoice({ ...draft })).canMarkPaid).toBe(true);
+    expect(documentActions(sentInvoice()).canMarkPaid).toBe(true);
+    expect(
+      documentActions(sentInvoice({ status: "paid", amountPaid: 200000, balance: 0 })).canMarkPaid,
+    ).toBe(false);
+    expect(documentActions(sentInvoice({ kind: "quote" })).canMarkPaid).toBe(false);
   });
 
   it("labels the send of a finalized invoice Send, not Retry send", () => {

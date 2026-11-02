@@ -8,6 +8,8 @@ import type { Document } from "../db/schema";
 import { AppError } from "../errors";
 import { guardedActivity } from "./activity";
 import { type ActionContext, loadDocument, loadWorkspace, workspaceToday } from "./documents";
+import { markSentManually } from "./email";
+import type { Fetcher } from "./fx";
 import { OPEN_STATUS_LIST, sqlInList } from "./status-sql";
 
 const { payments } = schema;
@@ -141,6 +143,38 @@ export async function recordPayment(
     throw new AppError(422, "overpayment", "The payment is more than the open balance");
   }
   return loadDocument(db, documentId);
+}
+
+/**
+ * Records a payment the client made outside the app, with no email. A draft or a finalized
+ * invoice gets its number and is marked as sent first. Without an amount, the payment
+ * covers the open balance, so the invoice becomes paid.
+ */
+export async function markPaid(
+  db: Db,
+  documentId: string,
+  input: { amount?: number; paidOn?: string; note?: string | null },
+  ctx: ActionContext & { fetcher?: Fetcher },
+): Promise<Document> {
+  let doc = await loadDocument(db, documentId);
+  if (doc.kind !== "invoice") {
+    throw new AppError(409, "invalid_status", "Payments apply to invoices only");
+  }
+  if (doc.status === "draft" || doc.status === "finalized") {
+    // Check the amount before the invoice gets a number, so a bad amount changes nothing.
+    if (input.amount !== undefined && input.amount > doc.total) {
+      throw new AppError(422, "overpayment", "The payment is more than the invoice total");
+    }
+    await markSentManually(db, documentId, ctx);
+    doc = await loadDocument(db, documentId);
+  }
+  assertInvoiceOpen(doc);
+  const amount = input.amount ?? balanceOf(doc);
+  if (amount <= 0) {
+    throw new AppError(409, "nothing_to_pay", "This invoice has no open balance");
+  }
+  const paidOn = input.paidOn ?? workspaceToday(await loadWorkspace(db), ctx.now);
+  return recordPayment(db, documentId, { amount, paidOn, note: input.note ?? null }, ctx);
 }
 
 /**

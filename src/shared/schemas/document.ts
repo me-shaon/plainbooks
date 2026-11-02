@@ -185,6 +185,18 @@ export const paymentInput = z.object({
 });
 export type PaymentInput = z.input<typeof paymentInput>;
 
+/**
+ * POST /api/documents/:id/mark-paid. Without an amount, the payment covers the open
+ * balance. Without a date, the payment is dated today.
+ */
+export const markPaidInput = z.object({
+  /** Minor units in the invoice currency. */
+  amount: z.int("Enter the amount in minor units").min(1, "Enter an amount above 0").optional(),
+  paidOn: isoDate.optional(),
+  note: optionalText(500),
+});
+export type MarkPaidInput = z.input<typeof markPaidInput>;
+
 /** POST /api/documents/:id/write-off. */
 export const writeOffInput = z.object({
   paidOn: isoDate.optional(),
