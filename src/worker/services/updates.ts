@@ -5,6 +5,8 @@ import { eq } from "drizzle-orm";
 import type { UpdateStatus } from "../../shared/schemas/settings";
 import { type Db, schema } from "../db/client";
 import type { Workspace } from "../db/schema";
+import type { Bindings } from "../env";
+import { AppError } from "../errors";
 import { releaseFetcher } from "../externals";
 import { APP_VERSION } from "../version";
 import type { Fetcher } from "./fx";
@@ -114,6 +116,43 @@ export function updateStatus(ws: Workspace): UpdateStatus {
     updateAvailable: ws.latestVersion !== null && isNewerVersion(ws.latestVersion, APP_VERSION),
     checkedAt: ws.updateCheckedAt,
   };
+}
+
+/**
+ * The shortest time between two checks that an Owner starts. GitHub allows 60 API requests
+ * an hour per IP address without a token, and Workers share IP addresses.
+ */
+export const MANUAL_CHECK_INTERVAL_MS = 60_000;
+
+/**
+ * Checks GitHub now, for the "Check now" button, and returns the new status. Within a
+ * minute of the last check, it returns the stored result. It runs when the daily check is
+ * off too, because the Owner asked for it.
+ */
+export async function checkForUpdateNow(
+  env: Pick<Bindings, "APP_ENV" | "FAKE_EXTERNALS">,
+  db: Db,
+  now: number,
+): Promise<UpdateStatus> {
+  const ws = await loadWorkspace(db);
+  if (ws.updateCheckedAt !== null && now - ws.updateCheckedAt < MANUAL_CHECK_INTERVAL_MS) {
+    return updateStatus(ws);
+  }
+  let release: Release | null;
+  try {
+    release = await fetchLatestRelease(releaseFetcher(env));
+  } catch (err) {
+    console.warn("The update check failed", err);
+    throw new AppError(
+      502,
+      "update_check_failed",
+      "Could not reach GitHub. Try again in a few minutes.",
+    );
+  }
+  const statements = recordReleaseStatements(db, ws, release, now);
+  await db.batch(statements as [BatchStatement, ...BatchStatement[]]);
+  forgetWorkspace(db);
+  return updateStatus(await loadWorkspace(db));
 }
 
 // One job per day. The idempotency key stops the 24 enqueue phases of a day from adding more.

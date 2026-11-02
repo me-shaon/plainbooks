@@ -1,7 +1,8 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { Button } from "../../components/ui/button";
 import { Section } from "../../components/ui/section";
 import { Switch } from "../../components/ui/switch";
-import { useSetUpdateCheck, useUpdateStatus } from "./queries";
+import { useCheckForUpdates, useSetUpdateCheck, useUpdateStatus } from "./queries";
 
 const UPDATING_GUIDE = "https://github.com/me-shaon/plainbooks/blob/main/docs/updating.md";
 
@@ -27,13 +28,14 @@ function ExternalAnchor({ href, children }: { href: string; children: string }) 
 export function UpdatesSection() {
   const status = useUpdateStatus(true);
   const setCheck = useSetUpdateCheck();
+  const checkNow = useCheckForUpdates();
   if (!status.data) return null;
   const data = status.data;
 
   let summary: string;
-  if (!data.enabled) summary = "The update check is off.";
-  else if (data.checkedAt === null) summary = "The first check runs within a day.";
-  else if (data.updateAvailable) summary = `Version ${data.latestVersion} is available.`;
+  if (data.checkedAt === null) {
+    summary = data.enabled ? "The first check runs within a day." : "The update check is off.";
+  } else if (data.updateAvailable) summary = `Version ${data.latestVersion} is available.`;
   else summary = "This is the newest version.";
 
   return (
@@ -42,9 +44,7 @@ export function UpdatesSection() {
         <div className="flex flex-col gap-1 text-sm text-ink">
           <p className="m-0" role="status">
             {summary}
-            {data.enabled && data.checkedAt !== null
-              ? ` Last check: ${formatCheckedAt(data.checkedAt)}.`
-              : null}
+            {data.checkedAt !== null ? ` Last check: ${formatCheckedAt(data.checkedAt)}.` : null}
           </p>
           {data.updateAvailable && data.releaseUrl ? (
             <p className="m-0 flex flex-wrap gap-x-4 gap-y-1">
@@ -52,6 +52,17 @@ export function UpdatesSection() {
               <ExternalAnchor href={UPDATING_GUIDE}>How to update</ExternalAnchor>
             </p>
           ) : null}
+        </div>
+        <div>
+          <Button
+            variant="secondary"
+            size="sm"
+            isPending={checkNow.isPending}
+            onPress={() => checkNow.mutate()}
+          >
+            <RefreshCw className="size-3.5" aria-hidden="true" />
+            Check now
+          </Button>
         </div>
         <Switch
           isSelected={data.enabled}

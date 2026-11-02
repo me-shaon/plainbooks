@@ -18,7 +18,7 @@ import {
   isHomeCurrencyLocked,
   loadWorkspace,
 } from "../services/settings";
-import { updateStatus } from "../services/updates";
+import { checkForUpdateNow, updateStatus } from "../services/updates";
 
 const { workspace, taxRates, templates } = schema;
 
@@ -141,6 +141,10 @@ export const settingsRoutes = new Hono<AppEnv>()
   })
   /** The running version, the newest release, and the update check switch. Owner only. */
   .get("/updates", requireOwner, async (c) => c.json(updateStatus(await loadWorkspace(c.var.db))))
+  /** Checks GitHub for a new release now, instead of waiting for the daily check. */
+  .post("/updates/check", requireOwner, async (c) =>
+    c.json(await checkForUpdateNow(c.env, c.var.db, Date.now())),
+  )
   .patch("/updates", requireOwner, async (c) => {
     const { enabled } = await parseJson(c, updateSettingsInput);
     await c.var.db

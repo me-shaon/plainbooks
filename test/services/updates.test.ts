@@ -180,6 +180,48 @@ describe("/api/settings/updates", () => {
     await seedUser(MEMBER, "member");
   });
 
+  it("checks GitHub now when the Owner asks, and only once a minute", async () => {
+    const calls = stubGitHub(() => release("v99.0.0"));
+    const check = () => apiFetch("/api/settings/updates/check", { as: OWNER, method: "POST" });
+
+    const res = await check();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      latestVersion: "99.0.0",
+      updateAvailable: true,
+    });
+    expect(calls).toHaveLength(1);
+    expect(await updateNotifications()).toHaveLength(1);
+
+    // A second press within a minute returns the stored result.
+    expect((await check()).status).toBe(200);
+    expect(calls).toHaveLength(1);
+
+    // Too soon for GitHub, but older than a minute: it asks again.
+    await env.DB.prepare("UPDATE workspace SET update_checked_at = 1 WHERE id = 1").run();
+    expect((await check()).status).toBe(200);
+    expect(calls).toHaveLength(2);
+    expect(await updateNotifications()).toHaveLength(1);
+  });
+
+  it("checks even when the daily check is off", async () => {
+    await env.DB.prepare("UPDATE workspace SET update_check = 0 WHERE id = 1").run();
+    stubGitHub(() => release(`v${APP_VERSION}`));
+    const res = await apiFetch("/api/settings/updates/check", { as: OWNER, method: "POST" });
+    expect(await res.json()).toMatchObject({ enabled: false, updateAvailable: false });
+    expect((await workspaceRow())?.updateCheckedAt).not.toBeNull();
+  });
+
+  it("answers 502 when GitHub fails, and refuses a Member", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubGitHub(() => new Response("unavailable", { status: 503 }));
+    const res = await apiFetch("/api/settings/updates/check", { as: OWNER, method: "POST" });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: "update_check_failed" });
+    const member = await apiFetch("/api/settings/updates/check", { as: MEMBER, method: "POST" });
+    expect(member.status).toBe(403);
+  });
+
   it("shows the Owner the running version and the newest release", async () => {
     await env.DB.prepare(
       "UPDATE workspace SET latest_version = '99.0.0', latest_release_url = 'https://github.com/x', update_checked_at = 5 WHERE id = 1",

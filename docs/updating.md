@@ -4,7 +4,7 @@ Each new version of Plainbooks is a release on [GitHub](https://github.com/me-sh
 
 ## How you learn about a new release
 
-- **In the app.** Once a day, the app asks GitHub for the newest release. When a release is newer than the version that you run, the Owner gets a notification. **Settings** > **General** > **Updates** also shows it. The check sends no workspace data to GitHub. To stop the check, turn off **Check for new versions** in the same section.
+- **In the app.** Once a day, the app asks GitHub for the newest release. When a release is newer than the version that you run, the Owner gets a notification. **Settings** > **General** > **Updates** also shows it. To check at once, select **Check now** in the same section. The check sends no workspace data to GitHub. To stop the check, turn off **Check for new versions** in the same section.
 - **In your repository.** If you add the update workflow to your copy, it opens a pull request with the newest release once a week. GitHub sends you a notification for the pull request. Read [Add the update workflow](#add-the-update-workflow).
 - **On GitHub.** On the [Plainbooks repository](https://github.com/me-shaon/plainbooks), select **Watch** > **Custom** > **Releases**. GitHub then sends you an email for each release.
 

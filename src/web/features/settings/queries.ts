@@ -225,3 +225,12 @@ export function useSetUpdateCheck() {
     onSuccess: (data) => queryClient.setQueryData(queryKeys.settings.updates, data),
   });
 }
+
+/** Asks GitHub for the newest release now. Owner only. */
+export function useCheckForUpdates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<UpdateStatus>("/settings/updates/check", { method: "POST" }),
+    onSuccess: (data) => queryClient.setQueryData(queryKeys.settings.updates, data),
+  });
+}
