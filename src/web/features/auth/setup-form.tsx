@@ -15,6 +15,7 @@ import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { queryKeys } from "../../lib/query-keys";
 import type { Me } from "../../lib/session";
 import { setupErrorMessage } from "../../lib/setup";
+import { AppUrlWarning } from "./app-url-warning";
 import { AuthCard, FormAlert } from "./auth-card";
 
 const FORGOT_TOKEN_HELP =
@@ -82,6 +83,7 @@ export function SetupPage() {
           void submit();
         }}
       >
+        <AppUrlWarning />
         <FormAlert message={formError} />
         <TextField
           label="Setup token"

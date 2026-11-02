@@ -27,6 +27,7 @@ const STATUS: SetupStatus = {
   setupEnabled: true,
   googleEnabled: false,
   emailConfigured: false,
+  appUrlMismatch: null,
 };
 
 const INVITE: InviteLinkInfo = {

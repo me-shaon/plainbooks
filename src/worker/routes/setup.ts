@@ -7,6 +7,7 @@ import {
 } from "../../shared/schemas/setup";
 import { googleEnabled } from "../auth/auth";
 import { constantTimeEqual, sha256Hex } from "../auth/crypto";
+import { allowedOrigins } from "../auth/middleware";
 import { createPasswordHasher, resolveIterations } from "../auth/pbkdf2";
 import { assertRateLimits, clientIp, RATE_RULES, rateKeys } from "../auth/rate-limit";
 import { startSession } from "../auth/session";
@@ -109,6 +110,13 @@ async function notifyOwners(env: Bindings, email: string, now: number): Promise<
   }
 }
 
+/** APP_URL and this request's origin, when browser writes from this origin would fail. */
+export function appUrlMismatch(env: Bindings, url: string): SetupStatus["appUrlMismatch"] {
+  const actual = new URL(url).origin;
+  if (allowedOrigins(env, url).has(actual)) return null;
+  return { configured: env.APP_URL ?? "", actual };
+}
+
 export const setupRoutes = new Hono<AppEnv>()
   /** GET /api/setup/status: what the setup and sign-in screens need before a session. */
   .get("/status", async (c) => {
@@ -119,6 +127,7 @@ export const setupRoutes = new Hono<AppEnv>()
       setupEnabled: configuredToken(c.env) !== null,
       googleEnabled: googleEnabled(c.env),
       emailConfigured: email,
+      appUrlMismatch: appUrlMismatch(c.env, c.req.url),
     });
   })
 

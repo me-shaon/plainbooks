@@ -52,4 +52,9 @@ export interface SetupStatus {
   googleEnabled: boolean;
   /** True when a primary email provider is saved and usable. */
   emailConfigured: boolean;
+  /**
+   * Set when this page's origin is not the origin of APP_URL. The app then refuses every
+   * change from the browser, so the setup and sign-in screens show how to fix APP_URL.
+   */
+  appUrlMismatch: { configured: string; actual: string } | null;
 }

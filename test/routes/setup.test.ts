@@ -88,6 +88,20 @@ describe("GET /api/setup/status", () => {
     expect(await status()).toMatchObject({ needsSetup: false });
   });
 
+  it("reports when APP_URL is not the origin of the page", async () => {
+    const at = async (url: string, appUrl: string) => {
+      const res = await fetchWith({ APP_URL: appUrl }, await buildRequest(url));
+      return (await res.json<{ appUrlMismatch: unknown }>()).appUrlMismatch;
+    };
+    const url = "https://billing.studio.test/api/setup/status";
+    expect(await at(url, "https://billing.studio.test")).toBeNull();
+    expect(await at(url, "https://invoices.example.com")).toEqual({
+      configured: "https://invoices.example.com",
+      actual: "https://billing.studio.test",
+    });
+    expect(await at(url, "")).toEqual({ configured: "", actual: "https://billing.studio.test" });
+  });
+
   it("reports email configured when a primary provider is saved", async () => {
     await useFakeEmail();
     expect(await status()).toMatchObject({ emailConfigured: true });

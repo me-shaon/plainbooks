@@ -40,8 +40,9 @@ The Worker needs these secrets:
 | `SETUP_TOKEN` | Opens the setup screen at `/setup`, where you create the first Owner. It must have 32 characters or more. Each value works once. |
 | `AUTH_SECRET` | Signs the sign-in sessions. It must have 32 characters or more. |
 | `ENCRYPTION_KEY` | Encrypts the email provider keys that you save in the app. It must be 32 random bytes as base64. |
-| `APP_URL` | The public origin of the app, for example `https://invoices.example.com`. |
 | `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` | Optional. They turn on Google sign-in. Step 7 tells you how to get them. |
+
+The Worker also needs the variable `APP_URL`: the public origin of the app, for example `https://invoices.example.com`. It is a variable in `wrangler.jsonc`, not a secret, so you can see it. Each deploy sets it from `wrangler.jsonc`, so change it there, not in the dashboard.
 
 ### Option A: the deploy script
 
@@ -61,7 +62,7 @@ The script does these steps:
 3. It saves your host and the database ID in `.deploy.env`.
 4. It writes `wrangler.production.jsonc` from `wrangler.jsonc` and `.deploy.env`.
 5. It builds the app, applies the D1 migrations to the remote database, and deploys the Worker.
-6. It sets `APP_URL` from your host.
+6. It sets the `APP_URL` variable from your host, in `wrangler.production.jsonc`.
 7. It makes a random value for each missing secret of `SETUP_TOKEN`, `AUTH_SECRET`, and `ENCRYPTION_KEY`, and sets it. It never replaces a secret that exists.
 
 The script makes a setup token only one time. It then writes `SETUP_TOKEN_ISSUED=1` in `.deploy.env`. A later run does not make a new setup token, so you can delete the secret after setup.
@@ -92,7 +93,7 @@ The Worker runs only on the custom domain. The config turns off the `workers.dev
 5. Set `SETUP_TOKEN` to the first random value. Save this value now, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
 6. Set `AUTH_SECRET` to the second random value.
 7. Set `ENCRYPTION_KEY` to the third random value.
-8. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash.
+8. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash. Use the custom domain of step 10. Do not keep the example value.
 9. Select **Deploy**.
 10. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
 
@@ -306,7 +307,6 @@ Change a secret only when you must. Some changes have effects on all users:
 
 - **`ENCRYPTION_KEY`:** The app cannot read the saved email provider keys after a change. Enter the provider keys and webhook secrets again in **Settings** > **Email**.
 - **`AUTH_SECRET`:** A change signs everyone out. Each member must sign in again.
-- **`APP_URL`:** It must be the origin in the address bar. Otherwise the app refuses changes from the browser.
 
 ## Free-tier limits
 
@@ -373,9 +373,18 @@ If you deployed with the script, run `pnpm wrangler secret put SETUP_TOKEN` and 
 - "Google has not verified this email address": use another Google account.
 - An error from Google about the redirect URI: check that the OAuth client has the redirect URI `https://invoices.example.com/api/auth/callback/google`. It must use the same host as `APP_URL`.
 
+### APP_URL does not match the address
+
+The setup and sign-in screens show this message when `APP_URL` is not the origin in the address bar. The app then refuses every change from the browser, with the error code `cross_site_request`.
+
+Set `APP_URL` to the origin in the address bar, for example `https://invoices.example.com`, with no trailing slash:
+
+- **The Deploy button.** In your repository, open `wrangler.jsonc` and select **Edit**. Under `"vars"`, change the value of `"APP_URL"`. Commit the change. Cloudflare deploys the commit. Do not change the value in the dashboard, because the next deploy sets it from `wrangler.jsonc` again.
+- **The deploy script.** Change `APP_HOST` in `.deploy.env`, then run `pnpm run ship` again.
+
 ### You get a 403 error after sign-in
 
-If the error code is `cross_site_request`, the page origin is not the origin of `APP_URL`. Set `APP_URL` to the origin in the address bar. If you used the deploy script, change `APP_HOST` in `.deploy.env` and run `pnpm run ship` again. If you used the Deploy button, change the `APP_URL` secret in the dashboard.
+If the error code is `cross_site_request`, `APP_URL` does not match the address. Read [APP_URL does not match the address](#app_url-does-not-match-the-address).
 
 If the error code is `not_a_member`, your user is not an active member. Ask an Owner to add you on the Team page.
 

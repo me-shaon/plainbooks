@@ -17,6 +17,7 @@ import {
 import { type FieldErrors, fieldError } from "../../lib/form";
 import { queryKeys } from "../../lib/query-keys";
 import { RECOVER_PATH, setupStatusQuery } from "../../lib/setup";
+import { AppUrlWarning } from "./app-url-warning";
 import { AuthCard, FormAlert } from "./auth-card";
 
 const linkStyle = "font-medium text-accent underline underline-offset-2";
@@ -108,6 +109,7 @@ export function SignInPage({ next, error }: SignInPageProps) {
           void submit();
         }}
       >
+        <AppUrlWarning />
         <FormAlert message={formError} />
         <TextField
           label="Email"

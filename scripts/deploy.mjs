@@ -5,8 +5,8 @@
  * The first run asks for your host, then creates the D1 database and the R2 bucket. It saves
  * the answers in `.deploy.env` and writes `wrangler.production.jsonc`. Both files are
  * git-ignored, so the tracked `wrangler.jsonc` stays a template.
- * Each run then builds, applies the remote D1 migrations, deploys, and sets APP_URL as a
- * Worker secret. When SETUP_TOKEN, AUTH_SECRET, or ENCRYPTION_KEY is not set, the script
+ * The config sets the APP_URL var from your host. Each run then builds, applies the remote
+ * D1 migrations, and deploys. When SETUP_TOKEN, AUTH_SECRET, or ENCRYPTION_KEY is not set, the script
  * makes a random value and sets it. It never replaces a secret that exists. It prints a new
  * setup token once, with the /setup URL, and records SETUP_TOKEN_ISSUED=1 in `.deploy.env`.
  * After that, it does not make a new setup token, so you can delete the secret after setup. These values are secrets, not vars, so a later
@@ -163,7 +163,7 @@ function writeProductionConfig(template, settings) {
   config.d1_databases = config.d1_databases.map((db) =>
     db.binding === "DB" ? { ...db, database_id: settings.D1_DATABASE_ID } : db,
   );
-  config.vars = { ...config.vars, APP_ENV: "production" };
+  config.vars = { ...config.vars, APP_ENV: "production", APP_URL: `https://${settings.APP_HOST}` };
   writeFileSync(
     PROD_CONFIG,
     `// Written by \`pnpm run ship\` from wrangler.jsonc and ${SETTINGS_FILE}. Do not edit.\n${JSON.stringify(config, null, 2)}\n`,
@@ -178,12 +178,12 @@ function existingSecrets() {
 }
 
 /**
- * Sets APP_URL, and a random value for each generated secret that is missing. Returns the
- * names of the secrets that it made and the new setup token, if it made one.
+ * Sets a random value for each generated secret that is missing. Returns the names of the
+ * secrets that it made and the new setup token, if it made one.
  */
 function syncSecrets(settings) {
   const existing = existingSecrets();
-  const values = { APP_URL: `https://${settings.APP_HOST}` };
+  const values = {};
   const created = [];
   for (const name of GENERATED_SECRETS) {
     if (existing.has(name)) continue;
@@ -192,6 +192,7 @@ function syncSecrets(settings) {
     values[name] = randomBytes(32).toString("base64");
     created.push(name);
   }
+  if (created.length === 0) return { created, setupToken: undefined };
   const result = spawnSync("pnpm", ["exec", "wrangler", "secret", "bulk", "-c", PROD_CONFIG], {
     input: JSON.stringify(values),
     stdio: ["pipe", "inherit", "inherit"],
@@ -221,7 +222,7 @@ async function main() {
   step("Deploying the Worker");
   runWrangler(["deploy"]);
 
-  step("Setting APP_URL and the missing secrets");
+  step("Setting the missing secrets");
   const { created, setupToken } = syncSecrets(settings);
   if (created.length) console.log(`  Made and set ${created.join(", ")}.`);
   if (setupToken) {

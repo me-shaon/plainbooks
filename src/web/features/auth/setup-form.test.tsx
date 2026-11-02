@@ -8,7 +8,8 @@ import {
 } from "@tanstack/react-router";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SetupStatus } from "../../../shared/schemas/setup";
 import { RecoverPage } from "./recover-form";
 import { SetupPage } from "./setup-form";
 
@@ -17,12 +18,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Stubs fetch with one JSON response and returns the mock. */
+const SETUP_STATUS: SetupStatus = {
+  needsSetup: true,
+  setupEnabled: true,
+  googleEnabled: false,
+  emailConfigured: false,
+  appUrlMismatch: null,
+};
+
+/**
+ * Stubs fetch with one JSON response and returns the mock. The setup status, which the
+ * APP_URL warning reads, gets its own reply.
+ */
 function stubFetch(status: number, body: unknown) {
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status }));
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+    String(input).endsWith("/setup/status")
+      ? Response.json(SETUP_STATUS)
+      : new Response(JSON.stringify(body), { status }),
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+beforeEach(() => {
+  stubFetch(200, {});
+});
 
 async function renderPage(page: () => React.JSX.Element) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -95,7 +115,9 @@ describe("SetupPage", () => {
     await fillSetup({ password: "short", confirm: "short" });
     expect(await screen.findByText("Use at least 12 characters")).toBeTruthy();
     expect(screen.getByLabelText(/^Password/).getAttribute("aria-invalid")).toBe("true");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/setup/owner")),
+    ).toEqual([]);
   });
 
   it("shows when the passwords do not match", async () => {

@@ -29,6 +29,7 @@ const STATUS: SetupStatus = {
   setupEnabled: true,
   googleEnabled: false,
   emailConfigured: true,
+  appUrlMismatch: null,
 };
 
 type Reply = { status: number; body: unknown };
@@ -184,6 +185,33 @@ describe("SignInPage", () => {
     expect(await screen.findByText("Enter your email")).toBeTruthy();
     expect(screen.getByLabelText(/^Password/).getAttribute("aria-invalid")).toBe("true");
     expect(callsTo(fetchMock, "/auth/")).toHaveLength(0);
+  });
+
+  it("tells how to fix APP_URL when it is not this page's origin", async () => {
+    stubApi(
+      {},
+      {
+        appUrlMismatch: {
+          configured: "https://invoices.example.com",
+          actual: "https://billing.studio.test",
+        },
+      },
+    );
+    await renderAt("/sign-in", () => <SignInPage />);
+    const alert = await screen.findByText(/The app refuses changes until they match\./);
+    expect(alert.closest("[role=alert]")?.textContent).toContain(
+      "to https://billing.studio.test, then deploy again.",
+    );
+    expect(screen.getByRole("link", { name: "Read the steps" }).getAttribute("href")).toMatch(
+      /#app_url-does-not-match-the-address$/,
+    );
+  });
+
+  it("shows no APP_URL warning when it matches", async () => {
+    stubApi({});
+    await renderAt("/sign-in", () => <SignInPage />);
+    await screen.findByRole("link", { name: "Forgot your password?" });
+    expect(screen.queryByText(/The app refuses changes/)).toBeNull();
   });
 
   it("hides the Google button when Google is off", async () => {

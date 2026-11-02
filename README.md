@@ -96,7 +96,7 @@ Before the first `pnpm dev`, set these values in `.dev.vars`:
 - `AUTH_SECRET`: a random value of 32 characters or more.
 - `ENCRYPTION_KEY`: 32 random bytes as base64.
 - `SETUP_TOKEN`: a random value of 32 characters or more.
-- `APP_URL`: the URL that Vite prints, for example `http://localhost:5173`.
+- Optional: `APP_URL`, the URL that Vite prints, for example `http://localhost:5173`. Links in local emails use it.
 
 To make the three random values, run this command three times:
 
@@ -118,7 +118,7 @@ Local email, exchange rates, and PDFs call the real services. To send real email
 
 You can deploy in two ways:
 
-- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for `SETUP_TOKEN`, `AUTH_SECRET`, `ENCRYPTION_KEY`, and `APP_URL`, and stores them as Worker secrets. Make each random value with `openssl rand -base64 32`. To change a secret later, edit it in the dashboard, not in `wrangler.jsonc`. Each push to your copy deploys again and keeps the secrets. The copy is not a fork. To get a pull request for each new release, add the update workflow to the copy. Read [Add the update workflow](docs/updating.md#add-the-update-workflow).
+- **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for `SETUP_TOKEN`, `AUTH_SECRET`, and `ENCRYPTION_KEY`, and stores them as Worker secrets. Make each random value with `openssl rand -base64 32`. To change a secret later, edit it in the dashboard. The button also asks for `APP_URL`, the address of your custom domain. It is a variable, so change it later in `wrangler.jsonc` of your copy. Each push to your copy deploys again and keeps the secrets. The copy is not a fork. To get a pull request for each new release, add the update workflow to the copy. Read [Add the update workflow](docs/updating.md#add-the-update-workflow).
 - **The script.** Run `pnpm run ship` on your computer. The first run asks for your host, creates the D1 database and the R2 bucket, and deploys. It makes the random secrets for you and shows the setup token one time. Later runs only build, migrate, and deploy.
 
 After the deploy, open `/setup` on your host and enter the setup token to create the first Owner. Then set up email in **Settings** > **Email**. Read [docs/setup.md](docs/setup.md) for each step.

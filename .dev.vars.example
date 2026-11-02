@@ -1,9 +1,10 @@
 # Secrets. The Deploy to Cloudflare button asks for the same values, except FAKE_EXTERNALS.
 # To make a random value, run:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# Public origin of the app, with no trailing slash. For `pnpm dev`, use the URL that Vite
-# prints, for example http://localhost:5173.
-APP_URL=https://invoices.example.com
+# Optional. APP_URL is a var in wrangler.jsonc. For links in local emails, set it to the URL
+# that Vite prints. It is commented out, because the Deploy button asks for each value in
+# this file as a secret.
+# APP_URL=http://localhost:5173
 # Session signing secret, 32 characters or more. A new value signs everyone out.
 AUTH_SECRET=replace-with-32-or-more-random-characters
 # Encrypts the saved email provider keys. 32 random bytes as base64. A new value means

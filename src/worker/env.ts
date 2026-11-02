@@ -2,12 +2,11 @@ import type { UserRole } from "../shared/domain";
 import type { Db } from "./db/client";
 
 /**
- * Worker bindings. `Env` comes from `pnpm cf-typegen`. Values that only exist in
- * `.dev.vars` (local development) are added here as optional.
+ * Worker bindings. `Env` comes from `pnpm cf-typegen`, with the vars APP_ENV and APP_URL
+ * (the public origin of the app). Secrets and values that only exist in `.dev.vars`
+ * (local development) are added here as optional.
  */
 export type Bindings = Env & {
-  /** Secret. The public origin of the app: "https://invoices.example.com". */
-  APP_URL?: string;
   /**
    * Secret. At least 32 random bytes as base64 text. It encrypts the email provider keys
    * in D1. A new value means the Owner must enter the provider keys again.
