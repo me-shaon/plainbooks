@@ -88,11 +88,24 @@ export const workspaceSettingsInput = z
   .partial();
 export type WorkspaceSettingsInput = z.input<typeof workspaceSettingsInput>;
 
+/** Document fonts. Each one is bundled in 400, 500, and 600 (src/worker/render/fonts.ts). */
 export const FONT_CHOICES = [
   { id: "instrument-sans", label: "Instrument Sans", stack: '"Instrument Sans", sans-serif' },
+  { id: "inter", label: "Inter", stack: '"Inter", sans-serif' },
+  { id: "dm-sans", label: "DM Sans", stack: '"DM Sans", sans-serif' },
+  { id: "manrope", label: "Manrope", stack: '"Manrope", sans-serif' },
+  { id: "work-sans", label: "Work Sans", stack: '"Work Sans", sans-serif' },
   { id: "ibm-plex-sans", label: "IBM Plex Sans", stack: '"IBM Plex Sans", sans-serif' },
   { id: "source-serif-4", label: "Source Serif 4", stack: '"Source Serif 4", serif' },
+  { id: "lora", label: "Lora", stack: '"Lora", serif' },
+  { id: "eb-garamond", label: "EB Garamond", stack: '"EB Garamond", serif' },
 ] as const;
+
+/** The weights of each bundled font file, and the public file name of one. */
+export const FONT_WEIGHTS = [400, 500, 600] as const;
+export function fontFileName(fontId: string, weight: number): string {
+  return `${fontId}-${weight}.woff2`;
+}
 export type FontChoice = (typeof FONT_CHOICES)[number]["id"];
 const FONT_IDS = FONT_CHOICES.map((f) => f.id) as [FontChoice, ...FontChoice[]];
 

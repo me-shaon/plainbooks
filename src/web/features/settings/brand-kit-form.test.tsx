@@ -56,6 +56,19 @@ describe("BrandKitForm", () => {
   });
 });
 
+describe("AccentColorField", () => {
+  it("sets the accent from a suggested color", async () => {
+    const user = userEvent.setup();
+    renderForm(false);
+    await user.click(screen.getByRole("button", { name: "Pick the accent color" }));
+    const swatches = await screen.findAllByRole("option");
+    expect(swatches).toHaveLength(12);
+    await user.click(swatches[3] as HTMLElement);
+    const accent = screen.getByRole("textbox", { name: "Accent color" }) as HTMLInputElement;
+    expect(accent.value).toBe("#1d4ed8");
+  });
+});
+
 describe("logoFileError", () => {
   it("accepts small PNG, JPG, and SVG files", () => {
     for (const type of ["image/png", "image/jpeg", "image/svg+xml"]) {

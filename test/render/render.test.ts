@@ -6,9 +6,15 @@ import {
   type TemplateSection,
 } from "../../src/shared/domain";
 import type { DocumentSnapshot } from "../../src/shared/schemas/document";
-import type { BrandKit } from "../../src/shared/schemas/settings";
+import {
+  type BrandKit,
+  FONT_CHOICES,
+  FONT_WEIGHTS,
+  fontFileName,
+} from "../../src/shared/schemas/settings";
 import type { TemplateDetail } from "../../src/shared/schemas/template";
 import { type RenderState, renderDocument, renderDocumentHtml } from "../../src/worker/render";
+import { fontFaceCss, fontFileBytes } from "../../src/worker/render/fonts";
 import { sampleSnapshot } from "../../src/worker/render/sample";
 import { voidDocument } from "../../src/worker/services/documents";
 import { apiFetch, clearUsers, seedUser } from "../helpers/auth";
@@ -228,6 +234,22 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain('src="data:image/png;base64,iVBORw=="');
     expect(html).not.toContain("/p/assets");
     expect(html).toContain("@page{size:A4");
+  });
+});
+
+describe("document fonts", () => {
+  it("bundles 400, 500, and 600 for every brand kit font", () => {
+    for (const choice of FONT_CHOICES) {
+      for (const weight of FONT_WEIGHTS) {
+        const bytes = fontFileBytes(fontFileName(choice.id, weight));
+        expect(bytes?.byteLength, `${choice.id} ${weight}`).toBeGreaterThan(1000);
+        // A woff2 file starts with "wOF2".
+        expect(String.fromCharCode(...(bytes ?? []).slice(0, 4))).toBe("wOF2");
+      }
+      const css = fontFaceCss(choice.id, "page");
+      expect(css).toContain(`/p/assets/fonts/${fontFileName(choice.id, 600)}`);
+      expect(css).toContain(choice.stack.split(",")[0]);
+    }
   });
 });
 

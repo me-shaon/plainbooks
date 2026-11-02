@@ -2,6 +2,12 @@
 // URI at build time, so the Worker needs no asset binding. Public pages load the same bytes
 // from /p/assets/fonts/<file>. PDF HTML embeds the data URIs, so the renderer makes no
 // network calls.
+import dmSans400 from "@fontsource/dm-sans/files/dm-sans-latin-400-normal.woff2?inline";
+import dmSans500 from "@fontsource/dm-sans/files/dm-sans-latin-500-normal.woff2?inline";
+import dmSans600 from "@fontsource/dm-sans/files/dm-sans-latin-600-normal.woff2?inline";
+import ebGaramond400 from "@fontsource/eb-garamond/files/eb-garamond-latin-400-normal.woff2?inline";
+import ebGaramond500 from "@fontsource/eb-garamond/files/eb-garamond-latin-500-normal.woff2?inline";
+import ebGaramond600 from "@fontsource/eb-garamond/files/eb-garamond-latin-600-normal.woff2?inline";
 import ibmPlexMono400 from "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2?inline";
 import ibmPlexMono500 from "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2?inline";
 import ibmPlexSans400 from "@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2?inline";
@@ -10,9 +16,21 @@ import ibmPlexSans600 from "@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-
 import instrumentSans400 from "@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff2?inline";
 import instrumentSans500 from "@fontsource/instrument-sans/files/instrument-sans-latin-500-normal.woff2?inline";
 import instrumentSans600 from "@fontsource/instrument-sans/files/instrument-sans-latin-600-normal.woff2?inline";
+import inter400 from "@fontsource/inter/files/inter-latin-400-normal.woff2?inline";
+import inter500 from "@fontsource/inter/files/inter-latin-500-normal.woff2?inline";
+import inter600 from "@fontsource/inter/files/inter-latin-600-normal.woff2?inline";
+import lora400 from "@fontsource/lora/files/lora-latin-400-normal.woff2?inline";
+import lora500 from "@fontsource/lora/files/lora-latin-500-normal.woff2?inline";
+import lora600 from "@fontsource/lora/files/lora-latin-600-normal.woff2?inline";
+import manrope400 from "@fontsource/manrope/files/manrope-latin-400-normal.woff2?inline";
+import manrope500 from "@fontsource/manrope/files/manrope-latin-500-normal.woff2?inline";
+import manrope600 from "@fontsource/manrope/files/manrope-latin-600-normal.woff2?inline";
 import sourceSerif400 from "@fontsource/source-serif-4/files/source-serif-4-latin-400-normal.woff2?inline";
 import sourceSerif500 from "@fontsource/source-serif-4/files/source-serif-4-latin-500-normal.woff2?inline";
 import sourceSerif600 from "@fontsource/source-serif-4/files/source-serif-4-latin-600-normal.woff2?inline";
+import workSans400 from "@fontsource/work-sans/files/work-sans-latin-400-normal.woff2?inline";
+import workSans500 from "@fontsource/work-sans/files/work-sans-latin-500-normal.woff2?inline";
+import workSans600 from "@fontsource/work-sans/files/work-sans-latin-600-normal.woff2?inline";
 import { FONT_CHOICES, type FontChoice } from "../../shared/schemas/settings";
 
 export type DocumentFontId = FontChoice | "ibm-plex-mono";
@@ -43,6 +61,78 @@ export const FONT_FILES: Record<string, FontFile> = {
     fontId: "instrument-sans",
     weight: 600,
     dataUri: instrumentSans600,
+  },
+  "inter-400.woff2": {
+    family: "Inter",
+    fontId: "inter",
+    weight: 400,
+    dataUri: inter400,
+  },
+  "inter-500.woff2": {
+    family: "Inter",
+    fontId: "inter",
+    weight: 500,
+    dataUri: inter500,
+  },
+  "inter-600.woff2": {
+    family: "Inter",
+    fontId: "inter",
+    weight: 600,
+    dataUri: inter600,
+  },
+  "dm-sans-400.woff2": {
+    family: "DM Sans",
+    fontId: "dm-sans",
+    weight: 400,
+    dataUri: dmSans400,
+  },
+  "dm-sans-500.woff2": {
+    family: "DM Sans",
+    fontId: "dm-sans",
+    weight: 500,
+    dataUri: dmSans500,
+  },
+  "dm-sans-600.woff2": {
+    family: "DM Sans",
+    fontId: "dm-sans",
+    weight: 600,
+    dataUri: dmSans600,
+  },
+  "manrope-400.woff2": {
+    family: "Manrope",
+    fontId: "manrope",
+    weight: 400,
+    dataUri: manrope400,
+  },
+  "manrope-500.woff2": {
+    family: "Manrope",
+    fontId: "manrope",
+    weight: 500,
+    dataUri: manrope500,
+  },
+  "manrope-600.woff2": {
+    family: "Manrope",
+    fontId: "manrope",
+    weight: 600,
+    dataUri: manrope600,
+  },
+  "work-sans-400.woff2": {
+    family: "Work Sans",
+    fontId: "work-sans",
+    weight: 400,
+    dataUri: workSans400,
+  },
+  "work-sans-500.woff2": {
+    family: "Work Sans",
+    fontId: "work-sans",
+    weight: 500,
+    dataUri: workSans500,
+  },
+  "work-sans-600.woff2": {
+    family: "Work Sans",
+    fontId: "work-sans",
+    weight: 600,
+    dataUri: workSans600,
   },
   "ibm-plex-sans-400.woff2": {
     family: "IBM Plex Sans",
@@ -79,6 +169,42 @@ export const FONT_FILES: Record<string, FontFile> = {
     fontId: "source-serif-4",
     weight: 600,
     dataUri: sourceSerif600,
+  },
+  "lora-400.woff2": {
+    family: "Lora",
+    fontId: "lora",
+    weight: 400,
+    dataUri: lora400,
+  },
+  "lora-500.woff2": {
+    family: "Lora",
+    fontId: "lora",
+    weight: 500,
+    dataUri: lora500,
+  },
+  "lora-600.woff2": {
+    family: "Lora",
+    fontId: "lora",
+    weight: 600,
+    dataUri: lora600,
+  },
+  "eb-garamond-400.woff2": {
+    family: "EB Garamond",
+    fontId: "eb-garamond",
+    weight: 400,
+    dataUri: ebGaramond400,
+  },
+  "eb-garamond-500.woff2": {
+    family: "EB Garamond",
+    fontId: "eb-garamond",
+    weight: 500,
+    dataUri: ebGaramond500,
+  },
+  "eb-garamond-600.woff2": {
+    family: "EB Garamond",
+    fontId: "eb-garamond",
+    weight: 600,
+    dataUri: ebGaramond600,
   },
   "ibm-plex-mono-400.woff2": {
     family: "IBM Plex Mono",

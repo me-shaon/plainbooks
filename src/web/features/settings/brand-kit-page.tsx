@@ -5,6 +5,8 @@ import {
   type BrandKit,
   brandKitInput,
   FONT_CHOICES,
+  FONT_WEIGHTS,
+  fontFileName,
   HEX_COLOR,
   LOGO_TYPES,
   MAX_LOGO_BYTES,
@@ -21,8 +23,20 @@ import { toast } from "../../components/ui/toast";
 import { issuesByPath, toastError } from "../../lib/api";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { useMe } from "../../lib/session";
+import { AccentColorField } from "./accent-color-field";
 import { useBrandKit, useRemoveLogo, useUpdateBrandKit, useUploadLogo } from "./queries";
 import { SaveBar } from "./settings-layout";
+
+/**
+ * `@font-face` rules for every document font, from the files that public pages use. The
+ * browser loads a file only when the preview or the font list shows that font.
+ */
+const DOCUMENT_FONT_FACES = FONT_CHOICES.flatMap((choice) =>
+  FONT_WEIGHTS.map(
+    (weight) =>
+      `@font-face{font-family:${choice.stack.split(",")[0]};font-weight:${weight};font-display:swap;src:url(/p/assets/fonts/${fontFileName(choice.id, weight)}) format("woff2")}`,
+  ),
+).join("\n");
 
 export function BrandKitPage() {
   const kit = useBrandKit();
@@ -152,23 +166,12 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
 
           <Section title="Look">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex items-end gap-3">
-                <TextField
-                  label="Accent color"
-                  className="flex-1"
-                  isDisabled={readOnly}
-                  inputClassName="figure"
-                  value={values.accentColor}
-                  onChange={(text) => set("accentColor", text)}
-                  description="A hex color, for example #2f7f6f."
-                  {...fieldError(errors, "accentColor")}
-                />
-                <span
-                  aria-hidden="true"
-                  className="mb-6 size-10 shrink-0 rounded-button border border-border"
-                  style={{ backgroundColor: validAccent ? values.accentColor : "transparent" }}
-                />
-              </div>
+              <AccentColorField
+                value={values.accentColor}
+                onChange={(hex) => set("accentColor", hex)}
+                isDisabled={readOnly}
+                errorProps={fieldError(errors, "accentColor")}
+              />
               <Select
                 label="Font"
                 isDisabled={readOnly}
@@ -177,7 +180,12 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
                 {...fieldError(errors, "font")}
               >
                 {FONT_CHOICES.map((choice) => (
-                  <ListBoxItem key={choice.id} id={choice.id}>
+                  <ListBoxItem
+                    key={choice.id}
+                    id={choice.id}
+                    textValue={choice.label}
+                    style={{ fontFamily: choice.stack }}
+                  >
                     {choice.label}
                   </ListBoxItem>
                 ))}
@@ -234,18 +242,31 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
         </div>
 
         <Section title="Preview" className="self-start">
+          <style>{DOCUMENT_FONT_FACES}</style>
           <div
             className="flex flex-col gap-4 rounded-button border border-border p-4"
             style={{ fontFamily: font.stack }}
           >
+            {/* The same order as the document header: logo, name, address, tax ID. */}
             <div className="flex items-start justify-between gap-3">
-              {kit.logoUrl ? (
-                <img src={kit.logoUrl} alt="" className="h-8 max-w-28 object-contain" />
-              ) : (
-                <span className="text-sm font-semibold">
+              <div className="flex min-w-0 flex-col gap-1">
+                {kit.logoUrl ? (
+                  <img
+                    src={kit.logoUrl}
+                    alt=""
+                    className="mb-1 max-h-12 max-w-32 self-start object-contain object-left"
+                  />
+                ) : null}
+                <span className="text-sm font-semibold break-words">
                   {values.businessName || "Your agency"}
                 </span>
-              )}
+                <span className="text-xs whitespace-pre-line text-muted-foreground">
+                  {values.address || "Business address"}
+                </span>
+                {values.taxId ? (
+                  <span className="text-xs text-muted-foreground">Tax ID {values.taxId}</span>
+                ) : null}
+              </div>
               <span
                 className="text-lg font-semibold"
                 style={{ color: validAccent ? values.accentColor : undefined }}
@@ -257,9 +278,6 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
               className="h-1 rounded-pill"
               style={{ backgroundColor: validAccent ? values.accentColor : undefined }}
             />
-            <p className="m-0 text-xs whitespace-pre-line text-muted-foreground">
-              {values.address || "Business address"}
-            </p>
             {values.bankDetails ? (
               <p className="m-0 border-t border-row-border pt-3 text-xs whitespace-pre-line">
                 {values.bankDetails}
