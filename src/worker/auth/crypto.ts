@@ -13,3 +13,19 @@ export function constantTimeEqual(a: string, b: string): boolean {
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
+
+/**
+ * The example values that `.dev.vars.example` held until v0.1.3. They are public, and the
+ * Deploy button put them in its secret fields, so a deploy may still use one. The app treats
+ * them as missing.
+ */
+const PUBLIC_EXAMPLE_SECRETS = new Set([
+  "replace-with-32-or-more-random-characters",
+  "replace-with-32-random-bytes-as-base64",
+]);
+
+/** The trimmed secret, or null when it is missing or one of the public example values. */
+export function usableSecret(value: string | undefined): string | null {
+  const secret = value?.trim() ?? "";
+  return secret && !PUBLIC_EXAMPLE_SECRETS.has(secret) ? secret : null;
+}

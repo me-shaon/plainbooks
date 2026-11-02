@@ -11,7 +11,7 @@
   "cloudflare": {
     "bindings": {
       "SETUP_TOKEN": {
-        "description": "Save this value now. Cloudflare does not show it again, and you enter it at `/setup` to create the first Owner. Use 32 random characters or more. To make one, run `openssl rand -base64 32`. See [the setup guide](https://github.com/me-shaon/plainbooks/blob/main/docs/setup.md)."
+        "description": "Copy this value and keep it. You enter it at `/setup` to create the first Owner, and Cloudflare does not show it again. Use 32 random characters or more."
       },
       "AUTH_SECRET": {
         "description": "Signs the sign-in sessions. Use 32 random characters or more. To make one, run `openssl rand -base64 32`. A new value later signs everyone out."

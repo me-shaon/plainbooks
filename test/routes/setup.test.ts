@@ -185,7 +185,8 @@ describe("POST /api/setup/owner", () => {
   });
 
   it("returns 404 for both routes when SETUP_TOKEN is missing or short", async () => {
-    for (const token of ["", "short-token"]) {
+    // The value that .dev.vars.example once held is public, so it turns setup off too.
+    for (const token of ["", "short-token", "replace-with-32-or-more-random-characters"]) {
       for (const path of ["owner", "recover"]) {
         const res = await post(path, owner(), { token });
         expect(res.status).toBe(404);

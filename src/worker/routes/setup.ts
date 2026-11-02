@@ -6,7 +6,7 @@ import {
   setupOwnerInput,
 } from "../../shared/schemas/setup";
 import { googleEnabled } from "../auth/auth";
-import { constantTimeEqual, sha256Hex } from "../auth/crypto";
+import { constantTimeEqual, sha256Hex, usableSecret } from "../auth/crypto";
 import { allowedOrigins } from "../auth/middleware";
 import { createPasswordHasher, resolveIterations } from "../auth/pbkdf2";
 import { assertRateLimits, clientIp, RATE_RULES, rateKeys } from "../auth/rate-limit";
@@ -25,7 +25,7 @@ import { loadWorkspace } from "../services/settings";
 
 /** The setup token from the environment, or null when it is missing or too short. */
 function configuredToken(env: Bindings): string | null {
-  const token = env.SETUP_TOKEN?.trim() ?? "";
+  const token = usableSecret(env.SETUP_TOKEN) ?? "";
   return token.length >= SETUP_TOKEN_MIN_LENGTH ? token : null;
 }
 

@@ -9,6 +9,7 @@ import type { Bindings } from "../env";
 import { appOrigin, deliverEmail } from "../services/email";
 import { activateInvitedUser, hasOpenInvite, userStatus } from "../services/invites";
 import { loadWorkspace } from "../services/settings";
+import { usableSecret } from "./crypto";
 import { allowedOrigins } from "./middleware";
 import { createPasswordHasher, needsRehash, resolveIterations } from "./pbkdf2";
 import {
@@ -195,8 +196,8 @@ function tooManyAttempts(seconds: number): APIError {
 export function createAuth(env: Bindings, request: Request, runtime: AuthRuntime = {}) {
   const iterations = resolveIterations(env.PBKDF2_ITERATIONS);
   const hasher = createPasswordHasher(iterations);
-  const secret = env.AUTH_SECRET?.trim();
-  if (!secret) throw new Error("AUTH_SECRET is not set.");
+  const secret = usableSecret(env.AUTH_SECRET);
+  if (!secret) throw new Error("AUTH_SECRET is not set, or it is the public example value.");
   const db = createDb(env.DB);
   const origin = appOrigin(env) || new URL(request.url).origin;
   const google =

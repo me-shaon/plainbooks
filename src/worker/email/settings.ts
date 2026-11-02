@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { type CredentialError, type ProviderMeta, parseCredentials } from "mailswitch";
 import { createKeyRing, decrypt, encrypt, type KeyRing } from "mailswitch/crypto";
 import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domain";
+import { usableSecret } from "../auth/crypto";
 import { type Db, isRequestScoped, schema } from "../db/client";
 import type { EmailProviderRow } from "../db/schema";
 import { AppError } from "../errors";
@@ -34,11 +35,11 @@ export function secretScope(
 let cachedRing: { secret: string; ring: KeyRing } | undefined;
 
 /**
- * The key ring from `ENCRYPTION_KEY`, or null when the secret is missing or is not at
- * least 32 bytes of base64.
+ * The key ring from `ENCRYPTION_KEY`, or null when the secret is missing, is the public
+ * example value, or is not at least 32 bytes of base64.
  */
 export function loadKeyRing(secret: string | undefined): KeyRing | null {
-  if (!secret) return null;
+  if (!secret || !usableSecret(secret)) return null;
   if (cachedRing?.secret === secret) return cachedRing.ring;
   try {
     const ring = createKeyRing({ keys: [{ version: 1, secret }], current: 1 });

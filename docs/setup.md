@@ -340,7 +340,9 @@ Keep the file in a safe place. It contains client data. D1 Time Travel also keep
 
 ### The setup screen says that setup is turned off
 
-The `SETUP_TOKEN` secret is missing or has fewer than 32 characters. Set a new value with 32 characters or more, then reload the page.
+The `SETUP_TOKEN` secret is missing, has fewer than 32 characters, or is the public example value `replace-with-32-or-more-random-characters`. Set a new value with 32 characters or more, then reload the page.
+
+The app also refuses the example values for `AUTH_SECRET` and `ENCRYPTION_KEY`. Older versions of the Deploy screen filled them in. If you kept them, set new values for all three secrets.
 
 ### You forgot the setup token
 
