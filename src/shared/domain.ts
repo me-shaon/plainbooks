@@ -116,6 +116,7 @@ export const TEMPLATE_SECTIONS = [
   "totals",
   "notes",
   "payment_details",
+  "signature",
   "footer",
 ] as const;
 export type TemplateSection = (typeof TEMPLATE_SECTIONS)[number];

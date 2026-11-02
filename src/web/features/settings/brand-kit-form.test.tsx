@@ -23,6 +23,10 @@ const kit: BrandKit = {
   website: null,
   bankDetails: null,
   footerText: null,
+  signatureKey: null,
+  signatureUrl: null,
+  signatureName: null,
+  signatureTitle: null,
 };
 
 function renderForm(readOnly: boolean) {

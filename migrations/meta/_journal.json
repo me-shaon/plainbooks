@@ -78,6 +78,13 @@
       "when": 1793637640026,
       "tag": "0010_workspace_fx_rates",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1793645483272,
+      "tag": "0011_brand_signature",
+      "breakpoints": true
     }
   ]
 }

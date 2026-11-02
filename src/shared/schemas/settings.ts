@@ -149,6 +149,8 @@ export const brandKitInput = z
       ),
     bankDetails: optionalText(2000),
     footerText: optionalText(1000),
+    signatureName: optionalText(120),
+    signatureTitle: optionalText(120),
   })
   .partial();
 export type BrandKitInput = z.input<typeof brandKitInput>;
@@ -247,6 +249,14 @@ export interface BrandKit {
   website: string | null;
   bankDetails: string | null;
   footerText: string | null;
+  /**
+   * The signature image, stored and served like the logo. Snapshots from before signatures
+   * existed lack these four fields.
+   */
+  signatureKey: string | null;
+  signatureUrl: string | null;
+  signatureName: string | null;
+  signatureTitle: string | null;
 }
 
 /**

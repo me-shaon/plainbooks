@@ -56,6 +56,7 @@ PlainBooks is a private invoicing app for one agency or freelancer. You send quo
 ### Brand and team
 
 - Set your logo, colors, and font in the brand kit.
+- Add a signature image with the signer's name and title. It prints above the footer of invoices and quotes, and in their PDFs.
 - Start from ten ready-made document templates in minimal, professional, and modern styles, with live previews. In the template editor, change the layout, the accent color, the font, striped rows, compact spacing, a centered header, and the order of the sections. Save any template as a new one.
 - Invite team members as Owners or Members. They sign in with an email and a password, or with Google if you turn it on.
 - Choose your email provider in Settings: toSend, Resend, Postmark, Amazon SES, SMTP, and more. You can add a fallback provider and a daily cap.

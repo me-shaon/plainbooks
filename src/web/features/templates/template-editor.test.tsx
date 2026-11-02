@@ -17,6 +17,7 @@ describe("moveSections", () => {
       "totals",
       "notes",
       "payment_details",
+      "signature",
     ]);
   });
 
@@ -28,6 +29,7 @@ describe("moveSections", () => {
       "header",
       "notes",
       "payment_details",
+      "signature",
       "footer",
     ]);
   });

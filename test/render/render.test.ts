@@ -44,6 +44,10 @@ const BRAND: BrandKit = {
   website: null,
   bankDetails: "City Bank\nAccount 0042",
   footerText: "Thank you",
+  signatureKey: null,
+  signatureUrl: null,
+  signatureName: null,
+  signatureTitle: null,
 };
 
 function state(overrides: Partial<RenderState> = {}): RenderState {
@@ -260,6 +264,78 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain('src="data:image/png;base64,iVBORw=="');
     expect(html).not.toContain("/p/assets");
     expect(html).toContain("@page{size:A4");
+  });
+});
+
+describe("signature", () => {
+  const signed = { signatureKey: "logos/bbbb.png", signatureUrl: "/p/assets/logo/bbbb.png" };
+
+  it("prints the image, the name, and the title above the footer", () => {
+    const html = renderDocumentHtml(
+      sample(config("classic"), {
+        ...signed,
+        signatureName: "Ahmed Shamim",
+        signatureTitle: "Director",
+      }),
+      { mode: "page", state: state() },
+    );
+    const block = sectionHtml(html, "signature");
+    expect(block).toContain('src="/p/assets/logo/bbbb.png"');
+    expect(block).toContain('alt="Signature of Ahmed Shamim"');
+    expect(block).toContain("Ahmed Shamim");
+    expect(block).toContain("Director");
+    expect(block).not.toContain("Authorized signature");
+    const order = sectionIndexes(html);
+    expect(order.indexOf("signature")).toBe(order.indexOf("footer") - 1);
+  });
+
+  it("says Authorized signature without a name, and prints nothing without a signature", () => {
+    const imageOnly = renderDocumentHtml(sample(config("classic"), signed), {
+      mode: "page",
+      state: state(),
+    });
+    expect(sectionHtml(imageOnly, "signature")).toContain("Authorized signature");
+
+    const none = renderDocumentHtml(sample(config("classic")), { mode: "page", state: state() });
+    expect(sectionIndexes(none)).not.toContain("signature");
+
+    // A revision from before signatures existed has no signature fields.
+    const old = sample(config("classic"));
+    const brandKit: Partial<BrandKit> = { ...old.brandKit };
+    delete brandKit.signatureKey;
+    delete brandKit.signatureUrl;
+    delete brandKit.signatureName;
+    delete brandKit.signatureTitle;
+    const oldHtml = renderDocumentHtml(
+      { ...old, brandKit: brandKit as BrandKit },
+      {
+        mode: "page",
+        state: state(),
+      },
+    );
+    expect(sectionIndexes(oldHtml)).not.toContain("signature");
+  });
+
+  it("pdf mode inlines the signature image", async () => {
+    await env.BUCKET.put("logos/bbbb.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const html = await renderDocument(env, sample(config("classic"), signed), {
+      mode: "pdf",
+      state: state(),
+    });
+    expect(sectionHtml(html, "signature")).toContain('src="data:image/png;base64,iVBORw=="');
+  });
+
+  it("adds the section hidden and before the footer to a template saved before it existed", () => {
+    const saved = {
+      layout: "classic",
+      sections: TEMPLATE_SECTIONS.filter((id) => id !== "signature").map((id) => ({
+        id,
+        visible: true,
+      })),
+    };
+    const ids = normalizeTemplateConfig(saved).sections;
+    expect(ids.at(-2)).toEqual({ id: "signature", visible: false });
+    expect(ids.at(-1)?.id).toBe("footer");
   });
 });
 
@@ -485,7 +561,7 @@ describe("/api/templates", () => {
     });
     expect(created.status).toBe(201);
     const template = (await created.json()) as TemplateDetail;
-    expect(template.config.sections).toHaveLength(7);
+    expect(template.config.sections).toHaveLength(TEMPLATE_SECTIONS.length);
     expect(template.config.layout).toBe("minimal");
 
     const updated = await apiFetch(`/api/templates/${template.id}`, {

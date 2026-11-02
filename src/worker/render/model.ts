@@ -47,6 +47,8 @@ export interface DocumentView {
   isInvoice: boolean;
   /** The image source for the logo, or null. */
   logoSrc: string | null;
+  /** The image source for the signature, or null. */
+  signatureSrc: string | null;
   sections: { id: TemplateSection; visible: boolean }[];
   /** The template's look: color and font overrides, and the style options. */
   style: TemplateStyle;
@@ -140,6 +142,7 @@ export function buildView(
   state: RenderState,
   mode: RenderMode,
   logoSrc: string | null | undefined,
+  signatureSrc?: string | null,
 ): DocumentView {
   const config = normalizeTemplateConfig(snapshot.template.config);
   const placement = new Map(config.customFields.map((f) => [f.fieldId, f.section]));
@@ -160,6 +163,8 @@ export function buildView(
     kindLabel: isInvoice ? "Invoice" : "Quote",
     isInvoice,
     logoSrc: logoSrc === undefined ? logoUrl(snapshot.brandKit.logoKey) : logoSrc,
+    signatureSrc:
+      signatureSrc === undefined ? logoUrl(snapshot.brandKit.signatureKey ?? null) : signatureSrc,
     sections: config.sections,
     style: config.style,
     fields: (section) => bySection.get(section) ?? [],

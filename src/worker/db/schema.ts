@@ -117,6 +117,11 @@ export const workspace = sqliteTable(
     website: text("website"),
     bankDetails: text("bank_details"),
     footerText: text("footer_text"),
+    /** A signature image, stored like the logo (`logos/<sha256>.<ext>`). */
+    signatureKey: text("signature_key"),
+    /** Printed under the signature, for example "Ahmed Shamim" and "Director". */
+    signatureName: text("signature_name"),
+    signatureTitle: text("signature_title"),
     emailFromName: text("email_from_name"),
     /** The verified Resend sender address, for example "billing@studio.example". */
     emailFromAddress: text("email_from_address"),

@@ -61,6 +61,11 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .fx-note{font-size:12px;color:#66635c;align-self:flex-end;text-align:right}
 .pay{font-size:13px}
 .pay .details{white-space:pre-line;color:#1b1b19}
+.sign{align-items:flex-end}
+.sign-block{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:200px}
+.sign-img{max-width:200px;max-height:72px;object-fit:contain;object-position:left bottom}
+.sign-rule{align-self:stretch;border-top:1px solid #1b1b19;margin:4px 0 2px}
+.sign-name{font-weight:500;font-size:13px}
 .footer{font-size:12px;color:#66635c;border-top:1px solid #ecebe6;padding-top:16px}
 .decision{background:#fff;border-radius:6px;padding:24px;border:1px solid #dcd9d0;display:flex;flex-direction:column;gap:12px}
 .decision h2{margin:0;font-size:17px;font-weight:600}
@@ -177,7 +182,7 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
   .layout-modern{padding-top:20px}
   .layout-bold .header{margin:0 0 4px;padding:28px 28px 24px;border-radius:4px}
   .items tr{break-inside:avoid}
-  .totals-wrap,.sec-payment_details,.sec-footer{break-inside:avoid}
+  .totals-wrap,.sec-payment_details,.sec-signature,.sec-footer{break-inside:avoid}
 }
 html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 `;

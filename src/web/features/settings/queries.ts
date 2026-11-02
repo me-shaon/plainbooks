@@ -83,12 +83,15 @@ export function useUpdateBrandKit() {
   });
 }
 
-/** Uploads a logo file as the raw request body. */
-export function useUploadLogo() {
+/** A brand kit image: the logo or the signature. */
+export type BrandImage = "logo" | "signature";
+
+/** Uploads a brand image file as the raw request body. */
+export function useUploadBrandImage(image: BrandImage) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (file: File) =>
-      api<BrandKit>("/settings/brand-kit/logo", {
+      api<BrandKit>(`/settings/brand-kit/${image}`, {
         method: "POST",
         body: file,
         contentType: file.type,
@@ -97,13 +100,16 @@ export function useUploadLogo() {
   });
 }
 
-export function useRemoveLogo() {
+export function useRemoveBrandImage(image: BrandImage) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api<BrandKit>("/settings/brand-kit/logo", { method: "DELETE" }),
+    mutationFn: () => api<BrandKit>(`/settings/brand-kit/${image}`, { method: "DELETE" }),
     onSuccess: (data) => queryClient.setQueryData(queryKeys.settings.brandKit, data),
   });
 }
+
+export const useUploadLogo = () => useUploadBrandImage("logo");
+export const useRemoveLogo = () => useRemoveBrandImage("logo");
 
 export function useSaveTaxRate() {
   const queryClient = useQueryClient();

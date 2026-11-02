@@ -25,6 +25,8 @@ export interface RenderOptions {
    * pass the data URI from `inlineLogo` (`renderDocument` does this).
    */
   logoSrc?: string | null;
+  /** The signature image source. It works like `logoSrc`. */
+  signatureSrc?: string | null;
   /** Page mode: shows a "Download PDF" link. */
   pdfUrl?: string | null;
   /** The CSP nonce for the inline theme style. */
@@ -81,7 +83,13 @@ export function documentTitle(snapshot: DocumentSnapshot): string {
  */
 export function renderDocumentHtml(snapshot: DocumentSnapshot, options: RenderOptions): string {
   const config = normalizeTemplateConfig(snapshot.template.config);
-  const view = buildView(snapshot, options.state, options.mode, options.logoSrc);
+  const view = buildView(
+    snapshot,
+    options.state,
+    options.mode,
+    options.logoSrc,
+    options.signatureSrc,
+  );
   const isPage = options.mode === "page";
   const { font } = documentTheme(snapshot);
   const inlineCss = isPage
@@ -150,15 +158,18 @@ export async function inlineLogo(
 }
 
 /**
- * Renders a document. In "pdf" mode it reads the snapshot's logo from `env.BUCKET` and
- * inlines it, so the HTML needs no network access.
+ * Renders a document. In "pdf" mode it reads the snapshot's logo and signature from
+ * `env.BUCKET` and inlines them, so the HTML needs no network access.
  */
 export async function renderDocument(
   env: { BUCKET: R2Bucket },
   snapshot: DocumentSnapshot,
-  options: Omit<RenderOptions, "logoSrc">,
+  options: Omit<RenderOptions, "logoSrc" | "signatureSrc">,
 ): Promise<string> {
-  const logoSrc =
-    options.mode === "pdf" ? await inlineLogo(env.BUCKET, snapshot.brandKit.logoKey) : undefined;
-  return renderDocumentHtml(snapshot, { ...options, logoSrc });
+  if (options.mode !== "pdf") return renderDocumentHtml(snapshot, options);
+  const [logoSrc, signatureSrc] = await Promise.all([
+    inlineLogo(env.BUCKET, snapshot.brandKit.logoKey),
+    inlineLogo(env.BUCKET, snapshot.brandKit.signatureKey),
+  ]);
+  return renderDocumentHtml(snapshot, { ...options, logoSrc, signatureSrc });
 }

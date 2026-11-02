@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import {
   brandKitInput,
   exchangeRatesInput,
@@ -73,6 +73,33 @@ async function assertActiveTaxRate(db: Db, id: string | null | undefined) {
   }
 }
 
+type BrandImage = "logoKey" | "signatureKey";
+
+/** Checks and stores an uploaded brand image (logo or signature), then points the column at it. */
+async function storeBrandImage(c: Context<AppEnv>, column: BrandImage) {
+  const declared = Number(c.req.header("content-length") ?? "0");
+  if (declared > MAX_LOGO_BYTES) throw logoTooLarge();
+  const bytes = await readBodyCapped(c.req.raw, MAX_LOGO_BYTES);
+  const ext = validateLogo(bytes, c.req.header("content-type") ?? "");
+  const key = await storeLogo(c.env.BUCKET, bytes, ext);
+  await c.var.db
+    .update(workspace)
+    .set({ [column]: key, updatedAt: Date.now() })
+    .where(eq(workspace.id, 1));
+  forgetWorkspace(c.var.db);
+  return getBrandKit(c.var.db);
+}
+
+/** Clears a brand image. The file stays in R2, because sent revisions may still show it. */
+async function clearBrandImage(db: Db, column: BrandImage) {
+  await db
+    .update(workspace)
+    .set({ [column]: null, updatedAt: Date.now() })
+    .where(eq(workspace.id, 1));
+  forgetWorkspace(db);
+  return getBrandKit(db);
+}
+
 /**
  * Workspace settings and the brand kit, mounted at /api/settings. Everyone can read them.
  * Only an Owner can change them (R38).
@@ -119,28 +146,19 @@ export const settingsRoutes = new Hono<AppEnv>()
    * Uploads a new logo. The body is the raw file, and Content-Type is its image type.
    * The old logo stays in R2, because sent revisions may still show it.
    */
-  .post("/brand-kit/logo", requireOwner, async (c) => {
-    const declared = Number(c.req.header("content-length") ?? "0");
-    if (declared > MAX_LOGO_BYTES) throw logoTooLarge();
-    const bytes = await readBodyCapped(c.req.raw, MAX_LOGO_BYTES);
-    const ext = validateLogo(bytes, c.req.header("content-type") ?? "");
-    const key = await storeLogo(c.env.BUCKET, bytes, ext);
-    await c.var.db
-      .update(workspace)
-      .set({ logoKey: key, updatedAt: Date.now() })
-      .where(eq(workspace.id, 1));
-    forgetWorkspace(c.var.db);
-    return c.json(await getBrandKit(c.var.db));
-  })
+  .post("/brand-kit/logo", requireOwner, async (c) => c.json(await storeBrandImage(c, "logoKey")))
   /** Removes the logo from the brand kit. The file stays in R2 for sent revisions. */
-  .delete("/brand-kit/logo", requireOwner, async (c) => {
-    await c.var.db
-      .update(workspace)
-      .set({ logoKey: null, updatedAt: Date.now() })
-      .where(eq(workspace.id, 1));
-    forgetWorkspace(c.var.db);
-    return c.json(await getBrandKit(c.var.db));
-  })
+  .delete("/brand-kit/logo", requireOwner, async (c) =>
+    c.json(await clearBrandImage(c.var.db, "logoKey")),
+  )
+  /** Uploads a signature image. It has the same checks and storage as the logo. */
+  .post("/brand-kit/signature", requireOwner, async (c) =>
+    c.json(await storeBrandImage(c, "signatureKey")),
+  )
+  /** Removes the signature image. The file stays in R2 for sent revisions. */
+  .delete("/brand-kit/signature", requireOwner, async (c) =>
+    c.json(await clearBrandImage(c.var.db, "signatureKey")),
+  )
   /** The running version, the newest release, and the update check switch. Owner only. */
   .get("/exchange-rates", async (c) => c.json(await listExchangeRates(c.var.db)))
   .put("/exchange-rates", requireOwner, async (c) => {

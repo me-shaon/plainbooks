@@ -24,7 +24,13 @@ import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { useMe } from "../../lib/session";
 import { AccentColorField } from "./accent-color-field";
 import { FooterField } from "./footer-field";
-import { useBrandKit, useRemoveLogo, useUpdateBrandKit, useUploadLogo } from "./queries";
+import {
+  type BrandImage,
+  useBrandKit,
+  useRemoveBrandImage,
+  useUpdateBrandKit,
+  useUploadBrandImage,
+} from "./queries";
 import { SaveBar } from "./settings-layout";
 
 export function BrandKitPage() {
@@ -41,8 +47,14 @@ export function BrandKitPage() {
         <Skeleton className="h-96 w-full" />
       ) : kit.isError ? null : (
         <BrandKitForm
-          // A new logo keeps unsaved edits. Other saved changes reset the form.
-          key={JSON.stringify({ ...kit.data, logoKey: null, logoUrl: null })}
+          // A new logo or signature keeps unsaved edits. Other saved changes reset the form.
+          key={JSON.stringify({
+            ...kit.data,
+            logoKey: null,
+            logoUrl: null,
+            signatureKey: null,
+            signatureUrl: null,
+          })}
           kit={kit.data}
           readOnly={!isOwner}
         />
@@ -51,13 +63,76 @@ export function BrandKitPage() {
   );
 }
 
-type Values = Omit<BrandKit, "logoKey" | "logoUrl">;
+type Values = Omit<BrandKit, "logoKey" | "logoUrl" | "signatureKey" | "signatureUrl">;
 
 /** Checks the file in the browser first. The Worker checks it again. */
-export function logoFileError(file: File): string | null {
+export function logoFileError(file: File, what = "logo"): string | null {
   if (!(file.type in LOGO_TYPES)) return "Choose a PNG, JPG, or SVG image.";
-  if (file.size > MAX_LOGO_BYTES) return "The logo must be 1 MB or smaller.";
+  if (file.size > MAX_LOGO_BYTES) return `The ${what} must be 1 MB or smaller.`;
   return null;
+}
+
+const IMAGE_COPY: Record<BrandImage, { name: string; title: string }> = {
+  logo: { name: "logo", title: "Logo" },
+  signature: { name: "signature", title: "Signature" },
+};
+
+/** The current image with Upload or Replace, and Remove. */
+function BrandImageField({
+  image,
+  url,
+  readOnly,
+  boxClassName,
+}: {
+  image: BrandImage;
+  url: string | null;
+  readOnly: boolean;
+  boxClassName: string;
+}) {
+  const upload = useUploadBrandImage(image);
+  const remove = useRemoveBrandImage(image);
+  const copy = IMAGE_COPY[image];
+  const onFiles = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    const problem = logoFileError(file, copy.name);
+    if (problem) {
+      toast({ title: "Could not use this file", description: problem, tone: "danger" });
+      return;
+    }
+    upload.mutate(file, {
+      onSuccess: () => toast({ title: `${copy.title} uploaded`, tone: "success" }),
+    });
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <div
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-button border border-border bg-sidebar ${boxClassName}`}
+      >
+        {url ? (
+          <img src={url} alt={`Current ${copy.name}`} className="max-h-full max-w-full" />
+        ) : (
+          <ImageUp className="size-6 text-muted-foreground" aria-hidden="true" />
+        )}
+      </div>
+      {readOnly ? null : (
+        <div className="flex flex-wrap gap-2">
+          <FileTrigger acceptedFileTypes={Object.keys(LOGO_TYPES)} onSelect={onFiles}>
+            <Button variant="secondary" isPending={upload.isPending}>
+              <ImageUp className="size-4" aria-hidden="true" />
+              {url ? `Replace ${copy.name}` : `Upload ${copy.name}`}
+            </Button>
+          </FileTrigger>
+          {url ? (
+            <Button variant="ghost" isPending={remove.isPending} onPress={() => remove.mutate()}>
+              <Trash2 className="size-4" aria-hidden="true" />
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boolean }) {
@@ -72,11 +147,11 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
     website: kit.website,
     bankDetails: kit.bankDetails,
     footerText: kit.footerText,
+    signatureName: kit.signatureName,
+    signatureTitle: kit.signatureTitle,
   });
   const [errors, setErrors] = useState<FieldErrors>({});
   const update = useUpdateBrandKit();
-  const upload = useUploadLogo();
-  const removeLogo = useRemoveLogo();
   const set = <K extends keyof Values>(key: K, value: Values[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
@@ -97,19 +172,6 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
     }
   };
 
-  const onFiles = (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    const problem = logoFileError(file);
-    if (problem) {
-      toast({ title: "Could not use this file", description: problem, tone: "danger" });
-      return;
-    }
-    upload.mutate(file, {
-      onSuccess: () => toast({ title: "Logo uploaded", tone: "success" }),
-    });
-  };
-
   const validAccent = HEX_COLOR.test(values.accentColor);
   const font = FONT_CHOICES.find((f) => f.id === values.font) ?? FONT_CHOICES[0];
 
@@ -125,35 +187,12 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-5">
           <Section title="Logo" description="PNG, JPG, or SVG, up to 1 MB.">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-button border border-border bg-sidebar">
-                {kit.logoUrl ? (
-                  <img src={kit.logoUrl} alt="Current logo" className="max-h-full max-w-full" />
-                ) : (
-                  <ImageUp className="size-6 text-muted-foreground" aria-hidden="true" />
-                )}
-              </div>
-              {readOnly ? null : (
-                <div className="flex flex-wrap gap-2">
-                  <FileTrigger acceptedFileTypes={Object.keys(LOGO_TYPES)} onSelect={onFiles}>
-                    <Button variant="secondary" isPending={upload.isPending}>
-                      <ImageUp className="size-4" aria-hidden="true" />
-                      {kit.logoUrl ? "Replace logo" : "Upload logo"}
-                    </Button>
-                  </FileTrigger>
-                  {kit.logoUrl ? (
-                    <Button
-                      variant="ghost"
-                      isPending={removeLogo.isPending}
-                      onPress={() => removeLogo.mutate()}
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-              )}
-            </div>
+            <BrandImageField
+              image="logo"
+              url={kit.logoUrl}
+              readOnly={readOnly}
+              boxClassName="size-20"
+            />
           </Section>
 
           <Section title="Look">
@@ -263,6 +302,38 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
                 isDisabled={readOnly}
                 errorProps={fieldError(errors, "footerText")}
               />
+            </div>
+          </Section>
+
+          <Section
+            title="Signature"
+            description="Prints in the Signature section, above the footer. Use a PNG with a transparent background, up to 1 MB. New templates show it. For a template made before this release, turn on the Signature section in the template editor."
+          >
+            <div className="flex flex-col gap-4">
+              <BrandImageField
+                image="signature"
+                url={kit.signatureUrl}
+                readOnly={readOnly}
+                boxClassName="h-20 w-48"
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField
+                  label="Signer name"
+                  isDisabled={readOnly}
+                  value={values.signatureName ?? ""}
+                  onChange={(text) => set("signatureName", text)}
+                  description="Without a name, the line says Authorized signature."
+                  {...fieldError(errors, "signatureName")}
+                />
+                <TextField
+                  label="Signer title"
+                  isDisabled={readOnly}
+                  value={values.signatureTitle ?? ""}
+                  onChange={(text) => set("signatureTitle", text)}
+                  placeholder="Director"
+                  {...fieldError(errors, "signatureTitle")}
+                />
+              </div>
             </div>
           </Section>
         </div>

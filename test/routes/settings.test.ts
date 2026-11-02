@@ -43,7 +43,8 @@ async function resetWorkspace() {
     env.DB.prepare("DELETE FROM workspace_fx_rates"),
     env.DB.prepare(
       `UPDATE workspace SET home_currency = 'BDT', timezone = 'Asia/Dhaka', logo_key = NULL,
-       bank_details = NULL, accent_color = '#1f5a4e', default_tax_rate_id = NULL,
+       bank_details = NULL, signature_key = NULL, signature_name = NULL, signature_title = NULL,
+       accent_color = '#1f5a4e', default_tax_rate_id = NULL,
        reminder_schedule = '[{"offsetDays":-3},{"offsetDays":0},{"offsetDays":7},{"offsetDays":14},{"offsetDays":21}]'
        WHERE id = 1`,
     ),
@@ -263,6 +264,41 @@ describe("logo upload", () => {
     expect(logo.headers.get("x-content-type-options")).toBe("nosniff");
     expect(logo.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(new Uint8Array(await logo.arrayBuffer())).toEqual(PNG);
+  });
+
+  it("stores a signature image like a logo, and sets the signer name and title", async () => {
+    const res = await apiFetch("/api/settings/brand-kit/signature", {
+      as: OWNER,
+      method: "POST",
+      body: PNG,
+      headers: { "content-type": "image/png" },
+    });
+    expect(res.status).toBe(200);
+    const kit = (await res.json()) as BrandKit;
+    expect(kit.signatureKey).toMatch(/^logos\/[a-f0-9]{64}\.png$/);
+    expect(kit.signatureUrl).toBe(`/p/assets/logo/${kit.signatureKey?.slice("logos/".length)}`);
+    expect(kit.logoKey).toBeNull();
+
+    const named = await apiFetch("/api/settings/brand-kit", {
+      as: OWNER,
+      method: "PATCH",
+      json: { signatureName: " Ahmed Shamim ", signatureTitle: "Director" },
+    });
+    const updated = (await named.json()) as BrandKit;
+    expect(updated.signatureName).toBe("Ahmed Shamim");
+    expect(updated.signatureTitle).toBe("Director");
+
+    const member = await apiFetch("/api/settings/brand-kit/signature", {
+      as: MEMBER,
+      method: "DELETE",
+    });
+    expect(member.status).toBe(403);
+    const removed = await apiFetch("/api/settings/brand-kit/signature", {
+      as: OWNER,
+      method: "DELETE",
+    });
+    expect(((await removed.json()) as BrandKit).signatureKey).toBeNull();
+    expect(await env.BUCKET.head(kit.signatureKey ?? "")).not.toBeNull();
   });
 
   it("keeps the old logo file after a new upload", async () => {

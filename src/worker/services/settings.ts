@@ -113,5 +113,9 @@ export function brandKitOf(row: Workspace): BrandKit {
     website: row.website,
     bankDetails: row.bankDetails,
     footerText: row.footerText,
+    signatureKey: row.signatureKey,
+    signatureUrl: logoUrl(row.signatureKey),
+    signatureName: row.signatureName,
+    signatureTitle: row.signatureTitle,
   };
 }

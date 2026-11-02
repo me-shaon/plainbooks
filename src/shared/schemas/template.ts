@@ -40,6 +40,7 @@ export const TEMPLATE_SECTION_LABELS: Record<TemplateSection, string> = {
   totals: "Totals",
   notes: "Notes",
   payment_details: "Payment details",
+  signature: "Signature",
   footer: "Footer",
 };
 
@@ -62,8 +63,26 @@ export const templateStyleInput = z.object({
 });
 
 /**
- * A template config. Each section ID can occur once. Sections that are missing are added at
- * the end as hidden, so a stored config always lists all seven sections.
+ * Adds each missing section as hidden, in TEMPLATE_SECTIONS order, at the end. When the
+ * footer is last, they go before it, so a section added in a later release (the signature)
+ * does not print under the footer when it is turned on.
+ */
+function withMissingSections(
+  sections: { id: TemplateSection; visible: boolean }[],
+): { id: TemplateSection; visible: boolean }[] {
+  const missing = TEMPLATE_SECTIONS.filter((id) => !sections.some((s) => s.id === id)).map(
+    (id) => ({ id, visible: false }),
+  );
+  if (missing.length === 0) return sections;
+  const footerLast = sections.at(-1)?.id === "footer";
+  return footerLast
+    ? [...sections.slice(0, -1), ...missing, ...sections.slice(-1)]
+    : [...sections, ...missing];
+}
+
+/**
+ * A template config. Each section ID can occur once. Missing sections are added as hidden
+ * (withMissingSections), so a stored config always lists every section.
  */
 export const templateConfigInput = z
   .object({
@@ -86,12 +105,7 @@ export const templateConfigInput = z
   .transform(
     (config): TemplateConfig => ({
       layout: config.layout,
-      sections: [
-        ...config.sections,
-        ...TEMPLATE_SECTIONS.filter((id) => !config.sections.some((s) => s.id === id)).map(
-          (id) => ({ id, visible: false }),
-        ),
-      ],
+      sections: withMissingSections(config.sections),
       customFields: config.customFields,
       style: config.style,
     }),
@@ -230,7 +244,16 @@ export const TEMPLATE_PRESETS: TemplatePreset[] = [
     "Modern, with the notes before the line items. Good for quotes that explain the work.",
     "modern",
     {
-      order: ["header", "bill_to", "notes", "line_items", "totals", "payment_details", "footer"],
+      order: [
+        "header",
+        "bill_to",
+        "notes",
+        "line_items",
+        "totals",
+        "payment_details",
+        "signature",
+        "footer",
+      ],
     },
   ),
 ];

@@ -8,6 +8,7 @@ import { HeaderSection } from "./header";
 import { LineItemsSection } from "./line-items";
 import { NotesSection } from "./notes";
 import { PaymentDetailsSection } from "./payment-details";
+import { SignatureSection } from "./signature";
 import { TotalsSection } from "./totals";
 
 type SectionComponent = FC<{ view: DocumentView }>;
@@ -20,6 +21,7 @@ export const SECTION_COMPONENTS: Record<TemplateSection, SectionComponent> = {
   totals: TotalsSection,
   notes: NotesSection,
   payment_details: PaymentDetailsSection,
+  signature: SignatureSection,
   footer: FooterSection,
 };
 
