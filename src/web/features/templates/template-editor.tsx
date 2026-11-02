@@ -299,6 +299,9 @@ function TemplateEditor({ template }: { template: TemplateDetail }) {
             flush
           >
             <GridList
+              // The session loads after the first render, so readOnly can change. Drag and
+              // drop hooks change the list's hook order, so a new key mounts a new list.
+              key={readOnly ? "read-only" : "editable"}
               aria-label="Sections"
               items={config.sections}
               dragAndDropHooks={readOnly ? undefined : dragAndDropHooks}
