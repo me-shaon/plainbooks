@@ -255,8 +255,9 @@ describe("PDF download routes", () => {
 
     expect((await apiFetch(`/api/documents/${id}/pdf`, { as })).status).toBe(200);
     expect(renderer.calls).toHaveLength(2);
-    expect(renderer.calls[1]).toContain("Partially paid");
+    // The totals show the payment. The PDF has no payment banner.
     expect(renderer.calls[1]).toContain("Balance due");
+    expect(renderer.calls[1]).not.toContain("Partially paid");
     const variant = pdfKey(revisionId, { status: "partially_paid", amountPaid: 100 });
     expect(variant).not.toBe(pdfKey(revisionId));
     expect(await env.BUCKET.head(variant)).not.toBeNull();

@@ -32,6 +32,8 @@ export interface Banner {
   title: string;
   body?: string;
   comment?: string;
+  /** A paid or partially paid status. The PDF leaves it out, because its totals show it. */
+  payment?: boolean;
 }
 
 export interface FieldView {
@@ -77,12 +79,18 @@ export function documentBanners(snapshot: DocumentSnapshot, state: RenderState):
     if (state.status === "void") {
       banners.push({ tone: "danger", title: "Void", body: "This invoice is void. Do not pay it." });
     } else if (state.status === "paid") {
-      banners.push({ tone: "success", title: "Paid", body: "This invoice is paid in full." });
+      banners.push({
+        tone: "success",
+        title: "Paid",
+        body: "This invoice is paid in full.",
+        payment: true,
+      });
     } else if (state.status === "partially_paid") {
       banners.push({
         tone: "warning",
         title: "Partially paid",
         body: `Paid ${fmt(state.amountPaid)}. Balance due ${fmt(balance)}.`,
+        payment: true,
       });
     }
     const overdue = isOverdue(
@@ -168,7 +176,8 @@ export function buildView(
     sections: config.sections,
     style: config.style,
     fields: (section) => bySection.get(section) ?? [],
-    banners: documentBanners(snapshot, state),
+    // The PDF shows payments in the totals, so a payment banner would only repeat them.
+    banners: documentBanners(snapshot, state).filter((b) => mode !== "pdf" || !b.payment),
     showPaymentDetails: isInvoice && !isVoid && state.status !== "paid",
     isVoid,
     balance: Math.max(0, snapshot.totals.total - state.amountPaid),
