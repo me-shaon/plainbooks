@@ -94,7 +94,7 @@ The Worker runs only on the custom domain. The config turns off the `workers.dev
 5. Clear the `SETUP_TOKEN` field, then type or paste your passphrase. Your browser can fill in a saved password here, so check that the field holds only your passphrase. Save the passphrase, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
 6. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash. Use the custom domain of step 8. Do not keep the example value.
 7. Select **Deploy**.
-8. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
+8. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`. Use the host of `APP_URL`, without `https://`.
 
 The Worker has no URL until you add the custom domain. This is intentional.
 
@@ -104,7 +104,7 @@ The new repository is a copy, not a fork. To get a pull request for each new rel
 
 ## 3. Create the first Owner
 
-1. Open `https://invoices.example.com/setup`. Until an Owner exists, every page of the app opens the setup screen.
+1. Open `https://invoices.example.com/setup`. Until an Owner exists, every page of the app opens the setup screen. If you used the Deploy button and the page does not open, check that you added the custom domain in step 8 of Option B.
 2. Enter the setup token.
 3. Enter your name, your email, and a password. The password must have 12 to 128 characters.
 4. Select **Create Owner**. The app signs you in.

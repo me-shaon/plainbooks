@@ -119,7 +119,9 @@ You can deploy in two ways:
 - **The button.** Select **Deploy to Cloudflare** at the top of this file. Cloudflare copies the repository to your GitHub or GitLab account, creates the D1 database and the R2 bucket, and deploys. The button asks for two values. `SETUP_TOKEN` is a secret: type a passphrase of 32 characters or more, and keep it for the setup screen. Clear any value that your browser filled in first. `APP_URL` is the address of your custom domain. It is a variable, so change it later in `wrangler.jsonc` of your copy. The Worker makes the other secrets itself and keeps them in R2. Each push to your copy deploys again and keeps the secrets. The copy is not a fork. To get a pull request for each new release, add the update workflow to the copy. Read [Add the update workflow](docs/updating.md#add-the-update-workflow).
 - **The script.** Run `pnpm run ship` on your computer. The first run asks for your host, creates the D1 database and the R2 bucket, and deploys. It makes the setup token for you and shows it one time. Later runs only build, migrate, and deploy.
 
-After the deploy, open `/setup` on your host and enter the setup token to create the first Owner. Then set up email in **Settings** > **Email**. Read [docs/setup.md](docs/setup.md) for each step.
+If you used the button, add your domain after the deploy. In the Cloudflare dashboard, open the Worker, go to **Settings** > **Domains & Routes**, and add a custom domain. Use the host of `APP_URL`, without `https://`. The script adds the domain for you.
+
+Then open `/setup` on your host and enter the setup token to create the first Owner. Then set up email in **Settings** > **Email**. Read [docs/setup.md](docs/setup.md) for each step.
 
 On your computer, use `pnpm run ship`. `pnpm run deploy` is the build command for the button's copy, where Cloudflare fills in the real database ID. On your computer it fails, because `wrangler.jsonc` has a placeholder database ID. Do not use `pnpm deploy`. It is a built-in pnpm command and does not run either script.
 
