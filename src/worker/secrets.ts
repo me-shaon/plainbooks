@@ -16,8 +16,12 @@ type SecretsEnv = Pick<Bindings, "BUCKET" | SecretName>;
 
 const NAMES = Object.keys(GENERATED_SECRET_KEYS) as SecretName[];
 
-/** One read per isolate. A failed read is not kept, so the next request tries again. */
-let generated: Promise<Record<SecretName, string>> | undefined;
+/**
+ * The values after the first successful read in this isolate. Only settled values are kept.
+ * A pending read belongs to the request that started it: Workers cancel that I/O when the
+ * request ends, so another request that awaited the same promise could wait forever.
+ */
+let generated: Record<SecretName, string> | undefined;
 
 function randomSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -55,13 +59,10 @@ async function loadGenerated(bucket: R2Bucket): Promise<Record<SecretName, strin
 export async function withGeneratedSecrets<E extends SecretsEnv>(env: E): Promise<E> {
   const missing = NAMES.filter((name) => !usableSecret(env[name]));
   if (missing.length === 0) return env;
-  if (!generated) {
-    generated = loadGenerated(env.BUCKET);
-    generated.catch(() => {
-      generated = undefined;
-    });
-  }
-  const values = await generated;
+  // Each request without a cached value reads R2 itself. readOrCreate is safe when two
+  // requests make the same secret at the same time.
+  generated ??= await loadGenerated(env.BUCKET);
+  const values = generated;
   const filled = { ...env };
   for (const name of missing) filled[name] = values[name];
   return filled;

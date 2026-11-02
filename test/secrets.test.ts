@@ -72,6 +72,21 @@ describe("withGeneratedSecrets", () => {
     expect(await stored(GENERATED_SECRET_KEYS.AUTH_SECRET)).toBe("made-by-another-isolate");
   });
 
+  it("does not make a request wait on another request's unfinished R2 read", async () => {
+    await withGeneratedSecrets(freshEnv());
+    forgetGeneratedSecretsForTesting();
+    // The first request's read never ends, as when Workers cancel the I/O of a request
+    // that closed. A shared pending promise would make every later request wait too.
+    const stuck = { ...env.BUCKET, get: () => new Promise<never>(() => {}) } as R2Bucket;
+    void withGeneratedSecrets(freshEnv({ BUCKET: stuck }));
+
+    const timeout = new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 1000));
+    const second = await Promise.race([withGeneratedSecrets(freshEnv()), timeout]);
+    expect(second).not.toBe("timeout");
+    if (second === "timeout") return;
+    expect(second.AUTH_SECRET).toBe(await stored(GENERATED_SECRET_KEYS.AUTH_SECRET));
+  });
+
   it("gives values that the auth code and the key ring accept", async () => {
     const filled = await withGeneratedSecrets(freshEnv());
     expect(() => createAuth(filled, new Request("https://invoices.example.com/"))).not.toThrow();
