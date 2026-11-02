@@ -18,7 +18,9 @@ export function TotalsSection({ view }: { view: DocumentView }) {
   for (const line of lines) {
     if (line.tax?.note) notes.set(line.tax.id, `${line.tax.name}: ${line.tax.note}`);
   }
-  const showFx = fx && homeTotals && fx.homeCurrency !== doc.currency;
+  // Older snapshots have no showHomeCurrency, so they hide the note too.
+  const showFx =
+    view.style.showHomeCurrency === true && fx && homeTotals && fx.homeCurrency !== doc.currency;
   return (
     <section class="sec sec-totals totals-wrap" aria-label="Totals">
       <dl class="totals">

@@ -130,6 +130,11 @@ export interface TemplateStyle {
   compact: boolean;
   /** Centers the logo, business details, and title in the header. */
   centeredHeader: boolean;
+  /**
+   * Prints the total in the home currency under the totals of a foreign-currency document.
+   * Off by default, because the client pays in the document currency.
+   */
+  showHomeCurrency: boolean;
 }
 
 export const DEFAULT_TEMPLATE_STYLE: TemplateStyle = {
@@ -138,6 +143,7 @@ export const DEFAULT_TEMPLATE_STYLE: TemplateStyle = {
   striped: false,
   compact: false,
   centeredHeader: false,
+  showHomeCurrency: false,
 };
 
 export interface TemplateConfig {

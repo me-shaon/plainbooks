@@ -156,6 +156,19 @@ describe("renderDocumentHtml", () => {
     expect(html).not.toContain("Empty field");
   });
 
+  it("hides the home-currency total unless the template turns it on", () => {
+    const hidden = renderDocumentHtml(sample(config("classic")), { mode: "page", state: state() });
+    expect(hidden).not.toContain('class="fx-note"');
+    expect(hidden).not.toContain("BDT");
+
+    const shown = renderDocumentHtml(
+      sample(config("classic", TEMPLATE_SECTIONS, [], [], { showHomeCurrency: true })),
+      { mode: "page", state: state() },
+    );
+    expect(shown).toContain('class="fx-note"');
+    expect(shown).toMatch(/About BDT [\d,.]+ at [\d.]+ BDT per USD/);
+  });
+
   it("formats a date custom field", () => {
     const snapshot = sample(config("minimal"));
     snapshot.customFields = [

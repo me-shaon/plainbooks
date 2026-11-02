@@ -92,6 +92,14 @@ export function TemplateStyleSection({
           >
             Centered header
           </Switch>
+          <Switch
+            isDisabled={readOnly}
+            isSelected={style.showHomeCurrency}
+            onChange={(on) => set("showHomeCurrency", on)}
+            description="For a document in another currency, show the total in your home currency and the exchange rate under the totals. The client pays in the document currency."
+          >
+            Show home-currency total
+          </Switch>
         </div>
       </div>
     </Section>

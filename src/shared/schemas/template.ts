@@ -58,6 +58,7 @@ export const templateStyleInput = z.object({
   striped: z.boolean().default(false),
   compact: z.boolean().default(false),
   centeredHeader: z.boolean().default(false),
+  showHomeCurrency: z.boolean().default(false),
 });
 
 /**
