@@ -6,8 +6,9 @@
  * the answers in `.deploy.env` and writes `wrangler.production.jsonc`. Both files are
  * git-ignored, so the tracked `wrangler.jsonc` stays a template.
  * The config sets the APP_URL var from your host. Each run then builds, applies the remote
- * D1 migrations, and deploys. When SETUP_TOKEN, AUTH_SECRET, or ENCRYPTION_KEY is not set, the script
- * makes a random value and sets it. It never replaces a secret that exists. It prints a new
+ * D1 migrations, and deploys. When SETUP_TOKEN is not set, the script makes a random value
+ * and sets it. It never replaces a secret that exists. The Worker makes AUTH_SECRET and
+ * ENCRYPTION_KEY itself (src/worker/secrets.ts). It prints a new
  * setup token once, with the /setup URL, and records SETUP_TOKEN_ISSUED=1 in `.deploy.env`.
  * After that, it does not make a new setup token, so you can delete the secret after setup. These values are secrets, not vars, so a later
  * deploy from another machine or from Git does not reset them.
@@ -22,7 +23,7 @@ import { createInterface } from "node:readline/promises";
 const SETTINGS_FILE = ".deploy.env";
 const PROD_CONFIG = "wrangler.production.jsonc";
 /** Secrets that the script makes when they are missing: 32 random bytes as base64. */
-const GENERATED_SECRETS = ["SETUP_TOKEN", "AUTH_SECRET", "ENCRYPTION_KEY"];
+const GENERATED_SECRETS = ["SETUP_TOKEN"];
 
 const PROMPTS = [
   { key: "APP_HOST", question: "Host for the app, for example invoices.example.com" },
@@ -163,7 +164,7 @@ function writeProductionConfig(template, settings) {
   config.d1_databases = config.d1_databases.map((db) =>
     db.binding === "DB" ? { ...db, database_id: settings.D1_DATABASE_ID } : db,
   );
-  config.vars = { ...config.vars, APP_ENV: "production", APP_URL: `https://${settings.APP_HOST}` };
+  config.vars = { ...config.vars, APP_URL: `https://${settings.APP_HOST}` };
   writeFileSync(
     PROD_CONFIG,
     `// Written by \`pnpm run ship\` from wrangler.jsonc and ${SETTINGS_FILE}. Do not edit.\n${JSON.stringify(config, null, 2)}\n`,

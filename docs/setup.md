@@ -33,16 +33,23 @@ The custom domain of the Worker needs the domain to be active on Cloudflare.
 
 You can deploy from your computer with the deploy script, or from the Cloudflare dashboard with the Deploy button. Do one of the two.
 
-The Worker needs these secrets:
+You give the Worker two values:
+
+| Name | Kind | What it does |
+| --- | --- | --- |
+| `SETUP_TOKEN` | Secret | Opens the setup screen at `/setup`, where you create the first Owner. It must have 32 characters or more. Each value works once. |
+| `APP_URL` | Variable | The public origin of the app, for example `https://invoices.example.com`. It is in `wrangler.jsonc`, so you can see it. Each deploy sets it from `wrangler.jsonc`, so change it there, not in the dashboard. |
+
+The Worker makes the other secrets itself on first use, and keeps them in the R2 bucket under `secrets/`:
 
 | Secret | What it does |
 | --- | --- |
-| `SETUP_TOKEN` | Opens the setup screen at `/setup`, where you create the first Owner. It must have 32 characters or more. Each value works once. |
-| `AUTH_SECRET` | Signs the sign-in sessions. It must have 32 characters or more. |
-| `ENCRYPTION_KEY` | Encrypts the email provider keys that you save in the app. It must be 32 random bytes as base64. |
-| `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` | Optional. They turn on Google sign-in. Step 7 tells you how to get them. |
+| `AUTH_SECRET` | Signs the sign-in sessions. |
+| `ENCRYPTION_KEY` | Encrypts the email provider keys that you save in the app. It is in R2, not in D1, so a database export does not contain both the encrypted keys and the key that opens them. |
 
-The Worker also needs the variable `APP_URL`: the public origin of the app, for example `https://invoices.example.com`. It is a variable in `wrangler.jsonc`, not a secret, so you can see it. Each deploy sets it from `wrangler.jsonc`, so change it there, not in the dashboard.
+To use your own value instead, set it as a Worker secret. A Worker secret wins over the value in R2. `AUTH_SECRET` must have 32 characters or more. `ENCRYPTION_KEY` must be 32 random bytes as base64.
+
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are optional secrets. They turn on Google sign-in. Step 7 tells you how to get them.
 
 ### Option A: the deploy script
 
@@ -63,7 +70,7 @@ The script does these steps:
 4. It writes `wrangler.production.jsonc` from `wrangler.jsonc` and `.deploy.env`.
 5. It builds the app, applies the D1 migrations to the remote database, and deploys the Worker.
 6. It sets the `APP_URL` variable from your host, in `wrangler.production.jsonc`.
-7. It makes a random value for each missing secret of `SETUP_TOKEN`, `AUTH_SECRET`, and `ENCRYPTION_KEY`, and sets it. It never replaces a secret that exists.
+7. It makes a random `SETUP_TOKEN` if the secret is missing, and sets it. It never replaces a secret that exists.
 
 The script makes a setup token only one time. It then writes `SETUP_TOKEN_ISSUED=1` in `.deploy.env`. A later run does not make a new setup token, so you can delete the secret after setup.
 
@@ -75,13 +82,13 @@ The Worker runs only on the custom domain. The config turns off the `workers.dev
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/me-shaon/plainbooks)
 
-1. Make three random values. Run this command three times, and keep each value:
+1. Make a random value for the setup token, and keep it:
 
    ```sh
    openssl rand -base64 32
    ```
 
-   Each value is 32 random bytes as base64. If you do not have `openssl`, use this command:
+   If you do not have `openssl`, use this command:
 
    ```sh
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
@@ -90,16 +97,14 @@ The Worker runs only on the custom domain. The config turns off the `workers.dev
 2. Select the button.
 3. Connect your GitHub or GitLab account. Cloudflare copies this repository to a new repository in your account.
 4. Keep the new D1 database and the new R2 bucket that Cloudflare suggests.
-5. Set `SETUP_TOKEN` to the first random value. Save this value now, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
-6. Set `AUTH_SECRET` to the second random value.
-7. Set `ENCRYPTION_KEY` to the third random value.
-8. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash. Use the custom domain of step 10. Do not keep the example value.
-9. Select **Deploy**.
-10. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
+5. Set `SETUP_TOKEN` to the random value. Save this value now, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
+6. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash. Use the custom domain of step 8. Do not keep the example value.
+7. Select **Deploy**.
+8. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.
 
 The Worker has no URL until you add the custom domain. This is intentional.
 
-The Deploy button stores the values as Worker secrets. Each push to the new repository deploys again and keeps the secrets. To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
+The Deploy button stores `SETUP_TOKEN` as a Worker secret. Each push to the new repository deploys again and keeps the secret. To change a secret, open the Worker in the dashboard and go to **Settings** > **Variables and Secrets**.
 
 The new repository is a copy, not a fork. To get a pull request for each new release, add the update workflow to it. Read [Add the update workflow](updating.md#add-the-update-workflow).
 
@@ -308,6 +313,8 @@ Change a secret only when you must. Some changes have effects on all users:
 - **`ENCRYPTION_KEY`:** The app cannot read the saved email provider keys after a change. Enter the provider keys and webhook secrets again in **Settings** > **Email**.
 - **`AUTH_SECRET`:** A change signs everyone out. Each member must sign in again.
 
+To change a value that the Worker made, set your own value as a Worker secret. Or delete the object in the R2 bucket, `secrets/auth-secret` or `secrets/encryption-key`, and the Worker makes a new value. Do not delete the `secrets/` folder when you clean up the bucket.
+
 ## Free-tier limits
 
 | Service | Free limit | What happens at the limit |
@@ -336,13 +343,15 @@ pnpm wrangler d1 export plainbooks --remote --output=backup-$(date +%F).sql
 
 Keep the file in a safe place. It contains client data. D1 Time Travel also keeps 7 days of history on the Free plan.
 
+The encrypted email provider keys in the export need `ENCRYPTION_KEY` to open. If the Worker made the key, it is the R2 object `secrets/encryption-key`. Without the key, enter the provider keys again in **Settings** > **Email** after a restore.
+
 ## Troubleshooting
 
 ### The setup screen says that setup is turned off
 
 The `SETUP_TOKEN` secret is missing, has fewer than 32 characters, or is the public example value `replace-with-32-or-more-random-characters`. Set a new value with 32 characters or more, then reload the page.
 
-The app also refuses the example values for `AUTH_SECRET` and `ENCRYPTION_KEY`. Older versions of the Deploy screen filled them in. If you kept them, set new values for all three secrets.
+Older versions of the Deploy screen also filled in example values for `AUTH_SECRET` and `ENCRYPTION_KEY`. The app ignores those values and uses the values that it makes in R2. Sessions and saved email keys from before stop working.
 
 ### You forgot the setup token
 

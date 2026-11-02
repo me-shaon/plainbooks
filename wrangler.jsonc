@@ -33,17 +33,16 @@
     "bindings": [{ "name": "AUTH_RATE_LIMITER", "class_name": "AuthRateLimiter" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AuthRateLimiter"] }],
-  // Secrets (set with `wrangler secret put` or `pnpm run ship`): SETUP_TOKEN, AUTH_SECRET,
-  // ENCRYPTION_KEY, and the optional GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and
-  // EMAIL_HTTP_ALLOW_HOSTS (the hosts of a generic HTTP email provider).
-  // They are secrets, not vars, so a deploy keeps them. Email provider keys are saved in
-  // Settings, not here.
+  // Secrets (set with `wrangler secret put` or `pnpm run ship`): SETUP_TOKEN, and the
+  // optional GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and EMAIL_HTTP_ALLOW_HOSTS (the hosts
+  // of a generic HTTP email provider). They are secrets, not vars, so a deploy keeps them.
+  // AUTH_SECRET and ENCRYPTION_KEY are optional secrets. Without them, the Worker makes
+  // them in R2 (src/worker/secrets.ts). Email provider keys are saved in Settings, not here.
   // `wrangler deploy` replaces every var with the values in this file. So change APP_URL
   // here, not in the dashboard. The Deploy button asks for it, and `pnpm run ship` sets it
   // from your host.
   // Optional var: PBKDF2_ITERATIONS (default 100000, the Workers maximum).
   "vars": {
-    "APP_ENV": "production",
     // The public origin of the app, with no trailing slash.
     "APP_URL": "https://invoices.example.com"
   }
