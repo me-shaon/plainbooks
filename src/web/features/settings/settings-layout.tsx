@@ -16,6 +16,7 @@ const tabs: Tab[] = [
   { to: "/settings", label: "General" },
   { to: "/settings/reminders", label: "Reminders" },
   { to: "/settings/tax-rates", label: "Tax rates" },
+  { to: "/settings/exchange-rates", label: "Exchange rates" },
   { to: "/settings/email", label: "Email", ownerOnly: true },
   { to: "/settings/team", label: "Team", ownerOnly: true },
 ];
@@ -27,7 +28,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
     <>
       <PageHeader
         title="Settings"
-        subtitle="Workspace defaults, numbering, tax rates, email, and team."
+        subtitle="Workspace defaults, numbering, tax and exchange rates, email, and team."
       />
       <nav aria-label="Settings" className={cn("-mt-2", tabStrip)}>
         {tabs

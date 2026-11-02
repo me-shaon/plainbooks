@@ -1,6 +1,11 @@
 import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { BrandKit, TeamMember, WorkspaceSettings } from "../../src/shared/schemas/settings";
+import type {
+  BrandKit,
+  ExchangeRates,
+  TeamMember,
+  WorkspaceSettings,
+} from "../../src/shared/schemas/settings";
 import type { TaxRate } from "../../src/shared/schemas/tax-rate";
 import { createDb, schema } from "../../src/worker/db/client";
 import { getBrandKit } from "../../src/worker/services/settings";
@@ -35,6 +40,7 @@ async function resetWorkspace() {
     env.DB.prepare("DELETE FROM activity"),
     env.DB.prepare("DELETE FROM clients"),
     env.DB.prepare("DELETE FROM tax_rates"),
+    env.DB.prepare("DELETE FROM workspace_fx_rates"),
     env.DB.prepare(
       `UPDATE workspace SET home_currency = 'BDT', timezone = 'Asia/Dhaka', logo_key = NULL,
        bank_details = NULL, accent_color = '#1f5a4e', default_tax_rate_id = NULL,
@@ -383,6 +389,54 @@ describe("tax rates", () => {
       json: { name: "VAT", rate: "15" },
     });
     expect(member.status).toBe(403);
+  });
+});
+
+describe("exchange rates", () => {
+  const put = (rates: unknown, as = OWNER) =>
+    apiFetch("/api/settings/exchange-rates", { as, method: "PUT", json: { rates } });
+
+  it("lets an Owner set rates and a Member read them", async () => {
+    const res = await put([
+      { currency: "usd", rate: "122.50" },
+      { currency: "EUR", rate: 133 },
+    ]);
+    expect(res.status).toBe(200);
+    const read = await apiFetch("/api/settings/exchange-rates", { as: MEMBER });
+    const body = (await read.json()) as ExchangeRates;
+    expect(body.homeCurrency).toBe("BDT");
+    expect(body.rates.map((r) => [r.currency, r.rate])).toEqual([
+      ["EUR", "133"],
+      ["USD", "122.5"],
+    ]);
+
+    const quote = await apiFetch("/api/fx/rate?currency=USD&date=2026-10-01", { as: MEMBER });
+    expect(await quote.json()).toMatchObject({
+      status: "ok",
+      rate: "122.5",
+      provider: "workspace",
+    });
+  });
+
+  it("replaces the whole list", async () => {
+    await put([{ currency: "USD", rate: "120" }]);
+    const res = await put([{ currency: "EUR", rate: "130" }]);
+    const body = (await res.json()) as ExchangeRates;
+    expect(body.rates.map((r) => r.currency)).toEqual(["EUR"]);
+  });
+
+  it("returns 403 when a Member changes rates", async () => {
+    expect((await put([{ currency: "USD", rate: "120" }], MEMBER)).status).toBe(403);
+  });
+
+  it("rejects the home currency, a duplicate currency, and a zero rate", async () => {
+    expect((await put([{ currency: "BDT", rate: "2" }])).status).toBe(422);
+    const dupes = [
+      { currency: "USD", rate: "120" },
+      { currency: "USD", rate: "121" },
+    ];
+    expect((await put(dupes)).status).toBe(400);
+    expect((await put([{ currency: "USD", rate: "0" }])).status).toBe(400);
   });
 });
 

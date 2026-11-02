@@ -79,7 +79,8 @@ export type SendModeSetting = (typeof SEND_MODE_SETTINGS)[number];
 export const DISCOUNT_TYPES = ["none", "percent", "fixed"] as const;
 export type DiscountType = (typeof DISCOUNT_TYPES)[number];
 
-export const FX_PROVIDERS = ["frankfurter", "manual", "identity"] as const;
+/** "workspace" is a rate the Owner set in Settings > Exchange rates. */
+export const FX_PROVIDERS = ["frankfurter", "manual", "identity", "workspace"] as const;
 export type FxProvider = (typeof FX_PROVIDERS)[number];
 
 export const PAYMENT_KINDS = ["payment", "write_off"] as const;

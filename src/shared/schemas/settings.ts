@@ -9,6 +9,7 @@ import {
   USER_ROLES,
   type UserRole,
 } from "../domain";
+import { normalizeRate } from "../money";
 import { currencyCode, paymentTermsDays } from "./client";
 import { newPassword } from "./setup";
 
@@ -317,4 +318,45 @@ export interface UpdateStatus {
   updateAvailable: boolean;
   /** Epoch ms of the last successful check. */
   checkedAt: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Exchange rates
+// ---------------------------------------------------------------------------
+
+export const MAX_EXCHANGE_RATES = 50;
+
+/** One currency unit in home currency units, as a canonical decimal string. */
+const exchangeRateValue = z.union([z.string(), z.number()]).transform((value, ctx) => {
+  try {
+    const rate = normalizeRate(String(value));
+    if (rate === "0") throw new Error("zero");
+    return rate;
+  } catch {
+    ctx.addIssue({ code: "custom", message: "Enter a rate above 0 with 8 decimals at most" });
+    return z.NEVER;
+  }
+});
+
+/** PUT /api/settings/exchange-rates. Replaces the whole list. Owner only. */
+export const exchangeRatesInput = z.object({
+  rates: z
+    .array(z.object({ currency: currencyCode, rate: exchangeRateValue }))
+    .max(MAX_EXCHANGE_RATES, `Add ${MAX_EXCHANGE_RATES} rates or fewer`)
+    .refine((list) => new Set(list.map((r) => r.currency)).size === list.length, {
+      message: "Each currency can have one rate",
+    }),
+});
+export type ExchangeRatesInput = z.input<typeof exchangeRatesInput>;
+
+export interface ExchangeRate {
+  currency: string;
+  /** One `currency` unit = `rate` home currency units. */
+  rate: string;
+  updatedAt: number;
+}
+
+export interface ExchangeRates {
+  homeCurrency: string;
+  rates: ExchangeRate[];
 }

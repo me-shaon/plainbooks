@@ -7,6 +7,7 @@ export const FX_PROVIDER_LABELS: Record<FxProvider, string> = {
   frankfurter: "Frankfurter (ECB)",
   manual: "Manual",
   identity: "Same currency",
+  workspace: "Workspace rate",
 };
 
 /** One segment of the list filter and the API query it maps to. */

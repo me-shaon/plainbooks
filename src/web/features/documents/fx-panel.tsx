@@ -65,7 +65,9 @@ export function FxPanel({
             {rateText(quote.rate, currency, homeCurrency)}
           </span>
           <span className="text-xs text-muted-foreground">
-            Fetched for {formatDate(quote.rateDate)} · {FX_PROVIDER_LABELS[quote.provider]}
+            {quote.provider === "workspace"
+              ? "Your rate from Settings > Exchange rates"
+              : `Fetched for ${formatDate(quote.rateDate)} · ${FX_PROVIDER_LABELS[quote.provider]}`}
           </span>
         </div>
       ) : (
@@ -76,7 +78,8 @@ export function FxPanel({
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>
             {quote?.status === "manual_required" ? `${quote.message.replace(/\.?$/, ".")} ` : ""}
-            Enter a manual rate before you send.
+            Enter a manual rate before you send, or set a rate for {currency} in Settings &gt;
+            Exchange rates.
           </span>
         </p>
       )}

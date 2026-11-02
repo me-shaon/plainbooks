@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   brandKitInput,
+  exchangeRatesInput,
   MAX_LOGO_BYTES,
   updateSettingsInput,
   workspaceSettingsInput,
@@ -10,6 +11,7 @@ import { requireOwner } from "../auth/middleware";
 import { type Db, schema } from "../db/client";
 import type { AppEnv } from "../env";
 import { AppError, parseJson } from "../errors";
+import { listExchangeRates, replaceExchangeRates } from "../services/exchange-rates";
 import { storeLogo, validateLogo } from "../services/logo";
 import {
   forgetWorkspace,
@@ -140,6 +142,11 @@ export const settingsRoutes = new Hono<AppEnv>()
     return c.json(await getBrandKit(c.var.db));
   })
   /** The running version, the newest release, and the update check switch. Owner only. */
+  .get("/exchange-rates", async (c) => c.json(await listExchangeRates(c.var.db)))
+  .put("/exchange-rates", requireOwner, async (c) => {
+    const input = await parseJson(c, exchangeRatesInput);
+    return c.json(await replaceExchangeRates(c.var.db, input, Date.now()));
+  })
   .get("/updates", requireOwner, async (c) => c.json(updateStatus(await loadWorkspace(c.var.db))))
   /** Checks GitHub for a new release now, instead of waiting for the daily check. */
   .post("/updates/check", requireOwner, async (c) =>

@@ -40,9 +40,36 @@ function frankfurter(url: URL): Response {
 
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM fx_rates").run();
+  await env.DB.prepare("DELETE FROM workspace_fx_rates").run();
 });
 
 describe("getRate", () => {
+  it("uses the workspace rate before the provider and does not call it", async () => {
+    await env.DB.prepare(
+      "INSERT INTO workspace_fx_rates (currency, home_currency, rate, rate_scaled) VALUES ('USD', 'BDT', '120', 12000000000)",
+    ).run();
+    const { fetcher, calls } = stubFetcher(frankfurter);
+    const result = await getRate(db, fetcher, { from: "USD", date: "2026-10-01" });
+    expect(result).toEqual({
+      status: "ok",
+      rate: "120",
+      rateScaled: 12000000000,
+      rateDate: "2026-10-01",
+      provider: "workspace",
+      cached: false,
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("ignores a workspace rate for another home currency", async () => {
+    await env.DB.prepare(
+      "INSERT INTO workspace_fx_rates (currency, home_currency, rate, rate_scaled) VALUES ('USD', 'EUR', '0.9', 90000000)",
+    ).run();
+    const { fetcher } = stubFetcher(frankfurter);
+    const result = await getRate(db, fetcher, { from: "USD", date: "2026-10-01" });
+    expect(result.status === "ok" && result.provider).toBe("frankfurter");
+  });
+
   it("returns the USD to BDT rate for 2026-10-01 and caches it", async () => {
     const { fetcher, calls } = stubFetcher(frankfurter);
     const result = await getRate(db, fetcher, { from: "USD", date: "2026-10-01" });

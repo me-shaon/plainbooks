@@ -761,6 +761,18 @@ export const fxRates = sqliteTable(
   (t) => [primaryKey({ columns: [t.base, t.quote, t.requestedDate] })],
 );
 
+/**
+ * Exchange rates the Owner sets in Settings: one `currency` unit = `rate` units of
+ * `homeCurrency`. They come before the provider. A row for an older home currency is ignored.
+ */
+export const workspaceFxRates = sqliteTable("workspace_fx_rates", {
+  currency: text("currency").primaryKey(),
+  homeCurrency: text("home_currency").notNull(),
+  rate: text("rate").notNull(),
+  rateScaled: integer("rate_scaled").notNull(),
+  updatedAt: updatedAt(),
+});
+
 /** Named leases, for example "browser" to space PDF renders 10 s apart. */
 export const leases = sqliteTable("leases", {
   name: text("name").primaryKey(),

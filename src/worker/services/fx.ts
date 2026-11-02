@@ -61,8 +61,9 @@ const frankfurterRate = z.object({
 
 /**
  * Returns the exchange rate from `from` to `to` (BDT by default) for `date`: the latest
- * published rate on or before that date. Reads the fx_rates cache first. Never throws for
- * provider problems: it returns `{ status: "manual_required" }` instead.
+ * published rate on or before that date. A workspace rate from Settings comes first, then the
+ * fx_rates cache, then the provider. Never throws for provider problems: it returns
+ * `{ status: "manual_required" }` instead.
  */
 export async function getRate(db: Db, fetcher: Fetcher, input: GetRateInput): Promise<FxResult> {
   const from = input.from.toUpperCase();
@@ -82,6 +83,25 @@ export async function getRate(db: Db, fetcher: Fetcher, input: GetRateInput): Pr
   }
   if (!isCurrencyCode(from) || !isCurrencyCode(to)) {
     return manual("unsupported", `${from} to ${to} is not a supported currency pair`);
+  }
+
+  // A rate the Owner set comes first. The provider only covers the other currencies.
+  const [own] = await db
+    .select()
+    .from(schema.workspaceFxRates)
+    .where(
+      and(eq(schema.workspaceFxRates.currency, from), eq(schema.workspaceFxRates.homeCurrency, to)),
+    )
+    .limit(1);
+  if (own) {
+    return {
+      status: "ok",
+      rate: own.rate,
+      rateScaled: own.rateScaled,
+      rateDate: date,
+      provider: "workspace",
+      cached: false,
+    };
   }
 
   const [hit] = await db

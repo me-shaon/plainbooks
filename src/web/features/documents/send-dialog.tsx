@@ -290,7 +290,9 @@ function SendDialogBody({
                     <span className="block text-xs text-muted-foreground">
                       {data.fx.provider === "manual"
                         ? `Manual, for ${formatDate(data.fx.rateDate)}`
-                        : `Fetched for ${formatDate(data.fx.rateDate)} · ${FX_PROVIDER_LABELS[data.fx.provider]}`}
+                        : data.fx.provider === "workspace"
+                          ? "Your rate from Settings > Exchange rates"
+                          : `Fetched for ${formatDate(data.fx.rateDate)} · ${FX_PROVIDER_LABELS[data.fx.provider]}`}
                     </span>
                   </>
                 ) : (

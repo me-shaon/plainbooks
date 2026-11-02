@@ -31,6 +31,7 @@ import { Route as RecurringScheduleIdRouteImport } from './routes/recurring/$sch
 import { Route as ReportsIndexRouteImport } from './routes/reports/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsEmailRouteImport } from './routes/settings/email'
+import { Route as SettingsExchangeRatesRouteImport } from './routes/settings/exchange-rates'
 import { Route as SettingsRemindersRouteImport } from './routes/settings/reminders'
 import { Route as SettingsTaxRatesRouteImport } from './routes/settings/tax-rates'
 import { Route as SettingsTeamRouteImport } from './routes/settings/team'
@@ -151,6 +152,11 @@ const SettingsEmailRoute = SettingsEmailRouteImport.update({
   path: '/email',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
+const SettingsExchangeRatesRoute = SettingsExchangeRatesRouteImport.update({
+  id: '/exchange-rates',
+  path: '/exchange-rates',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
 const SettingsRemindersRoute = SettingsRemindersRouteImport.update({
   id: '/reminders',
   path: '/reminders',
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
   '/settings/email': typeof SettingsEmailRoute
+  '/settings/exchange-rates': typeof SettingsExchangeRatesRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -244,6 +251,7 @@ export interface FileRoutesByTo {
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
   '/settings/email': typeof SettingsEmailRoute
+  '/settings/exchange-rates': typeof SettingsExchangeRatesRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -278,6 +286,7 @@ export interface FileRoutesById {
   '/quotes/new': typeof QuotesNewRoute
   '/recurring/$scheduleId': typeof RecurringScheduleIdRoute
   '/settings/email': typeof SettingsEmailRoute
+  '/settings/exchange-rates': typeof SettingsExchangeRatesRoute
   '/settings/reminders': typeof SettingsRemindersRoute
   '/settings/tax-rates': typeof SettingsTaxRatesRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -313,6 +322,7 @@ export interface FileRouteTypes {
     | '/quotes/new'
     | '/recurring/$scheduleId'
     | '/settings/email'
+    | '/settings/exchange-rates'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
     | '/quotes/new'
     | '/recurring/$scheduleId'
     | '/settings/email'
+    | '/settings/exchange-rates'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -378,6 +389,7 @@ export interface FileRouteTypes {
     | '/quotes/new'
     | '/recurring/$scheduleId'
     | '/settings/email'
+    | '/settings/exchange-rates'
     | '/settings/reminders'
     | '/settings/tax-rates'
     | '/settings/team'
@@ -582,6 +594,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsEmailRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
+    '/settings/exchange-rates': {
+      id: '/settings/exchange-rates'
+      path: '/exchange-rates'
+      fullPath: '/settings/exchange-rates'
+      preLoaderRoute: typeof SettingsExchangeRatesRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
     '/settings/reminders': {
       id: '/settings/reminders'
       path: '/reminders'
@@ -650,6 +669,7 @@ declare module '@tanstack/react-router' {
 
 interface SettingsRouteRouteChildren {
   SettingsEmailRoute: typeof SettingsEmailRoute
+  SettingsExchangeRatesRoute: typeof SettingsExchangeRatesRoute
   SettingsRemindersRoute: typeof SettingsRemindersRoute
   SettingsTaxRatesRoute: typeof SettingsTaxRatesRoute
   SettingsTeamRoute: typeof SettingsTeamRoute
@@ -658,6 +678,7 @@ interface SettingsRouteRouteChildren {
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsEmailRoute: SettingsEmailRoute,
+  SettingsExchangeRatesRoute: SettingsExchangeRatesRoute,
   SettingsRemindersRoute: SettingsRemindersRoute,
   SettingsTaxRatesRoute: SettingsTaxRatesRoute,
   SettingsTeamRoute: SettingsTeamRoute,

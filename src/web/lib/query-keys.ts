@@ -78,6 +78,7 @@ export const queryKeys = {
     brandKit: ["settings", "brand-kit"] as const,
     email: ["settings", "email"] as const,
     updates: ["settings", "updates"] as const,
+    exchangeRates: ["settings", "exchange-rates"] as const,
   },
   team: {
     all: ["team"] as const,

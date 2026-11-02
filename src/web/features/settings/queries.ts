@@ -9,6 +9,8 @@ import type {
 import type {
   BrandKit,
   BrandKitInput,
+  ExchangeRates,
+  ExchangeRatesInput,
   MemberLink,
   TeamMember,
   TeamMemberInput,
@@ -38,6 +40,30 @@ export function useUpdateWorkspace() {
         toastOnError: false,
       }),
     onSuccess: (data) => queryClient.setQueryData(queryKeys.settings.workspace, data),
+  });
+}
+
+export function useExchangeRates() {
+  return useQuery({
+    queryKey: queryKeys.settings.exchangeRates,
+    queryFn: () => api<ExchangeRates>("/settings/exchange-rates"),
+  });
+}
+
+export function useSaveExchangeRates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ExchangeRatesInput) =>
+      api<ExchangeRates>("/settings/exchange-rates", {
+        method: "PUT",
+        json: input,
+        toastOnError: false,
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.settings.exchangeRates, data);
+      // Editors show the rate a new document would use.
+      void queryClient.invalidateQueries({ queryKey: ["fx"] });
+    },
   });
 }
 
