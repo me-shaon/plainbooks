@@ -506,6 +506,8 @@ export async function sendDocument(
     wait: true,
     maxWaitMs: opts.pdfMaxWaitMs,
     revision: known,
+    // A send again after a payment attaches the PDF with that payment.
+    payment: { status: current.status, amountPaid: current.amountPaid },
   });
   if (pdf.status === "pending") {
     return fail(

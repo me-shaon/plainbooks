@@ -237,6 +237,37 @@ describe("PDF download routes", () => {
     expect((await apiFetch(`/api/documents/${id}/pdf`)).status).toBe(401);
   });
 
+  it("shows a payment in the PDF of the current revision, and keeps the as-sent copy", async () => {
+    const id = await sentInvoice({ clientId });
+    const revisionId = await currentRevision(id);
+    const as = "owner@example.com";
+    expect((await apiFetch(`/api/documents/${id}/pdf`, { as })).status).toBe(200);
+    expect(renderer.calls[0]).not.toContain("Partially paid");
+
+    const paid = await apiFetch(`/api/documents/${id}/payments`, {
+      as,
+      method: "POST",
+      json: { amount: 100, paidOn: "2026-10-02" },
+    });
+    expect(paid.status).toBe(201);
+    // The first render holds the lease. Clear it so the test does not wait 10 s.
+    await env.DB.prepare("DELETE FROM leases").run();
+
+    expect((await apiFetch(`/api/documents/${id}/pdf`, { as })).status).toBe(200);
+    expect(renderer.calls).toHaveLength(2);
+    expect(renderer.calls[1]).toContain("Partially paid");
+    expect(renderer.calls[1]).toContain("Balance due");
+    const variant = pdfKey(revisionId, { status: "partially_paid", amountPaid: 100 });
+    expect(variant).not.toBe(pdfKey(revisionId));
+    expect(await env.BUCKET.head(variant)).not.toBeNull();
+    // The PDF as sent stays in R2 for the revision.
+    expect(await env.BUCKET.head(pdfKey(revisionId))).not.toBeNull();
+
+    // The same payment state serves the cached copy.
+    expect((await apiFetch(`/api/documents/${id}/pdf`, { as })).status).toBe(200);
+    expect(renderer.calls).toHaveLength(2);
+  });
+
   it("returns 409 for a draft and 502 JSON when the render fails", async () => {
     const draftId = await draft({ clientId });
     const res = await apiFetch(`/api/documents/${draftId}/pdf`, { as: "owner@example.com" });

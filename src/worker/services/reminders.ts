@@ -422,7 +422,9 @@ export async function sendReminder(
     offsetDays: candidate.offsetDays,
   });
   // Attach the PDF only when it is already cached. Otherwise the link is enough.
-  const cached = await env.BUCKET.get(pdfKey(revision.id));
+  const cached = await env.BUCKET.get(
+    pdfKey(revision.id, { status: doc.status, amountPaid: doc.amountPaid }),
+  );
   const attachments = cached
     ? [{ filename: pdfFilename(snapshot), content: new Uint8Array(await cached.arrayBuffer()) }]
     : undefined;

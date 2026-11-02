@@ -207,5 +207,10 @@ export const documentRoutes = new Hono<AppEnv>()
     if (!revisionId) {
       throw new AppError(409, "not_finalized", "Finalize the document before you download a PDF");
     }
-    return pdfResponse(await getPdf(c.env, db, revisionId, { wait: true }), "json");
+    // The current revision shows its payments. An older revision stays as it was sent.
+    const payment =
+      revisionId === doc.currentRevisionId
+        ? { status: doc.status, amountPaid: doc.amountPaid }
+        : undefined;
+    return pdfResponse(await getPdf(c.env, db, revisionId, { wait: true, payment }), "json");
   });

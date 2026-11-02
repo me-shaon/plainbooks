@@ -1,6 +1,7 @@
 // PDF service (U12). Renders a revision to PDF with a Browser Run Quick Action, caches the
 // result in R2 per revision, and spaces Quick Actions 10 s apart with a D1 lease row.
 import { eq } from "drizzle-orm";
+import type { DocumentStatus } from "../../shared/domain";
 import type { DocumentSnapshot } from "../../shared/schemas/document";
 import { todayIn } from "../../shared/time";
 import { type Db, schema } from "../db/client";
@@ -18,8 +19,31 @@ export const BROWSER_LEASE_NAME = "browser";
 /** Interactive downloads wait this long for the lease before they show "being prepared". */
 export const PDF_MAX_WAIT_MS = 10_000;
 
-export function pdfKey(revisionId: string): string {
-  return `pdfs/${revisionId}.pdf`;
+/** The payment state of an invoice, so the PDF of its current revision shows it. */
+export interface PdfPaymentState {
+  status: DocumentStatus;
+  /** Payments and write-offs, in minor units of the document currency. */
+  amountPaid: number;
+}
+
+const PAYMENT_STATUSES: ReadonlySet<DocumentStatus> = new Set(["partially_paid", "paid", "void"]);
+
+/** The state to print, or null when the PDF is the document as sent. */
+function paymentVariant(state: PdfPaymentState | undefined): PdfPaymentState | null {
+  if (!state) return null;
+  if (!PAYMENT_STATUSES.has(state.status) && state.amountPaid === 0) return null;
+  return state;
+}
+
+/**
+ * The R2 key of a PDF. The document as sent has one key per revision. A PDF with payments
+ * has a key per payment state, so a new payment makes a new PDF.
+ */
+export function pdfKey(revisionId: string, state?: PdfPaymentState): string {
+  const variant = paymentVariant(state);
+  return variant
+    ? `pdfs/${revisionId}-${variant.status}-${variant.amountPaid}.pdf`
+    : `pdfs/${revisionId}.pdf`;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +189,11 @@ export interface GetPdfOptions {
   maxWaitMs?: number;
   /** The revision row when the caller already read it. Saves one D1 query. */
   revision?: Awaited<ReturnType<typeof getRevision>>;
+  /**
+   * The invoice's payment state, for the current revision. Without it, the PDF shows the
+   * document as sent.
+   */
+  payment?: PdfPaymentState;
   /** Tests only. */
   clock?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -190,13 +219,19 @@ export function pdfFilename(snapshot: Pick<DocumentSnapshot, "document">): strin
 }
 
 /**
- * The PDF shows the document as sent: no payments, no overdue or decision banners. It is
- * cached per revision, so live state would go stale. The public page shows the live state.
+ * The PDF shows the document as sent, plus its payments when `payment` is given: the paid
+ * amount, the balance, and a paid or void banner. It never shows overdue or decision
+ * banners, because those change with the date and the cache key does not.
  */
-export function pdfRenderState(snapshot: DocumentSnapshot, timeZone: string): RenderState {
+export function pdfRenderState(
+  snapshot: DocumentSnapshot,
+  timeZone: string,
+  payment?: PdfPaymentState,
+): RenderState {
+  const variant = paymentVariant(payment);
   return {
-    status: "sent",
-    amountPaid: 0,
+    status: variant?.status ?? "sent",
+    amountPaid: variant?.amountPaid ?? 0,
     today: snapshot.document.issueDate ?? todayIn(timeZone, snapshot.createdAt),
     timeZone,
     decidedAt: null,
@@ -218,7 +253,7 @@ export async function getPdf(
 ): Promise<PdfResult> {
   const clock = opts.clock ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
-  const key = pdfKey(revisionId);
+  const key = pdfKey(revisionId, opts.payment);
   const revision =
     opts.revision?.id === revisionId ? opts.revision : await getRevision(db, revisionId);
   const filename = pdfFilename(revision.snapshot);
@@ -250,7 +285,7 @@ export async function getPdf(
   const ws = await loadWorkspace(db);
   const html = await renderDocument(env, revision.snapshot, {
     mode: "pdf",
-    state: pdfRenderState(revision.snapshot, ws.timezone),
+    state: pdfRenderState(revision.snapshot, ws.timezone, opts.payment),
   });
   const outcome = await rendererFor(env).render(html);
   if (!outcome.ok) {
@@ -271,10 +306,13 @@ export async function getPdf(
     httpMetadata: { contentType: "application/pdf" },
     customMetadata: outcome.browserMs === null ? {} : { browserMs: String(outcome.browserMs) },
   });
-  await db
-    .update(documentRevisions)
-    .set({ pdfKey: key })
-    .where(eq(documentRevisions.id, revisionId));
+  // The revision row records the PDF as sent. A PDF with payments is only cached in R2.
+  if (key === pdfKey(revisionId)) {
+    await db
+      .update(documentRevisions)
+      .set({ pdfKey: key })
+      .where(eq(documentRevisions.id, revisionId));
+  }
   return {
     status: "ready",
     bytes: new Uint8Array(outcome.bytes),

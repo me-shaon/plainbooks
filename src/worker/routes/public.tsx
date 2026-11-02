@@ -206,7 +206,10 @@ export const publicRoutes = new Hono<AppEnv>()
     const doc = await getDocumentByToken(c.var.db, c.req.param("token"));
     if (!doc?.currentRevisionId) return notFoundPage();
     return pdfResponse(
-      await getPdf(c.env, c.var.db, doc.currentRevisionId, { wait: true }),
+      await getPdf(c.env, c.var.db, doc.currentRevisionId, {
+        wait: true,
+        payment: { status: doc.status, amountPaid: doc.amountPaid },
+      }),
       "html",
     );
   })
