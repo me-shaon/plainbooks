@@ -32,7 +32,13 @@ export function TotalsSection({ view }: { view: DocumentView }) {
         ) : null}
         {totals.taxes.map((tax) => (
           <>
-            <dt>{`${tax.name ?? "Tax"} ${tax.rate}%`}</dt>
+            <dt>
+              {`${tax.name ?? "Tax"} ${tax.rate}%`}
+              {/* EU invoices need the taxable amount per rate when rates differ. */}
+              {totals.taxes.length > 1 ? (
+                <span class="tax-base">{` on ${view.money(tax.taxable)}`}</span>
+              ) : null}
+            </dt>
             <dd>{view.money(tax.tax)}</dd>
           </>
         ))}

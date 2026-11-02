@@ -55,7 +55,8 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .totals .grand{font-weight:600;color:#1b1b19;padding-top:8px;border-top:1px solid #1b1b19}
 .totals .balance{font-weight:600;color:#1b1b19}
 .totals-wrap{display:flex;flex-direction:column;gap:8px}
-.totals-wrap .fields,.totals-wrap .tax-notes{align-self:flex-end}
+.totals-wrap .fields,.totals-wrap .totals .tax-base{font-size:11px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tax-notes{align-self:flex-end}
 .tax-notes{font-size:12px;color:#66635c;margin:0;padding:0;list-style:none}
 .fx-note{font-size:12px;color:#66635c;align-self:flex-end;text-align:right}
 .pay{font-size:13px}
@@ -72,14 +73,13 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .not-found{max-width:420px;margin:15vh auto;padding:0 24px;text-align:center;color:#66635c}
 .not-found h1{color:#1b1b19;font-size:22px;font-weight:600;margin:0 0 8px}
 
-/* Minimal: light type, more space, totals on the left. */
+/* Minimal: light type and more space. */
 .layout-minimal{--pad-x:64px;gap:44px;padding:64px var(--pad-x)}
 .layout-minimal .title{font-size:13px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#66635c}
 .layout-minimal .title-block .doc-number{font-size:20px;color:#1b1b19}
 .layout-minimal .business{font-weight:500}
 .layout-minimal .items th{border-bottom-color:#dcd9d0;font-weight:400}
 .layout-minimal .items td{border-bottom-color:#f1f0ec;padding:14px 0}
-.layout-minimal .totals,.layout-minimal .totals-wrap .fields,.layout-minimal .totals-wrap .tax-notes,.layout-minimal .fx-note{align-self:flex-start;text-align:left}
 .layout-minimal .totals .grand{border-top-color:#dcd9d0;font-weight:500}
 .layout-minimal .footer{border-top:0;padding-top:0}
 

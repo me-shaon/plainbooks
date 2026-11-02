@@ -26,7 +26,7 @@ export const TEMPLATE_LAYOUT_LABELS: Record<TemplateLayout, string> = {
 
 export const TEMPLATE_LAYOUT_DESCRIPTIONS: Record<TemplateLayout, string> = {
   classic: "Logo and title on one line, ruled line items, totals on the right.",
-  minimal: "Light type, more space, and totals on the left.",
+  minimal: "Light type, quiet rules, and more space.",
   bold: "An accent color band across the top and a large total.",
   modern: "A thin accent bar, accent headings, and totals in a soft card.",
   elegant: "Spaced capitals, double rules, and quiet color.",
@@ -108,43 +108,92 @@ export function layoutConfig(layout: TemplateLayout): TemplateConfig {
   return { ...DEFAULT_TEMPLATE_CONFIG, layout };
 }
 
-/** A ready-made template in the New template gallery. Creating one copies its config. */
+export const TEMPLATE_PRESET_CATEGORIES = ["minimal", "professional", "modern"] as const;
+export type TemplatePresetCategory = (typeof TEMPLATE_PRESET_CATEGORIES)[number];
+
+export const TEMPLATE_PRESET_CATEGORY_LABELS: Record<TemplatePresetCategory, string> = {
+  minimal: "Minimal",
+  professional: "Professional",
+  modern: "Modern",
+};
+
+/**
+ * A ready-made template in the New template gallery. Creating one copies its config. Every
+ * preset keeps the sections that an invoice needs: header, bill to, line items, totals,
+ * and payment details. Quotes never print payment details.
+ */
 export interface TemplatePreset {
   id: string;
+  category: TemplatePresetCategory;
   name: string;
   description: string;
   config: TemplateConfig;
 }
 
 function preset(
+  category: TemplatePresetCategory,
   id: string,
   name: string,
   description: string,
   layout: TemplateLayout,
-  options: { style?: Partial<TemplateConfig["style"]>; sections?: TemplateConfig["sections"] } = {},
+  options: { style?: Partial<TemplateConfig["style"]>; order?: TemplateSection[] } = {},
 ): TemplatePreset {
+  const order = options.order ?? TEMPLATE_SECTIONS;
   return {
     id,
+    category,
     name,
     description,
     config: {
       ...DEFAULT_TEMPLATE_CONFIG,
       layout,
-      sections: options.sections ?? DEFAULT_TEMPLATE_CONFIG.sections,
+      sections: order.map((section) => ({ id: section, visible: true })),
       style: { ...DEFAULT_TEMPLATE_STYLE, ...options.style },
     },
   };
 }
 
 export const TEMPLATE_PRESETS: TemplatePreset[] = [
-  preset("classic", "Classic", TEMPLATE_LAYOUT_DESCRIPTIONS.classic, "classic"),
-  preset("modern", "Modern", TEMPLATE_LAYOUT_DESCRIPTIONS.modern, "modern"),
-  preset("bold", "Bold", TEMPLATE_LAYOUT_DESCRIPTIONS.bold, "bold"),
-  preset("minimal", "Minimal", TEMPLATE_LAYOUT_DESCRIPTIONS.minimal, "minimal"),
-  preset("elegant", "Elegant", "A centered header, spaced capitals, and double rules.", "elegant", {
-    style: { centeredHeader: true },
-  }),
   preset(
+    "minimal",
+    "minimal",
+    "Minimal",
+    "Light type, quiet rules, and a lot of white space.",
+    "minimal",
+  ),
+  preset(
+    "minimal",
+    "minimal-centered",
+    "Centered",
+    "Minimal, with the logo, business details, and title centered.",
+    "minimal",
+    { style: { centeredHeader: true } },
+  ),
+  preset(
+    "minimal",
+    "minimal-compact",
+    "Lean",
+    "Minimal and compact, for long item lists on few pages.",
+    "minimal",
+    { style: { compact: true } },
+  ),
+  preset(
+    "professional",
+    "classic",
+    "Classic",
+    "The standard invoice: business at the top left, title and dates at the top right.",
+    "classic",
+  ),
+  preset(
+    "professional",
+    "elegant",
+    "Elegant",
+    "A centered header, spaced capitals, and double rules.",
+    "elegant",
+    { style: { centeredHeader: true } },
+  ),
+  preset(
+    "professional",
     "boxed",
     "Boxed",
     "A bordered grid with an accent header row and striped lines.",
@@ -152,27 +201,35 @@ export const TEMPLATE_PRESETS: TemplatePreset[] = [
     { style: { striped: true } },
   ),
   preset(
+    "professional",
     "compact",
-    "Compact",
-    "Smaller type, less space, and striped lines, for long item lists.",
+    "Ledger",
+    "Classic, compact, and striped, for long item lists.",
     "classic",
     { style: { compact: true, striped: true } },
   ),
   preset(
+    "modern",
+    "modern",
+    "Modern",
+    "A thin accent bar, accent headings, and totals in a soft card.",
+    "modern",
+  ),
+  preset(
+    "modern",
+    "bold",
+    "Bold",
+    "An accent color band across the top and a large total.",
+    "bold",
+  ),
+  preset(
+    "modern",
     "proposal",
     "Proposal",
-    "Notes before the line items and no payment details, for quotes.",
+    "Modern, with the notes before the line items. Good for quotes that explain the work.",
     "modern",
     {
-      sections: [
-        { id: "header", visible: true },
-        { id: "bill_to", visible: true },
-        { id: "notes", visible: true },
-        { id: "line_items", visible: true },
-        { id: "totals", visible: true },
-        { id: "footer", visible: true },
-        { id: "payment_details", visible: false },
-      ],
+      order: ["header", "bill_to", "notes", "line_items", "totals", "payment_details", "footer"],
     },
   ),
 ];

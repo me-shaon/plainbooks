@@ -16,6 +16,7 @@ import {
 } from "../../src/shared/schemas/settings";
 import {
   normalizeTemplateConfig,
+  TEMPLATE_PRESET_CATEGORIES,
   TEMPLATE_PRESETS,
   type TemplateDetail,
   templateConfigInput,
@@ -281,10 +282,30 @@ describe("template style", () => {
     expect(style).toEqual(DEFAULT_TEMPLATE_STYLE);
   });
 
-  it("gives every ready-made template a valid config", () => {
+  it("gives every ready-made template a valid config that an invoice can use", () => {
     for (const preset of TEMPLATE_PRESETS) {
       expect(templateConfigInput.safeParse(preset.config).success, preset.id).toBe(true);
+      // Header, bill to, line items, totals, and payment details stay visible.
+      for (const id of ["header", "bill_to", "line_items", "totals", "payment_details"]) {
+        const section = preset.config.sections.find((s) => s.id === id);
+        expect(section?.visible, `${preset.id} ${id}`).toBe(true);
+      }
     }
+  });
+
+  it("offers at least three minimal, professional, and modern designs", () => {
+    for (const category of TEMPLATE_PRESET_CATEGORIES) {
+      const count = TEMPLATE_PRESETS.filter((p) => p.category === category).length;
+      expect(count, category).toBeGreaterThanOrEqual(3);
+    }
+    expect(new Set(TEMPLATE_PRESETS.map((p) => p.id)).size).toBe(TEMPLATE_PRESETS.length);
+  });
+
+  it("prints the taxable amount per rate when the rates differ", () => {
+    const html = renderDocumentHtml(sample(config("classic")), { mode: "page", state: state() });
+    // The sample has VAT 15% and Service tax 5%.
+    expect(html).toMatch(/VAT 15%<span class="tax-base"> on USD [\d,]+\.\d\d<\/span>/);
+    expect(html).toMatch(/Service tax 5%<span class="tax-base"> on USD [\d,]+\.\d\d<\/span>/);
   });
 });
 

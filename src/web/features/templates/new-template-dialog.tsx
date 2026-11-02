@@ -4,6 +4,8 @@ import { Check } from "lucide-react";
 import { useState } from "react";
 import { Form, Radio, RadioGroup } from "react-aria-components";
 import {
+  TEMPLATE_PRESET_CATEGORIES,
+  TEMPLATE_PRESET_CATEGORY_LABELS,
   TEMPLATE_PRESETS,
   type TemplatePreset,
   templateCreateInput,
@@ -120,49 +122,60 @@ export function NewTemplateDialog({
             <RadioGroup
               value={presetId}
               onChange={setPresetId}
-              className="flex flex-col gap-2"
+              className="flex flex-col gap-6"
               aria-label="Starting design"
             >
-              <div
-                className="grid justify-center gap-4"
-                style={{ gridTemplateColumns: `repeat(auto-fill, ${THUMB_WIDTH + 18}px)` }}
-              >
-                {TEMPLATE_PRESETS.map((item) => (
-                  <Radio
-                    key={item.id}
-                    value={item.id}
-                    className={({ isSelected, isFocusVisible }) =>
-                      cn(
-                        "flex cursor-pointer flex-col gap-2 rounded-card border p-2 outline-none transition-colors",
-                        isSelected
-                          ? "border-accent bg-accent/5 shadow-[0_0_0_1px_var(--accent)]"
-                          : "border-border hover:border-[#c9c6bd]",
-                        isFocusVisible && "outline-2 outline-offset-2 outline-ring",
-                      )
-                    }
+              {TEMPLATE_PRESET_CATEGORIES.map((category) => (
+                <section
+                  key={category}
+                  className="flex flex-col gap-3"
+                  aria-labelledby={`preset-${category}`}
+                >
+                  <h3 id={`preset-${category}`} className="m-0 text-sm font-semibold text-ink">
+                    {TEMPLATE_PRESET_CATEGORY_LABELS[category]}
+                  </h3>
+                  <div
+                    className="grid justify-center gap-4 sm:justify-start"
+                    style={{ gridTemplateColumns: `repeat(auto-fill, ${THUMB_WIDTH + 18}px)` }}
                   >
-                    {({ isSelected }) => (
-                      <>
-                        <PresetThumbnail preset={item} />
-                        <span className="flex items-start justify-between gap-2 px-1">
-                          <span className="flex min-w-0 flex-col gap-0.5">
-                            <span className="text-sm font-medium text-ink">{item.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {item.description}
+                    {TEMPLATE_PRESETS.filter((item) => item.category === category).map((item) => (
+                      <Radio
+                        key={item.id}
+                        value={item.id}
+                        className={({ isSelected, isFocusVisible }) =>
+                          cn(
+                            "flex cursor-pointer flex-col gap-2 rounded-card border p-2 outline-none transition-colors",
+                            isSelected
+                              ? "border-accent bg-accent/5 shadow-[0_0_0_1px_var(--accent)]"
+                              : "border-border hover:border-[#c9c6bd]",
+                            isFocusVisible && "outline-2 outline-offset-2 outline-ring",
+                          )
+                        }
+                      >
+                        {({ isSelected }) => (
+                          <>
+                            <PresetThumbnail preset={item} />
+                            <span className="flex items-start justify-between gap-2 px-1">
+                              <span className="flex min-w-0 flex-col gap-0.5">
+                                <span className="text-sm font-medium text-ink">{item.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {item.description}
+                                </span>
+                              </span>
+                              {isSelected ? (
+                                <Check
+                                  className="mt-0.5 size-4 shrink-0 text-accent"
+                                  aria-hidden="true"
+                                />
+                              ) : null}
                             </span>
-                          </span>
-                          {isSelected ? (
-                            <Check
-                              className="mt-0.5 size-4 shrink-0 text-accent"
-                              aria-hidden="true"
-                            />
-                          ) : null}
-                        </span>
-                      </>
-                    )}
-                  </Radio>
-                ))}
-              </div>
+                          </>
+                        )}
+                      </Radio>
+                    ))}
+                  </div>
+                </section>
+              ))}
             </RadioGroup>
             <div className="flex flex-col gap-3 border-t border-row-border pt-4 sm:flex-row sm:items-end">
               <TextField

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TEMPLATE_CONFIG } from "../../../shared/domain";
-import { moveSections } from "./template-editor";
+import { HiddenRequiredNote, moveSections } from "./template-editor";
 
 const ids = (sections: { id: string }[]) => sections.map((s) => s.id);
 
@@ -33,5 +34,25 @@ describe("moveSections", () => {
 
   it("keeps the order for an unknown target", () => {
     expect(moveSections(sections, new Set(["header"]), "nope", "before")).toBe(sections);
+  });
+});
+
+describe("HiddenRequiredNote", () => {
+  afterEach(cleanup);
+
+  it("names the hidden sections that invoices need", () => {
+    const sections = DEFAULT_TEMPLATE_CONFIG.sections.map((s) =>
+      s.id === "bill_to" || s.id === "notes" ? { ...s, visible: false } : s,
+    );
+    render(<HiddenRequiredNote sections={sections} />);
+    expect(screen.getByRole("status").textContent).toMatch(/^Hidden: Bill to\. Invoices need/);
+  });
+
+  it("says nothing when only optional sections are hidden", () => {
+    const sections = DEFAULT_TEMPLATE_CONFIG.sections.map((s) =>
+      s.id === "notes" || s.id === "footer" ? { ...s, visible: false } : s,
+    );
+    render(<HiddenRequiredNote sections={sections} />);
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

@@ -44,6 +44,27 @@ import { TemplateStyleSection } from "./template-style-section";
 
 type Sections = TemplateConfig["sections"];
 
+/** The sections that an invoice needs for tax rules: who, to whom, what, and how much. */
+export const REQUIRED_INVOICE_SECTIONS = ["header", "bill_to", "line_items", "totals"] as const;
+
+/** A warning when the template hides a section that invoices need. */
+export function HiddenRequiredNote({ sections }: { sections: Sections }) {
+  const hidden = sections.filter(
+    (s) => !s.visible && (REQUIRED_INVOICE_SECTIONS as readonly string[]).includes(s.id),
+  );
+  if (hidden.length === 0) return null;
+  const names = hidden.map((s) => TEMPLATE_SECTION_LABELS[s.id]).join(", ");
+  return (
+    <p
+      role="status"
+      className="m-0 border-t border-row-border bg-danger-tint px-5 py-3 text-[13px] text-danger-tint-foreground"
+    >
+      Hidden: {names}. Invoices need these sections. Without them, an invoice can miss the number,
+      the dates, the client, or the tax amounts that tax rules require.
+    </p>
+  );
+}
+
 /** The name of a copy: "Agency standard copy". It fits the 80-character limit. */
 export function copyName(name: string): string {
   return `${name.slice(0, 75)} copy`;
@@ -322,6 +343,7 @@ function TemplateEditor({ template }: { template: TemplateDetail }) {
                 </GridListItem>
               )}
             </GridList>
+            <HiddenRequiredNote sections={config.sections} />
           </Section>
 
           <FieldPlacement
