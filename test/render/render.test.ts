@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_TEMPLATE_STYLE,
+  TEMPLATE_LAYOUTS,
   TEMPLATE_SECTIONS,
   type TemplateConfig,
   type TemplateSection,
@@ -12,7 +14,12 @@ import {
   FONT_WEIGHTS,
   fontFileName,
 } from "../../src/shared/schemas/settings";
-import type { TemplateDetail } from "../../src/shared/schemas/template";
+import {
+  normalizeTemplateConfig,
+  TEMPLATE_PRESETS,
+  type TemplateDetail,
+  templateConfigInput,
+} from "../../src/shared/schemas/template";
 import { type RenderState, renderDocument, renderDocumentHtml } from "../../src/worker/render";
 import { fontFaceCss, fontFileBytes } from "../../src/worker/render/fonts";
 import { sampleSnapshot } from "../../src/worker/render/sample";
@@ -52,11 +59,13 @@ function config(
   order: readonly TemplateSection[] = TEMPLATE_SECTIONS,
   hidden: TemplateSection[] = [],
   customFields: TemplateConfig["customFields"] = [],
+  style: Partial<TemplateConfig["style"]> = {},
 ): TemplateConfig {
   return {
     layout,
     sections: order.map((id) => ({ id, visible: !hidden.includes(id) })),
     customFields,
+    style: { ...DEFAULT_TEMPLATE_STYLE, ...style },
   };
 }
 
@@ -107,7 +116,7 @@ describe("renderDocumentHtml", () => {
     "notes",
   ];
 
-  for (const layout of ["classic", "minimal", "bold"] as const) {
+  for (const layout of TEMPLATE_LAYOUTS) {
     it(`${layout} renders every section in config order`, () => {
       const html = renderDocumentHtml(sample(config(layout, shuffled)), {
         mode: "page",
@@ -234,6 +243,48 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain('src="data:image/png;base64,iVBORw=="');
     expect(html).not.toContain("/p/assets");
     expect(html).toContain("@page{size:A4");
+  });
+});
+
+describe("template style", () => {
+  it("adds a class for each style option", () => {
+    const html = renderDocumentHtml(
+      sample(
+        config("boxed", TEMPLATE_SECTIONS, [], [], {
+          striped: true,
+          compact: true,
+          centeredHeader: true,
+        }),
+      ),
+      { mode: "page", state: state() },
+    );
+    expect(html).toContain('class="page layout-boxed opt-striped opt-compact opt-center"');
+  });
+
+  it("uses the template color and font over the brand kit", () => {
+    const own = renderDocumentHtml(
+      sample(config("modern", TEMPLATE_SECTIONS, [], [], { accentColor: "#b91c1c", font: "lora" })),
+      { mode: "page", state: state() },
+    );
+    expect(own).toContain("--accent:#b91c1c");
+    expect(own).toContain('--font:"Lora", serif');
+    expect(own).toContain("/p/assets/fonts/lora-400.woff2");
+
+    const brand = renderDocumentHtml(sample(config("modern")), { mode: "page", state: state() });
+    expect(brand).toContain(`--accent:${BRAND.accentColor}`);
+    expect(brand).toContain("/p/assets/fonts/instrument-sans-400.woff2");
+  });
+
+  it("reads an older config with no style as the default style", () => {
+    const { style, ...old } = config("classic");
+    expect(normalizeTemplateConfig(old).style).toEqual(DEFAULT_TEMPLATE_STYLE);
+    expect(style).toEqual(DEFAULT_TEMPLATE_STYLE);
+  });
+
+  it("gives every ready-made template a valid config", () => {
+    for (const preset of TEMPLATE_PRESETS) {
+      expect(templateConfigInput.safeParse(preset.config).success, preset.id).toBe(true);
+    }
   });
 });
 
@@ -387,6 +438,31 @@ describe("/api/templates", () => {
     const html = await (await apiFetch(`/render/draft/${draftId}`, { as: MEMBER })).text();
     expect(html).toContain("layout-bold");
     expect(sectionIndexes(html)).toEqual(["totals"]);
+  });
+
+  it("creates a template from a ready-made config", async () => {
+    const proposal = TEMPLATE_PRESETS.find((p) => p.id === "proposal");
+    const res = await apiFetch("/api/templates", {
+      as: OWNER,
+      method: "POST",
+      json: { name: "Proposal", layout: "classic", config: proposal?.config },
+    });
+    expect(res.status).toBe(201);
+    const template = (await res.json()) as TemplateDetail;
+    // The config's layout wins over the layout field.
+    expect(template.layout).toBe("modern");
+    expect(template.config).toEqual(proposal?.config);
+
+    const bad = await apiFetch("/api/templates", {
+      as: OWNER,
+      method: "POST",
+      json: {
+        name: "Bad",
+        layout: "classic",
+        config: { ...proposal?.config, style: { accentColor: "red" } },
+      },
+    });
+    expect(bad.status).toBe(400);
   });
 
   it("deletes an unused template", async () => {

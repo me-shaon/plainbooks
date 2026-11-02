@@ -74,16 +74,19 @@ export async function getTemplate(db: Db, id: string): Promise<TemplateDetail> {
   };
 }
 
-/** Creates a template from a layout, with every section visible. */
+/**
+ * Creates a template from a config (a ready-made template or a duplicate), or from a layout
+ * with every section visible.
+ */
 export async function createTemplate(
   db: Db,
   input: z.output<typeof templateCreateInput>,
   now: number,
 ): Promise<TemplateDetail> {
-  const config = layoutConfig(input.layout);
+  const config = input.config ?? layoutConfig(input.layout);
   const [row] = await db
     .insert(templates)
-    .values({ name: input.name, layout: input.layout, config, createdAt: now, updatedAt: now })
+    .values({ name: input.name, layout: config.layout, config, createdAt: now, updatedAt: now })
     .returning({ id: templates.id });
   if (!row) throw new Error("template insert failed");
   return getTemplate(db, row.id);

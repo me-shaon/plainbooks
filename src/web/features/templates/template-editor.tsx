@@ -23,24 +23,31 @@ import { AlertDialog } from "../../components/ui/dialog";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ListBoxItem } from "../../components/ui/list-box";
 import { Section } from "../../components/ui/section";
-import { Segment, SegmentedControl } from "../../components/ui/segmented-control";
 import { Select } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Switch } from "../../components/ui/switch";
 import { TextField } from "../../components/ui/text-field";
 import { toast } from "../../components/ui/toast";
 import { cn } from "../../components/ui/utils";
+import { toastError } from "../../lib/api";
 import { useMe } from "../../lib/session";
 import {
   fetchPreview,
+  useCreateTemplate,
   useCustomFields,
   useDeleteTemplate,
   useSetDefaultTemplate,
   useTemplate,
   useUpdateTemplate,
 } from "./queries";
+import { TemplateStyleSection } from "./template-style-section";
 
 type Sections = TemplateConfig["sections"];
+
+/** The name of a copy: "Agency standard copy". It fits the 80-character limit. */
+export function copyName(name: string): string {
+  return `${name.slice(0, 75)} copy`;
+}
 
 /** Moves the dragged sections before or after the drop target. */
 export function moveSections(
@@ -119,6 +126,7 @@ function TemplateEditor({ template }: { template: TemplateDetail }) {
   const update = useUpdateTemplate(template.id);
   const setDefault = useSetDefaultTemplate();
   const remove = useDeleteTemplate();
+  const create = useCreateTemplate();
   const navigate = useNavigate();
   const preview = usePreview(config);
 
@@ -193,6 +201,27 @@ function TemplateEditor({ template }: { template: TemplateDetail }) {
               >
                 Delete
               </Button>
+              <Button
+                variant="secondary"
+                isPending={create.isPending}
+                onPress={() =>
+                  create.mutate(
+                    { name: copyName(name.trim() || template.name), layout: config.layout, config },
+                    {
+                      onSuccess: (copy) => {
+                        toast({ title: "Saved as a new template", tone: "success" });
+                        void navigate({
+                          to: "/templates/$templateId",
+                          params: { templateId: copy.id },
+                        });
+                      },
+                      onError: (err) => toastError(err, "Could not save the new template"),
+                    },
+                  )
+                }
+              >
+                Save as new
+              </Button>
               <Button isDisabled={!dirty} isPending={update.isPending} onPress={save}>
                 Save
               </Button>
@@ -215,30 +244,29 @@ function TemplateEditor({ template }: { template: TemplateDetail }) {
                 onChange={setName}
                 isRequired
               />
-              <div className="flex flex-col gap-2">
-                <span id="editor-layout" className="text-sm font-medium text-ink">
-                  Layout
-                </span>
-                <SegmentedControl
-                  aria-labelledby="editor-layout"
-                  isDisabled={readOnly}
-                  selectedKey={config.layout}
-                  onSelectionChange={(key) =>
-                    setConfig((c) => ({ ...c, layout: key as TemplateLayout }))
-                  }
-                >
-                  {TEMPLATE_LAYOUTS.map((id) => (
-                    <Segment key={id} id={id}>
-                      {TEMPLATE_LAYOUT_LABELS[id]}
-                    </Segment>
-                  ))}
-                </SegmentedControl>
-                <p className="m-0 text-xs text-muted-foreground">
-                  {TEMPLATE_LAYOUT_DESCRIPTIONS[config.layout]}
-                </p>
-              </div>
+              <Select
+                label="Layout"
+                isDisabled={readOnly}
+                value={config.layout}
+                onChange={(key) =>
+                  key !== null && setConfig((c) => ({ ...c, layout: key as TemplateLayout }))
+                }
+                description={TEMPLATE_LAYOUT_DESCRIPTIONS[config.layout]}
+              >
+                {TEMPLATE_LAYOUTS.map((id) => (
+                  <ListBoxItem key={id} id={id}>
+                    {TEMPLATE_LAYOUT_LABELS[id]}
+                  </ListBoxItem>
+                ))}
+              </Select>
             </div>
           </Section>
+
+          <TemplateStyleSection
+            style={config.style}
+            readOnly={readOnly}
+            onChange={(style) => setConfig((c) => ({ ...c, style }))}
+          />
 
           <Section
             title="Sections"

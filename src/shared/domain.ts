@@ -98,7 +98,14 @@ export type RecurringStatus = (typeof RECURRING_STATUSES)[number];
 export const JOB_STATUSES = ["pending", "running", "done", "failed", "needs_review"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-export const TEMPLATE_LAYOUTS = ["classic", "minimal", "bold"] as const;
+export const TEMPLATE_LAYOUTS = [
+  "classic",
+  "minimal",
+  "bold",
+  "modern",
+  "elegant",
+  "boxed",
+] as const;
 export type TemplateLayout = (typeof TEMPLATE_LAYOUTS)[number];
 
 export const TEMPLATE_SECTIONS = [
@@ -112,10 +119,32 @@ export const TEMPLATE_SECTIONS = [
 ] as const;
 export type TemplateSection = (typeof TEMPLATE_SECTIONS)[number];
 
+/** How a template changes the look. Null color and font use the brand kit. */
+export interface TemplateStyle {
+  accentColor: string | null;
+  /** A FONT_CHOICES ID. */
+  font: string | null;
+  /** Shades every other line item row. */
+  striped: boolean;
+  /** Smaller type and less space, for long item lists. */
+  compact: boolean;
+  /** Centers the logo, business details, and title in the header. */
+  centeredHeader: boolean;
+}
+
+export const DEFAULT_TEMPLATE_STYLE: TemplateStyle = {
+  accentColor: null,
+  font: null,
+  striped: false,
+  compact: false,
+  centeredHeader: false,
+};
+
 export interface TemplateConfig {
   layout: TemplateLayout;
   sections: { id: TemplateSection; visible: boolean }[];
   customFields: { fieldId: string; section: TemplateSection }[];
+  style: TemplateStyle;
 }
 
 export const CUSTOM_FIELD_TYPES = ["text", "number", "date"] as const;
@@ -168,4 +197,5 @@ export const DEFAULT_TEMPLATE_CONFIG: TemplateConfig = {
   layout: "classic",
   sections: TEMPLATE_SECTIONS.map((id) => ({ id, visible: true })),
   customFields: [],
+  style: DEFAULT_TEMPLATE_STYLE,
 };

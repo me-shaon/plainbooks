@@ -27,7 +27,7 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .banner.success{background:#e8f3ee;border-color:#b5d6c6;color:#1d5a40}
 .banner.warning{background:#fcf3e3;border-color:#ecd3a3;color:#6d4a0c}
 .banner .comment{white-space:pre-line;color:inherit;opacity:.9}
-.page{background:#fff;color:#1b1b19;border-radius:6px;padding:48px 52px;box-shadow:0 1px 2px rgb(0 0 0/.06),0 12px 32px rgb(0 0 0/.08);display:flex;flex-direction:column;gap:30px;position:relative;overflow:hidden}
+.page{--pad-x:52px;background:#fff;color:#1b1b19;border-radius:6px;padding:48px var(--pad-x);box-shadow:0 1px 2px rgb(0 0 0/.06),0 12px 32px rgb(0 0 0/.08);display:flex;flex-direction:column;gap:30px;position:relative;overflow:hidden}
 .void-mark{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-18deg);font-size:120px;font-weight:600;letter-spacing:.08em;color:rgb(180 35 24/.1);pointer-events:none;user-select:none}
 .sec{display:flex;flex-direction:column;gap:6px}
 .fields{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;margin:6px 0 0;font-size:12px}
@@ -73,7 +73,7 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .not-found h1{color:#1b1b19;font-size:22px;font-weight:600;margin:0 0 8px}
 
 /* Minimal: light type, more space, totals on the left. */
-.layout-minimal{gap:44px;padding:64px 64px}
+.layout-minimal{--pad-x:64px;gap:44px;padding:64px var(--pad-x)}
 .layout-minimal .title{font-size:13px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:#66635c}
 .layout-minimal .title-block .doc-number{font-size:20px;color:#1b1b19}
 .layout-minimal .business{font-weight:500}
@@ -86,7 +86,7 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 /* Bold: an accent band across the top and a large total. */
 .layout-bold{padding-top:0}
 .layout-bold.band-off{padding-top:48px}
-.layout-bold .header{background:var(--accent);color:var(--on-accent);margin:0 -52px;padding:36px 52px 32px}
+.layout-bold .header{background:var(--accent);color:var(--on-accent);margin:0 calc(-1 * var(--pad-x));padding:36px var(--pad-x) 32px}
 .layout-bold .header .muted,.layout-bold .header .fields dt,.layout-bold .header .fields dd{color:var(--on-accent);opacity:.85}
 .layout-bold .title{font-size:34px}
 .layout-bold .items th{border-bottom:2px solid var(--accent)}
@@ -94,11 +94,59 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
 .layout-bold .totals dt.grand{display:flex;align-items:center}
 .layout-bold .totals dd.grand{padding:14px 16px 14px 28px;font-size:24px;color:var(--accent-ink)}
 
+/* Modern: a thin accent bar, accent headings, and totals in a soft card. */
+.layout-modern{border-top:6px solid var(--accent)}
+.layout-modern .title{color:var(--accent-ink)}
+.layout-modern .label{color:var(--accent-ink)}
+.layout-modern .items th{color:var(--accent-ink);border-bottom:2px solid var(--accent)}
+.layout-modern .totals{background:var(--accent-soft);border-radius:8px;padding:16px 20px}
+.layout-modern .totals .grand{border-top-color:var(--accent)}
+.layout-modern .footer{border-top-color:var(--accent-soft)}
+
+/* Elegant: spaced capitals, double rules, and quiet color. */
+.layout-elegant .header{border-bottom:3px double #1b1b19;padding-bottom:24px}
+.layout-elegant .title{font-size:15px;font-weight:500;letter-spacing:.32em;text-transform:uppercase}
+.layout-elegant .business{font-size:17px;font-weight:500;letter-spacing:.02em}
+.layout-elegant .label{letter-spacing:.2em;color:var(--accent-ink)}
+.layout-elegant .items th{font-weight:400;letter-spacing:.14em;border-bottom:3px double #1b1b19}
+.layout-elegant .totals .grand{border-top:3px double #1b1b19;font-weight:500}
+.layout-elegant .footer{text-align:center;border-top:0;padding-top:0;letter-spacing:.02em}
+
+/* Boxed: line items in a bordered grid with an accent header row. */
+.layout-boxed .items{border:1px solid #dcd9d0}
+.layout-boxed .items th{background:var(--accent);color:var(--on-accent);border-bottom:0;padding:10px 12px}
+.layout-boxed .items td{padding:10px 12px}
+.layout-boxed .items th+th,.layout-boxed .items td+td{padding-left:12px;border-left:1px solid #ecebe6}
+.layout-boxed .items th+th{border-left-color:transparent}
+.layout-boxed .totals{border:1px solid #dcd9d0;border-radius:6px;padding:14px 16px}
+.layout-boxed .sec-bill_to,.layout-boxed .sec-notes,.layout-boxed .sec-payment_details{border:1px solid #ecebe6;border-radius:6px;padding:14px 16px}
+
+/* Template style options. */
+.opt-striped .items tbody tr:nth-child(even){background:#f7f6f2}
+.opt-striped .items td:first-child{padding-left:8px}
+.opt-striped .items th:first-child{padding-left:8px}
+.page.opt-compact{--pad-x:36px;padding-top:32px;padding-bottom:32px;gap:18px;font-size:12.5px}
+.layout-bold.opt-compact{padding-top:0}
+.layout-bold.band-off.opt-compact{padding-top:32px}
+.opt-compact .title{font-size:22px}
+.opt-compact .items{font-size:12px}
+.opt-compact .items td{padding-top:7px;padding-bottom:7px}
+.layout-bold.opt-compact .header{padding-top:24px;padding-bottom:22px}
+.opt-center .header{flex-direction:column;align-items:center;text-align:center}
+.opt-center .brand{align-items:center}
+.opt-center .logo{align-self:center;object-position:center}
+.opt-center .title-block{text-align:center;align-items:center}
+.opt-center .title-block .fields{justify-content:center}
+
 @media (max-width:767px){
   .shell{padding:16px 12px 40px;gap:12px}
-  .page,.layout-minimal{padding:24px 20px;gap:24px}
-  .layout-bold{padding-top:0}
-  .layout-bold .header{margin:0 -20px;padding:24px 20px}
+  .page,.layout-minimal,.page.opt-compact{--pad-x:20px;padding:24px var(--pad-x);gap:24px}
+  .layout-bold,.layout-bold.opt-compact{padding-top:0}
+  .layout-bold .header{padding:24px var(--pad-x)}
+  .layout-boxed .items{border:0}
+  .layout-boxed .items td,.layout-boxed .items td+td{padding:0;border-left:0}
+  .opt-striped .items tbody tr:nth-child(even){background:none}
+  .opt-striped .items td:first-child{padding-left:0}
   .header{flex-direction:column}
   .title-block{text-align:left}
   .title-block .fields{justify-content:start}
@@ -125,7 +173,8 @@ body{margin:0;background:#f1f0ec;color:#1b1b19;font-family:var(--font);font-size
   .shell{max-width:none;padding:0}
   .toolbar,.decision,.no-print{display:none!important}
   .banner{break-inside:avoid}
-  .page{box-shadow:none;border-radius:0;padding:0}
+  .page,.layout-minimal,.page.opt-compact{box-shadow:none;border-radius:0;padding:0}
+  .layout-modern{padding-top:20px}
   .layout-bold .header{margin:0 0 4px;padding:28px 28px 24px;border-radius:4px}
   .items tr{break-inside:avoid}
   .totals-wrap,.sec-payment_details,.sec-footer{break-inside:avoid}

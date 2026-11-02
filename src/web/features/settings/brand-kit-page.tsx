@@ -5,8 +5,6 @@ import {
   type BrandKit,
   brandKitInput,
   FONT_CHOICES,
-  FONT_WEIGHTS,
-  fontFileName,
   HEX_COLOR,
   LOGO_TYPES,
   MAX_LOGO_BYTES,
@@ -21,23 +19,13 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { TextArea, TextField } from "../../components/ui/text-field";
 import { toast } from "../../components/ui/toast";
 import { issuesByPath, toastError } from "../../lib/api";
+import { DOCUMENT_FONT_FACES } from "../../lib/document-fonts";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { useMe } from "../../lib/session";
 import { AccentColorField } from "./accent-color-field";
 import { FooterField } from "./footer-field";
 import { useBrandKit, useRemoveLogo, useUpdateBrandKit, useUploadLogo } from "./queries";
 import { SaveBar } from "./settings-layout";
-
-/**
- * `@font-face` rules for every document font, from the files that public pages use. The
- * browser loads a file only when the preview or the font list shows that font.
- */
-const DOCUMENT_FONT_FACES = FONT_CHOICES.flatMap((choice) =>
-  FONT_WEIGHTS.map(
-    (weight) =>
-      `@font-face{font-family:${choice.stack.split(",")[0]};font-weight:${weight};font-display:swap;src:url(/p/assets/fonts/${fontFileName(choice.id, weight)}) format("woff2")}`,
-  ),
-).join("\n");
 
 export function BrandKitPage() {
   const kit = useBrandKit();

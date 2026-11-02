@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { eq, getTableName, is } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REMINDER_SCHEDULE } from "../../src/shared/domain";
+import { DEFAULT_REMINDER_SCHEDULE, DEFAULT_TEMPLATE_STYLE } from "../../src/shared/domain";
 import { createDb, schema } from "../../src/worker/db/client";
 
 const db = createDb(env.DB);
@@ -98,6 +98,7 @@ describe("tables accept valid rows", () => {
           layout: "classic",
           sections: [{ id: "header", visible: true }],
           customFields: [],
+          style: DEFAULT_TEMPLATE_STYLE,
         },
       })
       .returning();

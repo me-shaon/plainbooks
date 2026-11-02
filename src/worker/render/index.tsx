@@ -8,7 +8,7 @@ import { LOGO_TYPES } from "../../shared/schemas/settings";
 import { normalizeTemplateConfig } from "../../shared/schemas/template";
 import { documentFont, fontFaceCss } from "./fonts";
 import { accentInk, onAccent, safeAccent } from "./format";
-import { LAYOUTS } from "./layouts";
+import { DocumentPage } from "./layouts";
 import { type Banner, buildView, type RenderMode, type RenderState } from "./model";
 import { DOCUMENT_CSS, DOCUMENT_CSS_PATH } from "./styles";
 
@@ -35,9 +35,19 @@ export interface RenderOptions {
   after?: Child;
 }
 
+/** The accent color and font: the template's, or the brand kit's when the template has none. */
+export function documentTheme(snapshot: DocumentSnapshot): { accentColor: string; font: string } {
+  const { style } = normalizeTemplateConfig(snapshot.template.config);
+  return {
+    accentColor: style.accentColor ?? snapshot.brandKit.accentColor,
+    font: style.font ?? snapshot.brandKit.font,
+  };
+}
+
 function themeCss(snapshot: DocumentSnapshot): string {
-  const accent = safeAccent(snapshot.brandKit.accentColor);
-  const font = documentFont(snapshot.brandKit.font);
+  const theme = documentTheme(snapshot);
+  const accent = safeAccent(theme.accentColor);
+  const font = documentFont(theme.font);
   return `:root{--accent:${accent};--on-accent:${onAccent(accent)};--accent-ink:${accentInk(accent)};--accent-soft:${accent}14;--font:${font.stack};--mono:"IBM Plex Mono",ui-monospace,monospace}`;
 }
 
@@ -72,11 +82,11 @@ export function documentTitle(snapshot: DocumentSnapshot): string {
 export function renderDocumentHtml(snapshot: DocumentSnapshot, options: RenderOptions): string {
   const config = normalizeTemplateConfig(snapshot.template.config);
   const view = buildView(snapshot, options.state, options.mode, options.logoSrc);
-  const Layout = LAYOUTS[config.layout] ?? LAYOUTS.classic;
   const isPage = options.mode === "page";
+  const { font } = documentTheme(snapshot);
   const inlineCss = isPage
-    ? `${fontFaceCss(snapshot.brandKit.font, "page")}${themeCss(snapshot)}`
-    : `${fontFaceCss(snapshot.brandKit.font, "pdf")}${themeCss(snapshot)}${DOCUMENT_CSS}`;
+    ? `${fontFaceCss(font, "page")}${themeCss(snapshot)}`
+    : `${fontFaceCss(font, "pdf")}${themeCss(snapshot)}${DOCUMENT_CSS}`;
   const business = snapshot.brandKit.businessName;
 
   const page = (
@@ -106,7 +116,7 @@ export function renderDocumentHtml(snapshot: DocumentSnapshot, options: RenderOp
           ) : null}
           {isPage && options.notice ? options.notice : null}
           <BannerList banners={view.banners} />
-          <Layout view={view} />
+          <DocumentPage view={view} layout={config.layout} />
           {isPage && options.after ? options.after : null}
         </div>
       </body>

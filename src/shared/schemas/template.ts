@@ -6,23 +6,31 @@ import {
   type CustomFieldScope,
   type CustomFieldType,
   DEFAULT_TEMPLATE_CONFIG,
+  DEFAULT_TEMPLATE_STYLE,
   TEMPLATE_LAYOUTS,
   TEMPLATE_SECTIONS,
   type TemplateConfig,
   type TemplateLayout,
   type TemplateSection,
 } from "../domain";
+import { FONT_CHOICES, HEX_COLOR } from "./settings";
 
 export const TEMPLATE_LAYOUT_LABELS: Record<TemplateLayout, string> = {
   classic: "Classic",
   minimal: "Minimal",
   bold: "Bold",
+  modern: "Modern",
+  elegant: "Elegant",
+  boxed: "Boxed",
 };
 
 export const TEMPLATE_LAYOUT_DESCRIPTIONS: Record<TemplateLayout, string> = {
   classic: "Logo and title on one line, ruled line items, totals on the right.",
   minimal: "Light type, more space, and totals on the left.",
   bold: "An accent color band across the top and a large total.",
+  modern: "A thin accent bar, accent headings, and totals in a soft card.",
+  elegant: "Spaced capitals, double rules, and quiet color.",
+  boxed: "Line items in a bordered grid with an accent header row.",
 };
 
 export const TEMPLATE_SECTION_LABELS: Record<TemplateSection, string> = {
@@ -34,6 +42,23 @@ export const TEMPLATE_SECTION_LABELS: Record<TemplateSection, string> = {
   payment_details: "Payment details",
   footer: "Footer",
 };
+
+const FONT_IDS = FONT_CHOICES.map((f) => f.id) as [string, ...string[]];
+
+/** A template's look. Older configs have none, so each value has a default. */
+export const templateStyleInput = z.object({
+  accentColor: z
+    .string()
+    .trim()
+    .regex(HEX_COLOR, "Enter a hex color such as #2f7f6f")
+    .transform((value) => value.toLowerCase())
+    .nullable()
+    .default(null),
+  font: z.enum(FONT_IDS).nullable().default(null),
+  striped: z.boolean().default(false),
+  compact: z.boolean().default(false),
+  centeredHeader: z.boolean().default(false),
+});
 
 /**
  * A template config. Each section ID can occur once. Sections that are missing are added at
@@ -55,6 +80,7 @@ export const templateConfigInput = z
         message: "Each custom field can have one placement",
       })
       .default([]),
+    style: templateStyleInput.default(DEFAULT_TEMPLATE_STYLE),
   })
   .transform(
     (config): TemplateConfig => ({
@@ -66,6 +92,7 @@ export const templateConfigInput = z
         ),
       ],
       customFields: config.customFields,
+      style: config.style,
     }),
   );
 export type TemplateConfigInput = z.input<typeof templateConfigInput>;
@@ -81,16 +108,89 @@ export function layoutConfig(layout: TemplateLayout): TemplateConfig {
   return { ...DEFAULT_TEMPLATE_CONFIG, layout };
 }
 
+/** A ready-made template in the New template gallery. Creating one copies its config. */
+export interface TemplatePreset {
+  id: string;
+  name: string;
+  description: string;
+  config: TemplateConfig;
+}
+
+function preset(
+  id: string,
+  name: string,
+  description: string,
+  layout: TemplateLayout,
+  options: { style?: Partial<TemplateConfig["style"]>; sections?: TemplateConfig["sections"] } = {},
+): TemplatePreset {
+  return {
+    id,
+    name,
+    description,
+    config: {
+      ...DEFAULT_TEMPLATE_CONFIG,
+      layout,
+      sections: options.sections ?? DEFAULT_TEMPLATE_CONFIG.sections,
+      style: { ...DEFAULT_TEMPLATE_STYLE, ...options.style },
+    },
+  };
+}
+
+export const TEMPLATE_PRESETS: TemplatePreset[] = [
+  preset("classic", "Classic", TEMPLATE_LAYOUT_DESCRIPTIONS.classic, "classic"),
+  preset("modern", "Modern", TEMPLATE_LAYOUT_DESCRIPTIONS.modern, "modern"),
+  preset("bold", "Bold", TEMPLATE_LAYOUT_DESCRIPTIONS.bold, "bold"),
+  preset("minimal", "Minimal", TEMPLATE_LAYOUT_DESCRIPTIONS.minimal, "minimal"),
+  preset("elegant", "Elegant", "A centered header, spaced capitals, and double rules.", "elegant", {
+    style: { centeredHeader: true },
+  }),
+  preset(
+    "boxed",
+    "Boxed",
+    "A bordered grid with an accent header row and striped lines.",
+    "boxed",
+    { style: { striped: true } },
+  ),
+  preset(
+    "compact",
+    "Compact",
+    "Smaller type, less space, and striped lines, for long item lists.",
+    "classic",
+    { style: { compact: true, striped: true } },
+  ),
+  preset(
+    "proposal",
+    "Proposal",
+    "Notes before the line items and no payment details, for quotes.",
+    "modern",
+    {
+      sections: [
+        { id: "header", visible: true },
+        { id: "bill_to", visible: true },
+        { id: "notes", visible: true },
+        { id: "line_items", visible: true },
+        { id: "totals", visible: true },
+        { id: "footer", visible: true },
+        { id: "payment_details", visible: false },
+      ],
+    },
+  ),
+];
+
 const templateName = z
   .string()
   .trim()
   .min(1, "Enter a template name")
   .max(80, "Use 80 characters or fewer");
 
-/** POST /api/templates. Owner only. */
+/**
+ * POST /api/templates. Owner only. `config` copies a ready-made template or another
+ * template (Duplicate). Without it, the template starts from the layout.
+ */
 export const templateCreateInput = z.object({
   name: templateName,
   layout: z.enum(TEMPLATE_LAYOUTS),
+  config: templateConfigInput.optional(),
 });
 export type TemplateCreateInput = z.input<typeof templateCreateInput>;
 

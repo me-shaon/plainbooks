@@ -1,6 +1,6 @@
 // The view model that layouts and sections read. Built once per render from the snapshot
 // and the live document state.
-import type { DocumentStatus, TemplateSection } from "../../shared/domain";
+import type { DocumentStatus, TemplateSection, TemplateStyle } from "../../shared/domain";
 import {
   type DocumentSnapshot,
   isOverdue,
@@ -48,6 +48,8 @@ export interface DocumentView {
   /** The image source for the logo, or null. */
   logoSrc: string | null;
   sections: { id: TemplateSection; visible: boolean }[];
+  /** The template's look: color and font overrides, and the style options. */
+  style: TemplateStyle;
   fields: (section: TemplateSection) => FieldView[];
   banners: Banner[];
   /** False for quotes and for paid or void invoices. */
@@ -159,6 +161,7 @@ export function buildView(
     isInvoice,
     logoSrc: logoSrc === undefined ? logoUrl(snapshot.brandKit.logoKey) : logoSrc,
     sections: config.sections,
+    style: config.style,
     fields: (section) => bySection.get(section) ?? [],
     banners: documentBanners(snapshot, state),
     showPaymentDetails: isInvoice && !isVoid && state.status !== "paid",
