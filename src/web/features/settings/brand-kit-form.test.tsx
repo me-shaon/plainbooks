@@ -69,6 +69,25 @@ describe("AccentColorField", () => {
   });
 });
 
+describe("FooterField", () => {
+  it("adds a suggested line on a new line and counts the characters", async () => {
+    const user = userEvent.setup();
+    renderForm(false);
+    const footer = screen.getByRole("textbox", { name: "Default footer" }) as HTMLTextAreaElement;
+    await user.type(footer, "Registered in Dhaka.");
+    await user.click(screen.getByRole("button", { name: "Thank you for your business." }));
+    expect(footer.value).toBe("Registered in Dhaka.\nThank you for your business.");
+    expect(screen.getByText(`${footer.value.length} / 1000`)).toBeTruthy();
+    // A line that the footer has already is not offered again.
+    expect(screen.queryByRole("button", { name: "Thank you for your business." })).toBeNull();
+  });
+
+  it("offers no suggestions to a Member", () => {
+    renderForm(true);
+    expect(screen.queryByRole("button", { name: "Thank you for your business." })).toBeNull();
+  });
+});
+
 describe("logoFileError", () => {
   it("accepts small PNG, JPG, and SVG files", () => {
     for (const type of ["image/png", "image/jpeg", "image/svg+xml"]) {

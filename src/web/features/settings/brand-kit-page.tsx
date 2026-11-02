@@ -24,6 +24,7 @@ import { issuesByPath, toastError } from "../../lib/api";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { useMe } from "../../lib/session";
 import { AccentColorField } from "./accent-color-field";
+import { FooterField } from "./footer-field";
 import { useBrandKit, useRemoveLogo, useUpdateBrandKit, useUploadLogo } from "./queries";
 import { SaveBar } from "./settings-layout";
 
@@ -228,14 +229,11 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
                 description="Shown in the payment details section of invoices."
                 {...fieldError(errors, "bankDetails")}
               />
-              <TextArea
-                label="Default footer"
-                className="sm:col-span-2"
-                rows={2}
-                isDisabled={readOnly}
+              <FooterField
                 value={values.footerText ?? ""}
                 onChange={(text) => set("footerText", text)}
-                {...fieldError(errors, "footerText")}
+                isDisabled={readOnly}
+                errorProps={fieldError(errors, "footerText")}
               />
             </div>
           </Section>
@@ -281,6 +279,11 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
             {values.bankDetails ? (
               <p className="m-0 border-t border-row-border pt-3 text-xs whitespace-pre-line">
                 {values.bankDetails}
+              </p>
+            ) : null}
+            {values.footerText ? (
+              <p className="m-0 border-t border-row-border pt-3 text-[11px] break-words whitespace-pre-line text-muted-foreground">
+                {values.footerText}
               </p>
             ) : null}
           </div>
