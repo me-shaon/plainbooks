@@ -82,22 +82,16 @@ The Worker runs only on the custom domain. The config turns off the `workers.dev
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/me-shaon/plainbooks)
 
-1. Make a random value for the setup token, and keep it:
+1. Choose a passphrase for the setup token, with 32 characters or more. For example, use six random words. Or make a random value:
 
    ```sh
    openssl rand -base64 32
    ```
 
-   If you do not have `openssl`, use this command:
-
-   ```sh
-   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-   ```
-
 2. Select the button.
 3. Connect your GitHub or GitLab account. Cloudflare copies this repository to a new repository in your account.
 4. Keep the new D1 database and the new R2 bucket that Cloudflare suggests.
-5. Set `SETUP_TOKEN` to the random value. Save this value now, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
+5. Clear the `SETUP_TOKEN` field, then type or paste your passphrase. Your browser can fill in a saved password here, so check that the field holds only your passphrase. Save the passphrase, for example in a password manager. Cloudflare does not show a secret again. You need it in step 3.
 6. Set `APP_URL` to `https://invoices.example.com`, with no trailing slash. Use the custom domain of step 8. Do not keep the example value.
 7. Select **Deploy**.
 8. In the dashboard, open the Worker, then go to **Settings** > **Domains & Routes**. Add the custom domain `invoices.example.com`.

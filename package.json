@@ -11,7 +11,7 @@
   "cloudflare": {
     "bindings": {
       "SETUP_TOKEN": {
-        "description": "Copy this value and keep it. You enter it at `/setup` to create the first Owner, and Cloudflare does not show it again. Use 32 random characters or more."
+        "description": "Type a passphrase of 32 characters or more, and keep it. You enter it again at `/setup`. Clear any value that your browser filled in."
       },
       "APP_URL": {
         "description": "Public origin of the app, for example `https://invoices.example.com`. No trailing slash."
