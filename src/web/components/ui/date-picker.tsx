@@ -51,11 +51,12 @@ export function Calendar<T extends DateValue>({ className, ...props }: CalendarP
           {(date) => (
             <CalendarCell
               date={date}
-              className={({ isSelected, isOutsideMonth, isDisabled, isUnavailable }) =>
+              className={({ isSelected, isOutsideMonth, isDisabled, isUnavailable, isToday }) =>
                 cn(
                   "figure flex size-9 cursor-default items-center justify-center rounded-small text-[13px] outline-none",
                   "hover:bg-segmented data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-1 data-[focus-visible]:outline-ring",
                   isOutsideMonth && "text-muted-foreground/50",
+                  isToday && "font-semibold text-accent ring-1 ring-inset ring-accent/40",
                   isSelected && "bg-ink text-ink-foreground hover:bg-ink",
                   (isDisabled || isUnavailable) && "text-muted-foreground/40 line-through",
                 )

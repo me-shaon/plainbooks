@@ -6,6 +6,7 @@ import type { DocumentKind } from "../../../shared/domain";
 import { HOME_CURRENCY } from "../../../shared/money";
 import type { ClientDetail } from "../../../shared/schemas/client";
 import type { DocumentDetail } from "../../../shared/schemas/document";
+import { todayIn } from "../../../shared/time";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toast } from "../../components/ui/toast";
@@ -48,6 +49,7 @@ export function NewDocumentPage({ kind, clientId }: { kind: DocumentKind; client
     if (!ws || initial) return;
     let live = true;
     const base = emptyValues(kind, ws.homeCurrency);
+    base.issueDate = todayIn(ws.timezone, Date.now());
     base.lines = base.lines.map((l) => ({ ...l, taxRateId: ws.defaultTaxRateId }));
     if (!clientId) {
       setInitial(base);
