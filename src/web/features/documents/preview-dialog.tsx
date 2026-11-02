@@ -1,7 +1,5 @@
+import { ScaledDocumentFrame } from "../../components/document-frame";
 import { Dialog, Modal } from "../../components/ui/dialog";
-
-/** The page width of the document render, in CSS pixels. */
-const PAGE_WIDTH = 842;
 
 export interface DocumentPreviewDialogProps {
   isOpen: boolean;
@@ -12,8 +10,8 @@ export interface DocumentPreviewDialogProps {
 }
 
 /**
- * Shows the document as the client will see it, with the chosen template. The frame is
- * sandboxed, so the HTML runs no scripts.
+ * Shows the document as the client will see it, with the chosen template, at page width
+ * scaled to fit, so it looks like the PDF.
  */
 export function DocumentPreviewDialog({
   isOpen,
@@ -27,17 +25,13 @@ export function DocumentPreviewDialog({
         title={title}
         description="This is how the document looks with the chosen template. Nothing is saved."
       >
-        <div className="overflow-auto rounded-card bg-sidebar p-3 md:p-5">
-          {html ? (
-            <iframe
-              title={title}
-              sandbox=""
-              srcDoc={html}
-              className="mx-auto block h-[70vh] w-full rounded-small border-0 bg-white shadow-raised"
-              style={{ maxWidth: PAGE_WIDTH }}
-            />
-          ) : null}
-        </div>
+        {html ? (
+          <ScaledDocumentFrame
+            title={title}
+            html={html}
+            className="h-[70vh] rounded-card bg-[#f1f0ec]"
+          />
+        ) : null}
       </Dialog>
     </Modal>
   );

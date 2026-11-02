@@ -16,6 +16,7 @@ import {
   TEMPLATE_SECTION_LABELS,
   type TemplateDetail,
 } from "../../../shared/schemas/template";
+import { ScaledDocumentFrame } from "../../components/document-frame";
 import { OwnerOnlyNote } from "../../components/owner-note";
 import { PageHeader } from "../../components/page-header";
 import { Button } from "../../components/ui/button";
@@ -371,11 +372,10 @@ function TemplateEditor({ template }: { template: TemplateDetail }) {
               <Skeleton className="h-[70vh] w-full" />
             </div>
           ) : (
-            <iframe
+            <ScaledDocumentFrame
               title="Template preview"
-              sandbox=""
-              srcDoc={preview.html}
-              className="block h-[75vh] w-full rounded-b-card border-0 bg-[#f1f0ec]"
+              html={preview.html}
+              className="h-[75vh] rounded-b-card bg-[#f1f0ec]"
             />
           )}
         </Section>
