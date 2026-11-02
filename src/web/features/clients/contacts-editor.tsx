@@ -25,14 +25,19 @@ export interface ContactsEditorProps {
 }
 
 /**
- * Edits a client's contacts. One contact can be primary. Billing contacts get documents
- * and reminders together with the primary contact.
+ * Edits a client's contacts. One contact can be primary. The primary contact always gets
+ * documents and reminders, so its "Receives invoices" box stays on. Other contacts get
+ * them only when "Receives invoices" is on.
  */
 export function ContactsEditor({ contacts, onChange, errors }: ContactsEditorProps) {
   const update = (index: number, patch: Partial<ContactDraft>) => {
     onChange(
       contacts.map((contact, i) => {
-        if (i === index) return { ...contact, ...patch };
+        // The primary contact always receives documents, so keep the billing flag in step.
+        if (i === index) {
+          const next = { ...contact, ...patch };
+          return next.isPrimary ? { ...next, isBilling: true } : next;
+        }
         // Primary is exclusive: choosing one clears the others.
         if (patch.isPrimary) return { ...contact, isPrimary: false };
         return contact;
@@ -43,6 +48,10 @@ export function ContactsEditor({ contacts, onChange, errors }: ContactsEditorPro
   return (
     <fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
       <legend className="mb-1 p-0 text-[13px] font-medium text-ink">Contacts</legend>
+      <p className="m-0 text-[13px] text-muted-foreground">
+        The primary contact appears on invoices and quotes. Emails go to the primary contact and to
+        each contact that receives invoices.
+      </p>
       {contacts.length === 0 ? (
         <p className="m-0 text-[13px] text-muted-foreground">
           Add at least one contact to email documents to this client.
@@ -80,10 +89,11 @@ export function ContactsEditor({ contacts, onChange, errors }: ContactsEditorPro
                 Primary contact
               </Checkbox>
               <Checkbox
-                isSelected={contact.isBilling}
+                isSelected={contact.isPrimary || contact.isBilling}
+                isDisabled={contact.isPrimary}
                 onChange={(isBilling) => update(index, { isBilling })}
               >
-                Gets invoices
+                Receives invoices
               </Checkbox>
               <Button
                 variant="ghost"

@@ -105,6 +105,22 @@ describe("client CRUD", () => {
     expect(((await restored.json()) as ClientDetail).client.archivedAt).toBeNull();
   });
 
+  it("stores the primary contact as receiving invoices", async () => {
+    const { res, body } = await createClient({
+      name: "Northwind",
+      defaultCurrency: "USD",
+      contacts: [
+        { email: "ana@northwind.test", isPrimary: true, isBilling: false },
+        { email: "ops@northwind.test", isBilling: false },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(body.contacts.map((c) => [c.email, c.isPrimary, c.isBilling])).toEqual([
+      ["ana@northwind.test", true, true],
+      ["ops@northwind.test", false, false],
+    ]);
+  });
+
   it("lets a Member read clients", async () => {
     const { body } = await createClient({ name: "Contoso", defaultCurrency: "BDT" });
     const res = await apiFetch(`/api/clients/${body.client.id}`, { as: MEMBER });

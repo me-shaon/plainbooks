@@ -297,9 +297,12 @@ function ContactsSection({ detail }: { detail: ClientDetail }) {
               ) : null}
               {contact.isPrimary || contact.isBilling ? (
                 <span className="text-xs text-muted-foreground">
-                  {[contact.isPrimary && "Primary", contact.isBilling && "Gets invoices"]
+                  {[
+                    contact.isPrimary && "Primary",
+                    (contact.isPrimary || contact.isBilling) && "Receives invoices",
+                  ]
                     .filter(Boolean)
-                    .join(", ")}
+                    .join(" · ")}
                 </span>
               ) : null}
             </li>

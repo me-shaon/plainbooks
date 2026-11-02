@@ -78,4 +78,29 @@ describe("ClientForm", () => {
     renderForm({ isOwner: true });
     expect(screen.queryByText(/Only an Owner/)).toBeNull();
   });
+
+  it("keeps Receives invoices on and locked for the primary contact", async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByRole("button", { name: "Add contact" }));
+    const primary = () => screen.getAllByRole("checkbox", { name: "Primary contact" });
+    const receives = () =>
+      screen.getAllByRole("checkbox", { name: "Receives invoices" }) as HTMLInputElement[];
+
+    expect(receives()[0]?.checked).toBe(true);
+    expect(receives()[0]?.disabled).toBe(true);
+    expect(receives()[1]?.checked).toBe(false);
+    expect(receives()[1]?.disabled).toBe(false);
+
+    const second = primary()[1];
+    if (!second) throw new Error("Second contact not found");
+    await user.click(second);
+
+    expect(receives()[1]?.checked).toBe(true);
+    expect(receives()[1]?.disabled).toBe(true);
+    // The old primary keeps receiving invoices and can now opt out.
+    expect(receives()[0]?.checked).toBe(true);
+    expect(receives()[0]?.disabled).toBe(false);
+  });
 });

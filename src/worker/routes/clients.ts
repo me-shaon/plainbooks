@@ -102,7 +102,8 @@ function contactRows(clientId: string, contacts: ContactInput[]) {
     name: contact.name ?? null,
     email: contact.email,
     isPrimary: contact.isPrimary ?? false,
-    isBilling: contact.isBilling ?? false,
+    // The primary contact always receives documents, so store it as a billing contact too.
+    isBilling: (contact.isBilling ?? false) || (contact.isPrimary ?? false),
   }));
 }
 
