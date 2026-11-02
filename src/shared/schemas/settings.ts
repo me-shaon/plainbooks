@@ -123,6 +123,29 @@ export const brandKitInput = z
     font: z.enum(FONT_IDS),
     address: optionalText(1000),
     taxId: optionalText(100),
+    contactEmail: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .pipe(z.union([z.literal(""), z.email("Enter a valid email address")]))
+      .nullish()
+      .transform((value) => (value ? value : null)),
+    contactPhone: z
+      .string()
+      .trim()
+      .max(40, "Use 40 characters or fewer")
+      .regex(/^[0-9+()\-. x]*$/i, "Use digits, spaces, and + ( ) - . only")
+      .nullish()
+      .transform((value) => (value ? value : null)),
+    website: z
+      .string()
+      .trim()
+      .max(200, "Use 200 characters or fewer")
+      .regex(/^\S*$/, "Enter the address without spaces, for example studio.example")
+      .nullish()
+      .transform((value) =>
+        value ? value.replace(/^https?:\/\//i, "").replace(/\/+$/, "") : null,
+      ),
     bankDetails: optionalText(2000),
     footerText: optionalText(1000),
   })
@@ -216,6 +239,11 @@ export interface BrandKit {
   font: string;
   address: string | null;
   taxId: string | null;
+  /** Contact details for the document header. Snapshots from before they existed lack them. */
+  contactEmail: string | null;
+  contactPhone: string | null;
+  /** Without "https://", for example "studio.example". */
+  website: string | null;
   bankDetails: string | null;
   footerText: string | null;
 }

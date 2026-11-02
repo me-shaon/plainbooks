@@ -18,6 +18,9 @@ const kit: BrandKit = {
   font: "instrument-sans",
   address: null,
   taxId: null,
+  contactEmail: null,
+  contactPhone: null,
+  website: null,
   bankDetails: null,
   footerText: null,
 };

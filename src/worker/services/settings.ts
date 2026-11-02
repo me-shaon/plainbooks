@@ -108,6 +108,9 @@ export function brandKitOf(row: Workspace): BrandKit {
     font: row.font,
     address: row.address,
     taxId: row.taxId,
+    contactEmail: row.contactEmail,
+    contactPhone: row.contactPhone,
+    website: row.website,
     bankDetails: row.bankDetails,
     footerText: row.footerText,
   };

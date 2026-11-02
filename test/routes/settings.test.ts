@@ -170,6 +170,34 @@ describe("workspace settings", () => {
 });
 
 describe("brand kit", () => {
+  it("saves the contact details, cleans the website, and removes a cleared field", async () => {
+    const patch = (json: Record<string, unknown>) =>
+      apiFetch("/api/settings/brand-kit", { as: OWNER, method: "PATCH", json });
+    const saved = await patch({
+      contactEmail: "Billing@Studio.Example",
+      contactPhone: "+880 (17) 0000-0000",
+      website: "https://studio.example/",
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({
+      contactEmail: "billing@studio.example",
+      contactPhone: "+880 (17) 0000-0000",
+      website: "studio.example",
+    });
+
+    const cleared = await patch({ contactPhone: "", website: "" });
+    expect(await cleared.json()).toMatchObject({
+      contactEmail: "billing@studio.example",
+      contactPhone: null,
+      website: null,
+    });
+
+    for (const bad of [{ contactEmail: "nope" }, { contactPhone: "call me" }, { website: "a b" }]) {
+      expect((await patch(bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    await patch({ contactEmail: "" });
+  });
+
   it("saves bank details that drafts then read", async () => {
     const res = await apiFetch("/api/settings/brand-kit", {
       as: OWNER,

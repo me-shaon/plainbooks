@@ -111,6 +111,10 @@ export const workspace = sqliteTable(
     font: text("font").notNull().default("instrument-sans"),
     address: text("address"),
     taxId: text("tax_id"),
+    /** Contact details printed in the document header. Each one is optional. */
+    contactEmail: text("contact_email"),
+    contactPhone: text("contact_phone"),
+    website: text("website"),
     bankDetails: text("bank_details"),
     footerText: text("footer_text"),
     emailFromName: text("email_from_name"),

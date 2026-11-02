@@ -10,6 +10,10 @@ export function HeaderSection({ view }: { view: DocumentView }) {
   const dates = [`Issued ${longDate(doc.issueDate)}`];
   if (doc.dueDate) dates.push(`Due ${longDate(doc.dueDate)}`);
   if (doc.expiryDate) dates.push(`Valid until ${longDate(doc.expiryDate)}`);
+  // Snapshots from before the contact fields existed have none of them.
+  const contact = [brand.contactEmail, brand.contactPhone, brand.website]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <header class="sec sec-header header">
       <div class="brand">
@@ -19,6 +23,7 @@ export function HeaderSection({ view }: { view: DocumentView }) {
         {brand.businessName ? <span class="business">{brand.businessName}</span> : null}
         {brand.address ? <span class="small muted pre">{brand.address}</span> : null}
         {brand.taxId ? <span class="small muted">Tax ID {brand.taxId}</span> : null}
+        {contact ? <span class="small muted contact">{contact}</span> : null}
       </div>
       <div class="title-block">
         <span class="title">{view.kindLabel}</span>

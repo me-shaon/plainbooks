@@ -39,6 +39,9 @@ const BRAND: BrandKit = {
   font: "instrument-sans",
   address: "House 12, Road 5\nDhaka",
   taxId: "BIN 1234",
+  contactEmail: null,
+  contactPhone: null,
+  website: null,
   bankDetails: "City Bank\nAccount 0042",
   footerText: "Thank you",
 };
@@ -244,6 +247,36 @@ describe("renderDocumentHtml", () => {
     expect(html).toContain('src="data:image/png;base64,iVBORw=="');
     expect(html).not.toContain("/p/assets");
     expect(html).toContain("@page{size:A4");
+  });
+});
+
+describe("contact details", () => {
+  it("prints the filled contact details in the header, and leaves out empty ones", () => {
+    const both = renderDocumentHtml(
+      sample(config("classic"), {
+        contactEmail: "billing@studio.example",
+        website: "studio.example",
+      }),
+      { mode: "page", state: state() },
+    );
+    expect(both).toContain(
+      '<span class="small muted contact">billing@studio.example · studio.example</span>',
+    );
+
+    const none = renderDocumentHtml(sample(config("classic")), { mode: "page", state: state() });
+    expect(none).not.toContain("muted contact");
+  });
+
+  it("renders a snapshot from before the contact fields existed", () => {
+    const snapshot = sample(config("classic"));
+    const { contactEmail, contactPhone, website, ...oldBrand } = snapshot.brandKit;
+    const html = renderDocumentHtml(
+      { ...snapshot, brandKit: oldBrand as typeof snapshot.brandKit },
+      { mode: "page", state: state() },
+    );
+    expect(html).toContain("Studio One");
+    expect(html).not.toContain("muted contact");
+    expect([contactEmail, contactPhone, website]).toEqual([null, null, null]);
   });
 });
 

@@ -67,6 +67,9 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
     font: kit.font,
     address: kit.address,
     taxId: kit.taxId,
+    contactEmail: kit.contactEmail,
+    contactPhone: kit.contactPhone,
+    website: kit.website,
     bankDetails: kit.bankDetails,
     footerText: kit.footerText,
   });
@@ -207,6 +210,43 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
                 onChange={(text) => set("taxId", text)}
                 {...fieldError(errors, "taxId")}
               />
+              <fieldset className="m-0 min-w-0 border-0 p-0 sm:col-span-2">
+                <legend className="float-left w-full p-0 text-sm font-medium text-ink">
+                  Contact
+                </legend>
+                <p className="clear-both m-0 pt-1 text-xs text-muted-foreground">
+                  Prints in the document header, under the address. Leave a field empty to leave it
+                  out.
+                </p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                  <TextField
+                    label="Email"
+                    type="email"
+                    isDisabled={readOnly}
+                    placeholder="billing@studio.example"
+                    value={values.contactEmail ?? ""}
+                    onChange={(text) => set("contactEmail", text)}
+                    {...fieldError(errors, "contactEmail")}
+                  />
+                  <TextField
+                    label="Phone"
+                    type="tel"
+                    isDisabled={readOnly}
+                    placeholder="+880 1700 000000"
+                    value={values.contactPhone ?? ""}
+                    onChange={(text) => set("contactPhone", text)}
+                    {...fieldError(errors, "contactPhone")}
+                  />
+                  <TextField
+                    label="Website"
+                    isDisabled={readOnly}
+                    placeholder="studio.example"
+                    value={values.website ?? ""}
+                    onChange={(text) => set("website", text)}
+                    {...fieldError(errors, "website")}
+                  />
+                </div>
+              </fieldset>
               <TextArea
                 label="Bank details"
                 className="sm:col-span-2"
@@ -251,6 +291,13 @@ export function BrandKitForm({ kit, readOnly }: { kit: BrandKit; readOnly: boole
                 </span>
                 {values.taxId ? (
                   <span className="text-xs text-muted-foreground">Tax ID {values.taxId}</span>
+                ) : null}
+                {values.contactEmail || values.contactPhone || values.website ? (
+                  <span className="text-xs break-words text-muted-foreground">
+                    {[values.contactEmail, values.contactPhone, values.website]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
                 ) : null}
               </div>
               <span
