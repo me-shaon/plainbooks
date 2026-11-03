@@ -101,6 +101,7 @@ const providers: EmailProviderOption[] = [
 function view(overrides: Partial<EmailProviderView> = {}): EmailProviderView {
   return {
     role: "primary",
+    connectionId: "tosend-0a1b2c3d",
     providerId: "tosend",
     presetId: null,
     dailyCap: null,
@@ -116,15 +117,19 @@ function view(overrides: Partial<EmailProviderView> = {}): EmailProviderView {
   };
 }
 
-function settings(primary: EmailProviderView | null = null): EmailSettings {
+function settings(
+  primary: EmailProviderView | null = null,
+  retiredWebhooks: EmailSettings["retiredWebhooks"] = [],
+): EmailSettings {
   return {
     providers,
     defaultProviderId: "tosend",
     settings: { primary, fallback: null },
     webhookUrls: {
-      primary: "https://app.example/api/webhooks/email/primary",
-      fallback: "https://app.example/api/webhooks/email/fallback",
+      primary: primary ? `https://app.example/api/webhooks/email/${primary.connectionId}` : null,
+      fallback: null,
     },
+    retiredWebhooks,
   };
 }
 
@@ -141,20 +146,42 @@ function primaryForm() {
 }
 
 describe("EmailSettingsView", () => {
-  it("preselects toSend on a fresh install and shows its webhook URL", () => {
+  it("preselects toSend on a fresh install and asks for a save before the webhook URL", () => {
     renderView(settings());
     const form = primaryForm();
     expect(form.getByRole("button", { name: /Provider/ }).textContent).toContain("toSend");
-    expect((form.getByRole("textbox", { name: "Webhook URL" }) as HTMLInputElement).value).toBe(
-      "https://app.example/api/webhooks/email/primary",
-    );
-    expect(form.getByRole("button", { name: "Copy webhook URL" })).toBeTruthy();
+    expect(form.queryByRole("textbox", { name: "Webhook URL" })).toBeNull();
+    expect(form.getByText("Save toSend first. Then this form shows its webhook URL.")).toBeTruthy();
     expect(form.queryByText(/^Saved\./)).toBeNull();
     expect(screen.getByRole("button", { name: "Add fallback" })).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Send test email" })).toHaveProperty(
       "disabled",
       true,
     );
+  });
+
+  it("shows the webhook URL of the saved provider", () => {
+    renderView(settings(view()));
+    const form = primaryForm();
+    expect((form.getByRole("textbox", { name: "Webhook URL" }) as HTMLInputElement).value).toBe(
+      "https://app.example/api/webhooks/email/tosend-0a1b2c3d",
+    );
+    expect(form.getByRole("button", { name: "Copy webhook URL" })).toBeTruthy();
+  });
+
+  it("lists a replaced provider that still records late events", () => {
+    renderView(
+      settings(view(), [
+        {
+          role: "primary",
+          providerId: "resend",
+          expiresAt: Date.UTC(2026, 11, 3, 12),
+          webhookUrl: "https://app.example/api/webhooks/email/resend-0a1b2c3d",
+        },
+      ]),
+    );
+    expect(screen.getByRole("heading", { name: "Replaced providers" })).toBeTruthy();
+    expect(screen.getByText("https://app.example/api/webhooks/email/resend-0a1b2c3d")).toBeTruthy();
   });
 
   it("never prefills a saved secret and says it is saved", () => {

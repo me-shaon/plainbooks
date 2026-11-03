@@ -89,6 +89,8 @@ export interface EmailProviderOption {
 /** What Settings shows for one saved role. It never holds a secret. */
 export interface EmailProviderView {
   role: EmailProviderRole;
+  /** The ID in the webhook URL. It stays the same while the role keeps the provider. */
+  connectionId: string;
   providerId: string;
   presetId: string | null;
   dailyCap: number | null;
@@ -112,8 +114,21 @@ export interface EmailSettings {
   /** The provider that a new form selects. */
   defaultProviderId: string;
   settings: Record<EmailProviderRole, EmailProviderView | null>;
-  /** The URL to give each provider for bounce and complaint webhooks. */
-  webhookUrls: Record<EmailProviderRole, string>;
+  /**
+   * The URL to give each saved provider for bounce and complaint webhooks. Null when the
+   * role has no saved provider: the URL exists after the first save.
+   */
+  webhookUrls: Record<EmailProviderRole, string | null>;
+  /** Replaced or removed providers that still record late events. */
+  retiredWebhooks: RetiredWebhook[];
+}
+
+/** A replaced or removed provider that still takes webhooks until `expiresAt`. */
+export interface RetiredWebhook {
+  role: EmailProviderRole;
+  providerId: string;
+  expiresAt: number;
+  webhookUrl: string;
 }
 
 /** POST /api/settings/email/test. */

@@ -22,6 +22,7 @@ import { TextArea, TextField } from "../../components/ui/text-field";
 import { toast } from "../../components/ui/toast";
 import { ApiError, issuesByPath, toastError } from "../../lib/api";
 import { type FieldErrors, fieldError } from "../../lib/form";
+import { formatDate } from "../../lib/format";
 import { useMe } from "../../lib/session";
 import {
   useEmailSettings,
@@ -122,8 +123,35 @@ export function EmailSettingsView({ data }: { data: EmailSettings }) {
           </p>
         </Section>
       )}
+      <RetiredWebhooksSection data={data} />
       <TestEmailSection primary={primary} fallback={fallback} />
     </div>
+  );
+}
+
+/** Replaced or removed providers whose webhook URLs still record late events. */
+function RetiredWebhooksSection({ data }: { data: EmailSettings }) {
+  if (data.retiredWebhooks.length === 0) return null;
+  const nameOf = (id: string) => data.providers.find((p) => p.id === id)?.name ?? id;
+  return (
+    <Section
+      title="Replaced providers"
+      description="They send no email. Their webhook URLs still record late bounces, complaints, and unsubscribes for the email they sent."
+    >
+      <ul className="m-0 flex list-none flex-col gap-3 p-0">
+        {data.retiredWebhooks.map((retired) => (
+          <li key={retired.webhookUrl} className="flex flex-col gap-0.5 text-sm">
+            <span>
+              {nameOf(retired.providerId)}, was the {retired.role} provider. Until{" "}
+              {formatDate(new Date(retired.expiresAt).toISOString().slice(0, 10))}.
+            </span>
+            <span className="figure break-all text-[13px] text-muted-foreground">
+              {retired.webhookUrl}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
@@ -261,8 +289,11 @@ function ProviderForm({
     }
   };
 
+  // A new provider gets its URL when it is saved.
+  const webhookUrl = sameProvider ? data.webhookUrls[role] : null;
   const copyWebhookUrl = async () => {
-    const url = data.webhookUrls[role];
+    const url = webhookUrl;
+    if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
       toast({ title: "Webhook URL copied", description: url, tone: "success" });
@@ -431,30 +462,42 @@ function ProviderForm({
         {provider.webhookSecret ? (
           <div className="flex flex-col gap-4 border-t border-row-border pt-5">
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-end gap-2">
-                <TextField
-                  className="min-w-0 flex-1"
-                  label="Webhook URL"
-                  value={data.webhookUrls[role]}
-                  isReadOnly
-                  aria-describedby={`${fieldId("webhook-url")}-hint`}
-                  inputClassName="figure text-[13px]"
-                />
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  aria-label="Copy webhook URL"
-                  onPress={() => void copyWebhookUrl()}
-                >
-                  <Copy className="size-4" aria-hidden="true" />
-                </Button>
-              </div>
-              <p
-                id={`${fieldId("webhook-url")}-hint`}
-                className="m-0 text-xs text-muted-foreground"
-              >
-                Give this URL to {provider.name} for bounce, complaint, and unsubscribe events.
-              </p>
+              {webhookUrl ? (
+                <>
+                  <div className="flex items-end gap-2">
+                    <TextField
+                      className="min-w-0 flex-1"
+                      label="Webhook URL"
+                      value={webhookUrl}
+                      isReadOnly
+                      aria-describedby={`${fieldId("webhook-url")}-hint`}
+                      inputClassName="figure text-[13px]"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      aria-label="Copy webhook URL"
+                      onPress={() => void copyWebhookUrl()}
+                    >
+                      <Copy className="size-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <p
+                    id={`${fieldId("webhook-url")}-hint`}
+                    className="m-0 text-xs text-muted-foreground"
+                  >
+                    Give this URL to {provider.name} for bounce, complaint, and unsubscribe events.
+                    The URL is only for this {provider.name} account.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-medium">Webhook URL</span>
+                  <p className="m-0 text-xs text-muted-foreground">
+                    Save {provider.name} first. Then this form shows its webhook URL.
+                  </p>
+                </>
+              )}
             </div>
             <TextField
               label={provider.webhookSecret.label}
@@ -524,7 +567,9 @@ function ProviderForm({
         actionLabel={`Switch to ${provider.name}`}
         onAction={() => void submit()}
       >
-        This replaces {savedName} and removes its saved keys and webhook secret.
+        {saved?.webhookSecretConfigured
+          ? `This replaces ${savedName} and removes its saved keys. For 30 days, ${savedName} still records late bounces and complaints through its webhook URL.`
+          : `This replaces ${savedName} and removes its saved keys.`}
       </AlertDialog>
       <AlertDialog
         isOpen={removing}
@@ -539,6 +584,9 @@ function ProviderForm({
         }
       >
         The saved keys are removed. Email then goes only through the primary provider.
+        {saved?.webhookSecretConfigured
+          ? " For 30 days, its webhook URL still records late bounces and complaints."
+          : null}
       </AlertDialog>
     </Section>
   );

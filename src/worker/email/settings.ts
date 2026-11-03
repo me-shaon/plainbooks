@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 import { type CredentialError, type ProviderMeta, parseCredentials } from "mailswitch";
 import { createKeyRing, decrypt, encrypt, type KeyRing } from "mailswitch/crypto";
 import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domain";
 import { usableSecret } from "../auth/crypto";
 import { type Db, isRequestScoped, schema } from "../db/client";
-import type { EmailProviderRow } from "../db/schema";
+import type { EmailProviderRow, RetiredEmailWebhookRow } from "../db/schema";
 import { AppError } from "../errors";
 import {
   CONFIG_FIELDS,
@@ -14,7 +14,23 @@ import {
   providerConfigIssues,
 } from "./catalog";
 
-const { emailProviders } = schema;
+const { emailProviders, retiredEmailWebhooks } = schema;
+
+/** How long a replaced or removed provider still takes webhooks. */
+export const RETIRED_WEBHOOK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * A new webhook ID: the provider and 8 random characters, for example "tosend-k3x9q2ab".
+ * The signature authenticates a webhook, so the ID is not a secret.
+ */
+export function newConnectionId(providerId: string): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const random = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${providerId}-${random}`;
+}
+
+/** The form of a connection ID, checked before any read. */
+export const CONNECTION_ID_PATTERN = /^[a-z0-9_-]{1,48}-[0-9a-f]{8}$/;
 
 /** The encrypted columns. Each one is part of the encryption scope. */
 type SecretColumn = "credentials" | "webhookSecret";
@@ -69,6 +85,8 @@ function requireKeyRing(secret: string | undefined): KeyRing {
 /** The settings of one role that the stored keys do not need. */
 interface ProviderBase {
   role: EmailProviderRole;
+  /** The ID in the webhook URL. */
+  connectionId: string;
   providerId: EmailProviderId;
   presetId: string | null;
   /** The cap the Owner set. Null means `defaultDailyCap`. */
@@ -130,6 +148,7 @@ async function decryptRow(
   const meta = emailProviderMeta(row.providerId);
   const base: ProviderBase = {
     role: row.role,
+    connectionId: row.connectionId,
     providerId: row.providerId as EmailProviderId,
     presetId: row.presetId,
     dailyCap: row.dailyCap,
@@ -233,6 +252,124 @@ export async function usableEmailProviders(
   return fallback?.status === "ready" ? [primary, fallback] : [primary];
 }
 
+/** What the webhook route needs to check and record one request. */
+export interface WebhookEndpoint {
+  connectionId: string;
+  /** The role the provider has, or had before it was retired. */
+  role: EmailProviderRole;
+  providerId: EmailProviderId;
+  config: Readonly<Record<string, string>>;
+  webhookSecret: string;
+  /** True for a replaced or removed provider that still takes late events. */
+  retired: boolean;
+}
+
+/**
+ * The webhook settings of a connection ID: a saved provider, or a retired one that has
+ * not expired. Undefined when there is none, it has no webhook secret, or the secret
+ * does not decrypt.
+ */
+export async function loadWebhookEndpoint(
+  db: Db,
+  encryptionKey: string | undefined,
+  connectionId: string,
+  now: number,
+): Promise<WebhookEndpoint | undefined> {
+  if (!CONNECTION_ID_PATTERN.test(connectionId)) return undefined;
+  const row = (await readRows(db)).find((r) => r.connectionId === connectionId);
+  if (row) {
+    const stored = await decryptRow(row, loadKeyRing(encryptionKey));
+    if (stored.status !== "ready" || !stored.webhookSecret) return undefined;
+    return {
+      connectionId,
+      role: stored.role,
+      providerId: stored.providerId,
+      config: stored.config,
+      webhookSecret: stored.webhookSecret,
+      retired: false,
+    };
+  }
+  const [retired] = await db
+    .select()
+    .from(retiredEmailWebhooks)
+    .where(eq(retiredEmailWebhooks.connectionId, connectionId));
+  if (!retired) return undefined;
+  if (retired.expiresAt <= now) {
+    await deleteExpiredWebhooks(db, now);
+    return undefined;
+  }
+  const ring = loadKeyRing(encryptionKey);
+  if (!ring || !emailProviderMeta(retired.providerId)) return undefined;
+  try {
+    const webhookSecret = await decrypt(
+      ring,
+      retired.webhookSecret,
+      secretScope(retired.role, retired.providerId, "webhookSecret"),
+    );
+    return {
+      connectionId,
+      role: retired.role,
+      providerId: retired.providerId as EmailProviderId,
+      config: parseConfig(retired.config),
+      webhookSecret,
+      retired: true,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** A retired provider, as Settings shows it. */
+export interface RetiredWebhookView {
+  connectionId: string;
+  role: EmailProviderRole;
+  providerId: string;
+  expiresAt: number;
+}
+
+/**
+ * The retired providers that still take webhooks, the newest first. It deletes the ones
+ * whose time is over, with their webhook secrets.
+ */
+export async function listRetiredWebhooks(db: Db, now: number): Promise<RetiredWebhookView[]> {
+  await deleteExpiredWebhooks(db, now);
+  const rows = await db.select().from(retiredEmailWebhooks);
+  return rows
+    .sort((a, b) => b.retiredAt - a.retiredAt)
+    .map((row) => ({
+      connectionId: row.connectionId,
+      role: row.role,
+      providerId: row.providerId,
+      expiresAt: row.expiresAt,
+    }));
+}
+
+/** Deletes the retired providers whose time is over, with their webhook secrets. */
+export async function deleteExpiredWebhooks(db: Db, now: number): Promise<void> {
+  await db.delete(retiredEmailWebhooks).where(lte(retiredEmailWebhooks.expiresAt, now));
+}
+
+/**
+ * The insert that keeps a saved provider's webhook secret for `RETIRED_WEBHOOK_MS`, or
+ * undefined when the provider has no webhook secret.
+ */
+function retireStatement(db: Db, row: EmailProviderRow, now: number) {
+  if (!row.webhookSecret) return undefined;
+  const values: RetiredEmailWebhookRow = {
+    connectionId: row.connectionId,
+    role: row.role,
+    providerId: row.providerId,
+    config: row.config,
+    webhookSecret: row.webhookSecret,
+    retiredAt: now,
+    expiresAt: now + RETIRED_WEBHOOK_MS,
+  };
+  return db
+    .insert(retiredEmailWebhooks)
+    .values(values)
+    .onConflictDoUpdate({ target: retiredEmailWebhooks.connectionId, set: values });
+}
+
 // ---------------------------------------------------------------------------
 // Masked view
 // ---------------------------------------------------------------------------
@@ -264,6 +401,7 @@ function maskProvider(stored: StoredEmailProvider): EmailProviderView {
   }
   return {
     role: base.role,
+    connectionId: base.connectionId,
     providerId: base.providerId,
     presetId: base.presetId,
     dailyCap: base.dailyCap,
@@ -451,7 +589,31 @@ export async function saveEmailProvider(
     ? await encrypt(ring, webhookSecretText, secretScope(role, meta.id, "webhookSecret"))
     : null;
 
+  // The same provider keeps its webhook URL. A provider that comes back to the same role
+  // before its retired webhook expires gets its old URL again, so its webhook still works.
+  const now = Date.now();
+  const savedRow = (await readRows(db)).find((r) => r.role === role);
+  const sameProvider = savedRow?.providerId === meta.id;
+  let connectionId = sameProvider ? savedRow.connectionId : undefined;
+  let reused: string | undefined;
+  if (!connectionId) {
+    const [back] = await db
+      .select({ connectionId: retiredEmailWebhooks.connectionId })
+      .from(retiredEmailWebhooks)
+      .where(
+        and(
+          eq(retiredEmailWebhooks.role, role),
+          eq(retiredEmailWebhooks.providerId, meta.id),
+          gt(retiredEmailWebhooks.expiresAt, now),
+        ),
+      );
+    const active = new Set((await readRows(db)).map((r) => r.connectionId));
+    reused = back && !active.has(back.connectionId) ? back.connectionId : undefined;
+    connectionId = reused ?? newConnectionId(meta.id);
+  }
+
   const values = {
+    connectionId,
     providerId: meta.id,
     presetId,
     credentials,
@@ -459,26 +621,47 @@ export async function saveEmailProvider(
     config: Object.keys(config).length > 0 ? JSON.stringify(config) : null,
     dailyCap,
   };
-  const [row] = await db
+  const upsert = db
     .insert(emailProviders)
     .values({ role, ...values })
     .onConflictDoUpdate({
       target: emailProviders.role,
-      set: { ...values, updatedAt: Date.now() },
+      set: { ...values, updatedAt: now },
     })
     .returning();
+  const retire = savedRow && !sameProvider ? retireStatement(db, savedRow, now) : undefined;
+  const [upserted] = await db.batch([
+    upsert,
+    db.delete(retiredEmailWebhooks).where(lte(retiredEmailWebhooks.expiresAt, now)),
+    ...(retire ? [retire] : []),
+    ...(reused
+      ? [db.delete(retiredEmailWebhooks).where(eq(retiredEmailWebhooks.connectionId, reused))]
+      : []),
+  ]);
   forgetEmailProviders(db);
+  const [row] = upserted;
   if (!row)
     throw new AppError(500, "email_settings_not_saved", "The email settings were not saved");
   return maskProvider(await decryptRow(row, ring));
 }
 
-/** Removes the provider of a role. Returns false when the role had none. */
-export async function deleteEmailProvider(db: Db, role: EmailProviderRole): Promise<boolean> {
-  const rows = await db
-    .delete(emailProviders)
-    .where(eq(emailProviders.role, role))
-    .returning({ role: emailProviders.role });
+/**
+ * Removes the provider of a role. Its webhook secret is kept for `RETIRED_WEBHOOK_MS`, so
+ * late events for the email it sent are still recorded. Returns false when the role had
+ * none.
+ */
+export async function deleteEmailProvider(
+  db: Db,
+  role: EmailProviderRole,
+  now = Date.now(),
+): Promise<boolean> {
+  const row = (await readRows(db)).find((r) => r.role === role);
+  if (!row) return false;
+  const retire = retireStatement(db, row, now);
+  await db.batch([
+    db.delete(emailProviders).where(eq(emailProviders.role, role)),
+    ...(retire ? [retire] : []),
+  ]);
   forgetEmailProviders(db);
-  return rows.length > 0;
+  return true;
 }

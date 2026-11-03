@@ -696,6 +696,11 @@ export const emailProviders = sqliteTable(
   "email_providers",
   {
     role: text("role", { enum: EMAIL_PROVIDER_ROLES }).primaryKey(),
+    /**
+     * The ID in the webhook URL, for example "tosend-k3x9q2ab". It stays the same while the
+     * role keeps the same provider, and it never names the role.
+     */
+    connectionId: text("connection_id").notNull().unique(),
     /** A mailswitch catalog ID, for example "tosend" or "smtp". */
     providerId: text("provider_id").notNull(),
     /** A preset ID of the provider meta, for example "gmail" for SMTP. */
@@ -717,6 +722,28 @@ export const emailProviders = sqliteTable(
     check("email_providers_role", sql`role in (${inList(EMAIL_PROVIDER_ROLES)})`),
     check("email_providers_daily_cap", sql`daily_cap is null or daily_cap > 0`),
   ],
+);
+
+/**
+ * A replaced or removed email provider that still takes webhooks for a time, so late
+ * bounces and complaints for the email it sent are recorded. It sends nothing.
+ */
+export const retiredEmailWebhooks = sqliteTable(
+  "retired_email_webhooks",
+  {
+    connectionId: text("connection_id").primaryKey(),
+    /** The role the provider had. The webhook secret is encrypted with it in the scope. */
+    role: text("role", { enum: EMAIL_PROVIDER_ROLES }).notNull(),
+    providerId: text("provider_id").notNull(),
+    /** The provider config, as in email_providers. */
+    config: text("config"),
+    /** The encrypted webhook signing secret. */
+    webhookSecret: text("webhook_secret").notNull(),
+    retiredAt: integer("retired_at").notNull(),
+    /** After this time the webhook is refused and the row is deleted. */
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (t) => [index("retired_email_webhooks_expires_idx").on(t.expiresAt)],
 );
 
 /** Document and client history: created, sent, viewed, reminded, paid, voided, and more. */
@@ -831,6 +858,7 @@ export type EmailLogEntry = typeof emailLog.$inferSelect;
 export type NewEmailLogEntry = typeof emailLog.$inferInsert;
 export type EmailProviderRow = typeof emailProviders.$inferSelect;
 export type NewEmailProviderRow = typeof emailProviders.$inferInsert;
+export type RetiredEmailWebhookRow = typeof retiredEmailWebhooks.$inferSelect;
 export type Activity = typeof activity.$inferSelect;
 export type NewActivity = typeof activity.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;

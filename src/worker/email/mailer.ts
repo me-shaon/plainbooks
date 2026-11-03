@@ -76,6 +76,7 @@ export const smtpConnect: SocketConnect = socketConnect;
 /** The primary that FAKE_EXTERNALS uses when no provider is saved, so local sends work. */
 const FAKE_PRIMARY: ReadyEmailProvider = {
   role: "primary",
+  connectionId: "tosend-00000000",
   providerId: "tosend",
   presetId: null,
   dailyCap: null,

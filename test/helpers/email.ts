@@ -81,6 +81,7 @@ export async function resetEmailState(): Promise<void> {
     env.DB.prepare("DELETE FROM jobs"),
     env.DB.prepare("DELETE FROM notifications"),
     env.DB.prepare("DELETE FROM email_providers"),
+    env.DB.prepare("DELETE FROM retired_email_webhooks"),
     env.DB.prepare("DELETE FROM mailswitch_idempotency"),
     env.DB.prepare("DELETE FROM mailswitch_daily_cap"),
     env.DB.prepare("DELETE FROM mailswitch_webhook_dedupe"),

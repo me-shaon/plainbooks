@@ -5,10 +5,9 @@ import type { NormalizedEvent, ProviderAdapter } from "mailswitch";
 import { snsConfirmAction } from "mailswitch/ses";
 import { D1DedupeStore } from "mailswitch/stores/d1";
 import { handleWebhook, type WebhookOutcome } from "mailswitch/webhooks";
-import { EMAIL_PROVIDER_ROLES, type EmailProviderRole } from "../../shared/domain";
 import { createRequestDb, type Db, schema } from "../db/client";
 import { createAdapter, emailProviderMeta } from "../email/catalog";
-import { loadEmailProvider, type ReadyEmailProvider } from "../email/settings";
+import { loadWebhookEndpoint, type WebhookEndpoint } from "../email/settings";
 import { bounceEmail } from "../email/templates";
 import type { AppEnv } from "../env";
 import { guardedActivity } from "../services/activity";
@@ -106,14 +105,10 @@ function parseForCount(
   }
 }
 
-function isRole(value: string): value is EmailProviderRole {
-  return (EMAIL_PROVIDER_ROLES as readonly string[]).includes(value);
-}
-
 /**
  * The one answer for every request that the app cannot authenticate: an unknown or
- * unconfigured role, a role with no webhook secret, and a bad or stale signature. The
- * same answer does not tell a caller which roles are set up.
+ * expired connection, a connection with no webhook secret, and a bad or stale signature.
+ * The same answer does not tell a caller which connections exist.
  */
 function unauthorized(c: Context<AppEnv>) {
   return c.json({ error: "Invalid signature", code: "invalid_signature" }, 401);
@@ -191,7 +186,7 @@ function bounceReason(bounce: EventGroup["bounce"]): string | null {
 interface RecordContext {
   c: Context<AppEnv>;
   db: Db;
-  provider: ReadyEmailProvider;
+  provider: WebhookEndpoint;
   now: number;
   /** The owner emails, read once per request. */
   owners: () => Promise<string[]>;
@@ -239,7 +234,7 @@ async function recordGroup(ctx: RecordContext, group: EventGroup): Promise<strin
     number: doc?.number ?? null,
     reason,
   });
-  const jobKey = `email_${kind}:${provider.providerId}:${provider.role}:${group.eventKey}`;
+  const jobKey = `email_${kind}:${provider.connectionId}:${group.eventKey}`;
   // A bounce on an owner notification must not email the owners again (a loop). It gets
   // the status and the in-app notification only. The job row with no recipients still
   // marks this event as handled.
@@ -333,7 +328,12 @@ async function confirmSubscription(
   if (!res.ok) throw new Error(`The SNS subscription was not confirmed: HTTP ${res.status}`);
   await ctx.db.insert(schema.activity).values({
     type: "email_webhook_confirmed",
-    data: { provider: ctx.provider.providerId, role: ctx.provider.role, topicArn: action.topicArn },
+    data: {
+      provider: ctx.provider.providerId,
+      role: ctx.provider.role,
+      connectionId: ctx.provider.connectionId,
+      topicArn: action.topicArn,
+    },
     createdAt: ctx.now,
   });
 }
@@ -341,18 +341,23 @@ async function confirmSubscription(
 /**
  * Provider webhooks, mounted at /api/webhooks. The session check and the cross-site guard
  * skip `/api/webhooks/` (SESSION_EXEMPT_PREFIXES and CSRF_EXEMPT_PREFIXES). The provider
- * signature authenticates each
- * request instead, with the webhook secret that the Owner saved for the role.
+ * signature authenticates each request instead, with the webhook secret that the Owner
+ * saved for the connection. Each saved provider has its own connection ID, so a provider
+ * keeps its URL, and a replaced provider still records late events for 30 days.
  */
-export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) => {
+export const webhookRoutes = new Hono<AppEnv>().post("/email/:connection", async (c) => {
   const body = await readCappedBody(c.req.raw, WEBHOOK_MAX_BODY_BYTES);
   if (!body) return c.json({ error: "The request body is too large", code: "too_large" }, 413);
 
-  const role = c.req.param("role");
-  if (!isRole(role)) return unauthorized(c);
   const db = createRequestDb(c.env.DB);
-  const provider = await loadEmailProvider(db, c.env.ENCRYPTION_KEY, role);
-  if (provider?.status !== "ready" || !provider.webhookSecret) return unauthorized(c);
+  const provider = await loadWebhookEndpoint(
+    db,
+    c.env.ENCRYPTION_KEY,
+    c.req.param("connection"),
+    Date.now(),
+  );
+  if (!provider) return unauthorized(c);
+  const endpoint = provider.connectionId;
   // A provider with no webhooks never builds its adapter here, so a saved config that
   // does not fit (for example a generic HTTP config) cannot turn into a 500.
   if (!emailProviderMeta(provider.providerId)?.webhooks) return unauthorized(c);
@@ -378,7 +383,7 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
       });
       if (verified.ok) {
         console.error(
-          `The ${role} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
+          `The ${endpoint} webhook from ${provider.providerId} has ${parsed?.length ?? 0} events, ` +
             `which needs up to ${queries} D1 queries. The limit is ${TICK_QUERY_BUDGET}. ` +
             "Nothing was recorded. In the provider webhook settings, select only the bounce, " +
             "spam complaint, and unsubscribe events, and turn off event grouping where the " +
@@ -393,26 +398,26 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
         adapter,
         secret: provider.webhookSecret,
         dedupe: new D1DedupeStore(c.env.DB),
-        endpointId: role,
+        endpointId: provider.connectionId,
         maxBodyBytes: WEBHOOK_MAX_BODY_BYTES,
       },
     );
   } catch (err) {
     // A saved setting that mailswitch refuses, for example a blank MailChannels customer
     // handle. The message names the setting, never a value. The same 401 as a bad
-    // signature keeps an unsigned caller from learning that the role is set up.
+    // signature keeps an unsigned caller from learning that the connection exists.
     if (!(err instanceof TypeError)) throw err;
-    console.error(`The ${role} webhook settings are not valid`, err.message);
+    console.error(`The ${endpoint} webhook settings are not valid`, err.message);
     return unauthorized(c);
   }
   if (!outcome.ok) {
     if (outcome.status === 401) return unauthorized(c);
     // The saved secret does not fit the provider, for example a short Postmark password
     // or a Resend secret that is not whsec_ base64. mailswitch checks it before the
-    // signature, so the 401 keeps an unsigned caller from learning that the role is set
-    // up. The Owner must save a new secret.
+    // signature, so the 401 keeps an unsigned caller from learning that the
+    // connection exists. The Owner must save a new secret.
     if (outcome.rejection === "invalid_secret") {
-      console.error(`The ${role} webhook secret is not valid`);
+      console.error(`The ${endpoint} webhook secret is not valid`);
       return unauthorized(c);
     }
     if (outcome.status === 200) return c.json({ ok: true });
@@ -444,7 +449,7 @@ export const webhookRoutes = new Hono<AppEnv>().post("/email/:role", async (c) =
       if (jobId) jobIds.push(jobId);
     }
   } catch (err) {
-    console.error(`The ${role} webhook events were not recorded`, err);
+    console.error(`The ${endpoint} webhook events were not recorded`, err);
     // Frees the events, so a provider that retries delivers them again.
     await outcome.release().catch(() => undefined);
     return c.json({ error: "The events were not recorded", code: "webhook_failed" }, 500);

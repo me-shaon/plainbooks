@@ -160,15 +160,16 @@ Add the API key:
 2. In the app, open **Settings** > **Email**.
 3. In **Primary provider**, keep **toSend**.
 4. Paste the key in **API key**.
+5. Select **Save primary**.
 
 Add the webhook. The webhook tells the app about bounces and complaints.
 
-1. In **Settings** > **Email**, copy the **Webhook URL**. For the primary provider, it is `https://invoices.example.com/api/webhooks/email/primary`.
+1. In **Settings** > **Email**, copy the **Webhook URL**. The form shows it after the first save. The URL ends in the provider name and a random code, for example `https://invoices.example.com/api/webhooks/email/tosend-3f9a2b1c`.
 2. In toSend, create a webhook with this URL.
 3. Select the bounce and complaint events.
 4. Copy the signing secret of the webhook.
 5. In the app, paste it in **Webhook secret**.
-6. Save the provider.
+6. Save the provider again.
 
 Then send a test email:
 
@@ -201,7 +202,15 @@ To make a random value, use `openssl rand -base64 32`.
 
 ### Fallback provider and daily caps
 
-You can add one fallback provider. The app uses it only when the primary provider does not send an email. The fallback provider has its own webhook URL, which ends in `/api/webhooks/email/fallback`.
+You can add one fallback provider. The app uses it only when the primary provider does not send an email. The fallback provider has its own webhook URL.
+
+### Change a provider
+
+Each saved provider has its own webhook URL. The URL stays the same while you keep the same provider in that role.
+
+When you replace a provider, or remove the fallback, the old provider sends no more email. For 30 days, its webhook URL still records late bounces and complaints for the email that it sent. **Settings** > **Email** shows it under **Replaced providers**. After 30 days, the app deletes its webhook secret. Then remove the webhook in the dashboard of the old provider.
+
+If you choose the old provider again for the same role within the 30 days, it gets its old webhook URL back.
 
 Each provider has a daily cap: the most emails that it sends in 24 hours. Set the cap to the limit of your plan. If you leave it empty, the app uses its default for that provider.
 

@@ -25,6 +25,7 @@ import {
   type CheckedEmailProvider,
   deleteEmailProvider,
   getEmailSettingsView,
+  listRetiredWebhooks,
   loadEmailProviders,
   type ReadyEmailProvider,
   type StoredEmailProviders,
@@ -50,9 +51,13 @@ const VERIFY_REASON_TEXT: Partial<Record<string, string>> = {
   provider_error: "The provider had an error. Try again later.",
 };
 
-/** The webhook URL of a role, `<origin>/api/webhooks/email/<role>`. */
-export function webhookUrl(env: Pick<Bindings, "APP_URL">, origin: string, role: string): string {
-  return `${appOrigin(env) || origin}/api/webhooks/email/${role}`;
+/** The webhook URL of a saved provider, `<origin>/api/webhooks/email/<connection ID>`. */
+export function webhookUrl(
+  env: Pick<Bindings, "APP_URL">,
+  origin: string,
+  connectionId: string,
+): string {
+  return `${appOrigin(env) || origin}/api/webhooks/email/${connectionId}`;
 }
 
 /** Races `run` against the timeout. A throw or a timeout gives a failed result. */
@@ -131,6 +136,8 @@ function saveCheck(env: Bindings) {
     }
     const provider: ReadyEmailProvider = {
       ...candidate,
+      // Not saved yet: the check never builds a webhook URL.
+      connectionId: "unsaved",
       defaultDailyCap: null,
       updatedAt: Date.now(),
       status: "ready",
@@ -150,13 +157,24 @@ function saveCheck(env: Bindings) {
 }
 
 async function settingsBody(env: Bindings, db: Db, origin: string): Promise<EmailSettings> {
+  const settings = await getEmailSettingsView(db, env.ENCRYPTION_KEY);
   const webhookUrls = {} as EmailSettings["webhookUrls"];
-  for (const role of EMAIL_PROVIDER_ROLES) webhookUrls[role] = webhookUrl(env, origin, role);
+  for (const role of EMAIL_PROVIDER_ROLES) {
+    const saved = settings[role];
+    webhookUrls[role] = saved ? webhookUrl(env, origin, saved.connectionId) : null;
+  }
+  const retired = await listRetiredWebhooks(db, Date.now());
   return {
     providers: emailProviderOptions(),
     defaultProviderId: DEFAULT_EMAIL_PROVIDER_ID,
-    settings: await getEmailSettingsView(db, env.ENCRYPTION_KEY),
+    settings,
     webhookUrls,
+    retiredWebhooks: retired.map((r) => ({
+      role: r.role,
+      providerId: r.providerId,
+      expiresAt: r.expiresAt,
+      webhookUrl: webhookUrl(env, origin, r.connectionId),
+    })),
   };
 }
 

@@ -418,6 +418,7 @@ describe("sendDocument", () => {
       presetId: null,
       dailyCap: null,
       defaultDailyCap: null,
+      connectionId: "test-00000000",
       config: {},
       updatedAt: 0,
       status: "ready",

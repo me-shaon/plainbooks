@@ -13,7 +13,7 @@ import { toSendSignature } from "mailswitch/tosend";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EmailProviderRole } from "../../src/shared/domain";
 import { app } from "../../src/worker/app";
-import { saveEmailProvider } from "../../src/worker/email/settings";
+import { deleteEmailProvider, saveEmailProvider } from "../../src/worker/email/settings";
 import { WEBHOOK_MAX_BODY_BYTES } from "../../src/worker/routes/webhooks";
 import {
   registerEmailJobHandlers,
@@ -68,9 +68,20 @@ async function saveProvider(
 
 const encoder = new TextEncoder();
 
-/** Posts a raw body to a role's webhook URL. */
-function post(role: string, body: string | Uint8Array, headers: Record<string, string> = {}) {
-  return apiFetch(`/api/webhooks/email/${role}`, { method: "POST", headers, body });
+/**
+ * The webhook path of the provider saved for a role. Any other value, such as an unknown
+ * connection ID, is used as it is.
+ */
+async function webhookPath(target: string): Promise<string> {
+  const row = await env.DB.prepare("SELECT connection_id FROM email_providers WHERE role = ?")
+    .bind(target)
+    .first<{ connection_id: string }>();
+  return `/api/webhooks/email/${row?.connection_id ?? target}`;
+}
+
+/** Posts a raw body to the webhook URL of a role's saved provider. */
+async function post(role: string, body: string | Uint8Array, headers: Record<string, string> = {}) {
+  return apiFetch(await webhookPath(role), { method: "POST", headers, body });
 }
 
 async function tosendPost(role: string, event: unknown, secret = TOSEND_SECRET) {
@@ -180,7 +191,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe("POST /api/webhooks/email/:role with toSend", () => {
+describe("POST /api/webhooks/email/:connection with toSend", () => {
   it("records a signed bounce: activity, notification, log status, and an owner email job", async () => {
     const res = await tosendPost("primary", tosendBounce("ts_123"));
     expect(res.status).toBe(200);
@@ -199,7 +210,7 @@ describe("POST /api/webhooks/email/:role with toSend", () => {
       "SELECT type, payload, idempotency_key FROM jobs WHERE idempotency_key LIKE 'email_bounced:%'",
     ).first<{ type: string; payload: string; idempotency_key: string }>();
     expect(job?.type).toBe(SEND_EMAIL_JOB);
-    expect(job?.idempotency_key).toMatch(/^email_bounced:tosend:primary:[0-9a-f]{64}$/);
+    expect(job?.idempotency_key).toMatch(/^email_bounced:tosend-[0-9a-f]{8}:[0-9a-f]{64}$/);
     const payload = JSON.parse(job?.payload ?? "{}") as { to: string[]; subject: string };
     expect(payload.to).toEqual(["owner@studio.test"]);
     expect(payload.subject).toBe("Email bounced for INV-0001");
@@ -216,7 +227,7 @@ describe("POST /api/webhooks/email/:role with toSend", () => {
       "SELECT key, committed FROM mailswitch_webhook_dedupe",
     ).all<{ key: string; committed: number }>();
     expect(dedupe.results).toHaveLength(1);
-    expect(dedupe.results[0]?.key).toMatch(/^tosend:primary:/);
+    expect(dedupe.results[0]?.key).toMatch(/^tosend:tosend-[0-9a-f]{8}:/);
     expect(dedupe.results[0]?.committed).toBe(1);
   });
 
@@ -279,7 +290,7 @@ describe("POST /api/webhooks/email/:role with toSend", () => {
     };
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const failed = await app.fetch(
-      await buildRequest("/api/webhooks/email/primary", { method: "POST", headers, body }),
+      await buildRequest(await webhookPath("primary"), { method: "POST", headers, body }),
       failing,
     );
     expect(failed.status).toBe(500);
@@ -293,7 +304,7 @@ describe("POST /api/webhooks/email/:role with toSend", () => {
   });
 });
 
-describe("POST /api/webhooks/email/:role with Resend and Postmark", () => {
+describe("POST /api/webhooks/email/:connection with Resend and Postmark", () => {
   it("records a signed Resend complaint", async () => {
     await saveProvider("primary", "resend", RESEND_SECRET);
     await insertLog("re_456", "resend");
@@ -334,7 +345,7 @@ describe("POST /api/webhooks/email/:role with Resend and Postmark", () => {
     const job = await env.DB.prepare(
       "SELECT idempotency_key FROM jobs WHERE idempotency_key LIKE 'email_bounced:%'",
     ).first<{ idempotency_key: string }>();
-    expect(job?.idempotency_key).toBe("email_bounced:postmark:fallback:Bounce:4323372036");
+    expect(job?.idempotency_key).toMatch(/^email_bounced:postmark-[0-9a-f]{8}:Bounce:4323372036$/);
     // The primary is toSend, so a Postmark request on the primary URL fails its check.
     expect((await postmarkPost("primary", event)).status).toBe(401);
     expect((await postmarkPost("fallback", event, "wrong-password-0123456789")).status).toBe(401);
@@ -348,7 +359,100 @@ describe("POST /api/webhooks/email/:role with Resend and Postmark", () => {
   });
 });
 
-describe("POST /api/webhooks/email/:role refusals", () => {
+/** The connection ID of the provider saved for a role. */
+async function connectionOf(role: EmailProviderRole): Promise<string> {
+  const row = await env.DB.prepare("SELECT connection_id FROM email_providers WHERE role = ?")
+    .bind(role)
+    .first<{ connection_id: string }>();
+  if (!row) throw new Error(`No ${role} provider is saved`);
+  return row.connection_id;
+}
+
+describe("webhook connections", () => {
+  it("gives each saved provider its own URL with the provider name", async () => {
+    expect(await connectionOf("primary")).toMatch(/^tosend-[0-9a-f]{8}$/);
+  });
+
+  it("keeps the URL when the same provider is saved again", async () => {
+    const before = await connectionOf("primary");
+    await saveProvider("primary", "tosend", "tosend-webhook-secret-new-0123456789");
+    expect(await connectionOf("primary")).toBe(before);
+  });
+
+  it("records late events of a replaced provider for 30 days, then refuses them and deletes the secret", async () => {
+    const old = await connectionOf("primary");
+    await saveProvider("primary", "resend", RESEND_SECRET);
+    const current = await connectionOf("primary");
+    expect(current).toMatch(/^resend-[0-9a-f]{8}$/);
+
+    // toSend still posts to its own URL, and its secret still verifies the event.
+    expect((await tosendPost(old, tosendBounce("ts_123"))).status).toBe(200);
+    expect(await logStatus("ts_123")).toBe("bounced");
+    // The new provider's URL does not take toSend events.
+    expect((await tosendPost(current, tosendBounce("ts_123"))).status).toBe(401);
+
+    await env.DB.prepare("UPDATE retired_email_webhooks SET expires_at = 1").run();
+    expect((await tosendPost(old, tosendBounce("ts_456"))).status).toBe(401);
+    expect(await count("retired_email_webhooks")).toBe(0);
+  });
+
+  it("gives the old URL back when a provider returns to the same role", async () => {
+    const old = await connectionOf("primary");
+    await saveProvider("primary", "resend", RESEND_SECRET);
+    await saveProvider("primary", "tosend", TOSEND_SECRET);
+    expect(await connectionOf("primary")).toBe(old);
+    // Only Resend is retired now.
+    const rows = await env.DB.prepare("SELECT provider_id FROM retired_email_webhooks").all<{
+      provider_id: string;
+    }>();
+    expect(rows.results.map((r) => r.provider_id)).toEqual(["resend"]);
+  });
+
+  it("records late events of a removed fallback", async () => {
+    await saveProvider("fallback", "postmark", POSTMARK_SECRET);
+    const fallback = await connectionOf("fallback");
+    expect(await deleteEmailProvider(db, "fallback")).toBe(true);
+    await insertLog("pm-789", "postmark");
+    const event = {
+      RecordType: "Bounce",
+      ID: 4323372036,
+      Type: "HardBounce",
+      MessageID: "pm-789",
+      Email: "ap@northwind.test",
+      BouncedAt: "2026-10-23T06:00:00Z",
+    };
+    expect((await postmarkPost(fallback, event)).status).toBe(200);
+    expect(await logStatus("pm-789")).toBe("bounced");
+  });
+
+  it("keeps nothing for a replaced provider with no webhook secret", async () => {
+    await saveProvider("primary", "tosend", null);
+    await saveProvider("primary", "resend", RESEND_SECRET);
+    expect(await count("retired_email_webhooks")).toBe(0);
+  });
+
+  it("gives two accounts of one provider their own URLs and secrets", async () => {
+    const otherSecret = "tosend-second-account-secret-0123456789";
+    await saveEmailProvider(db, env.ENCRYPTION_KEY, "fallback", {
+      providerId: "tosend",
+      credentials: { apiKey: "tsend_second_account_key" },
+      webhookSecret: otherSecret,
+    });
+    const primary = await connectionOf("primary");
+    const fallback = await connectionOf("fallback");
+    expect(fallback).not.toBe(primary);
+    expect((await tosendPost(primary, tosendBounce("ts_123"), otherSecret)).status).toBe(401);
+    expect((await tosendPost(fallback, tosendBounce("ts_123"), otherSecret)).status).toBe(200);
+  });
+
+  it("refuses the old role URLs", async () => {
+    expect(
+      (await apiFetch("/api/webhooks/email/primary", { method: "POST", body: "{}" })).status,
+    ).toBe(401);
+  });
+});
+
+describe("POST /api/webhooks/email/:connection refusals", () => {
   it("gives the same 401 for an unconfigured role, an unknown role, and no webhook secret", async () => {
     const expected = { error: "Invalid signature", code: "invalid_signature" };
     const fallback = await tosendPost("fallback", tosendBounce("ts_123"));
@@ -401,7 +505,7 @@ describe("POST /api/webhooks/email/:role refusals", () => {
     await env.DB.prepare("UPDATE email_providers SET config = NULL WHERE role = 'primary'").run();
     expect((await tosendPost("primary", [mailchannelsEvent("hard-bounced")])).status).toBe(401);
     expect(error).toHaveBeenCalledWith(
-      "The primary webhook settings are not valid",
+      expect.stringMatching(/^The mailchannels-[0-9a-f]{8} webhook settings are not valid$/),
       expect.any(String),
     );
   });
@@ -422,7 +526,7 @@ describe("POST /api/webhooks/email/:role refusals", () => {
     const { env: counted, counter } = countingEnv();
     const send = async (body: BodyInit) =>
       app.fetch(
-        await buildRequest("/api/webhooks/email/primary", {
+        await buildRequest(await webhookPath("primary"), {
           method: "POST",
           headers: { "x-tosend-signature": await toSendSignature(TOSEND_SECRET, big) },
           body,
@@ -448,7 +552,7 @@ describe("POST /api/webhooks/email/:role refusals", () => {
 
 const signer = await createSnsSigner();
 
-describe("POST /api/webhooks/email/:role with Amazon SES", () => {
+describe("POST /api/webhooks/email/:connection with Amazon SES", () => {
   function sesFetch(subscribeStatus = 200) {
     const calls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -496,6 +600,7 @@ describe("POST /api/webhooks/email/:role with Amazon SES", () => {
     expect(JSON.parse(rows.results[0]?.data ?? "{}")).toEqual({
       provider: "ses",
       role: "primary",
+      connectionId: expect.stringMatching(/^ses-[0-9a-f]{8}$/),
       topicArn: TOPIC_ARN,
     });
 
@@ -557,7 +662,7 @@ describe("POST /api/webhooks/email/:role with Amazon SES", () => {
   });
 });
 
-describe("POST /api/webhooks/email/:role with MailChannels", () => {
+describe("POST /api/webhooks/email/:connection with MailChannels", () => {
   async function saveMailchannels(customerHandle: string) {
     await saveEmailProvider(db, env.ENCRYPTION_KEY, "primary", {
       providerId: "mailchannels",
@@ -588,7 +693,7 @@ describe("POST /api/webhooks/email/:role with MailChannels", () => {
   });
 });
 
-describe("POST /api/webhooks/email/:role with a batch of events", () => {
+describe("POST /api/webhooks/email/:connection with a batch of events", () => {
   /** Mailjet bounces with grouping on: one list of `count` events, each for its own message. */
   const mailjetBounces = (count: number) =>
     JSON.stringify(
@@ -605,7 +710,7 @@ describe("POST /api/webhooks/email/:role with a batch of events", () => {
   async function mailjetPost(body: string, ctx?: ExecutionContext) {
     const { env: counted, counter } = countingEnv();
     const res = await app.fetch(
-      await buildRequest("/api/webhooks/email/primary", {
+      await buildRequest(await webhookPath("primary"), {
         method: "POST",
         headers: {
           "content-type": "application/json",

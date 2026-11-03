@@ -104,10 +104,9 @@ describe("GET /api/settings/email", () => {
     expect(ids).not.toContain("cloudflare-binding");
     expect(ids).toContain("mailchannels");
     expect(ids).toContain("http");
-    expect(body.webhookUrls).toEqual({
-      primary: "https://invoices.example.com/api/webhooks/email/primary",
-      fallback: "https://invoices.example.com/api/webhooks/email/fallback",
-    });
+    // A webhook URL exists after the first save.
+    expect(body.webhookUrls).toEqual({ primary: null, fallback: null });
+    expect(body.retiredWebhooks).toEqual([]);
   });
 
   it("describes credential fields, presets, webhook secrets, and default caps", async () => {
