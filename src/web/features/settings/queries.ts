@@ -20,7 +20,7 @@ import type {
   WorkspaceSettingsInput,
 } from "../../../shared/schemas/settings";
 import type { TaxRate, TaxRateInput } from "../../../shared/schemas/tax-rate";
-import { api } from "../../lib/api";
+import { api, toastError } from "../../lib/api";
 import { queryKeys } from "../../lib/query-keys";
 
 export function useWorkspaceSettings() {
@@ -262,7 +262,9 @@ export function useSetUpdateCheck() {
 export function useCheckForUpdates() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api<UpdateStatus>("/settings/updates/check", { method: "POST" }),
+    mutationFn: () =>
+      api<UpdateStatus>("/settings/updates/check", { method: "POST", toastOnError: false }),
     onSuccess: (data) => queryClient.setQueryData(queryKeys.settings.updates, data),
+    onError: (err) => toastError(err, "Could not check for updates"),
   });
 }

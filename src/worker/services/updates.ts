@@ -44,11 +44,17 @@ export function isNewerVersion(candidate: string, current: string): boolean {
   return false;
 }
 
-/**
- * The newest published release. GitHub leaves out drafts and pre-releases. Null when the
- * repository has no release yet. Throws when GitHub does not answer or the answer is wrong.
- */
-export async function fetchLatestRelease(fetcher: Fetcher): Promise<Release | null> {
+/** The release from a tag and its page URL. Throws when the tag is not a version. */
+function releaseOf(tag: string, url: string): Release {
+  const parsed = parseVersion(tag);
+  if (!parsed || !url.startsWith("https://github.com/")) {
+    throw new Error(`GitHub sent a release with the tag "${tag.slice(0, 40)}"`);
+  }
+  return { version: parsed.join("."), url };
+}
+
+/** The newest release from the GitHub API. Null when the repository has no release. */
+async function fetchFromApi(fetcher: Fetcher): Promise<Release | null> {
   const res = await fetcher(`https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest`, {
     headers: {
       accept: "application/vnd.github+json",
@@ -60,13 +66,52 @@ export async function fetchLatestRelease(fetcher: Fetcher): Promise<Release | nu
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
   const body = (await res.json()) as { tag_name?: unknown; html_url?: unknown };
-  const tag = typeof body.tag_name === "string" ? body.tag_name : "";
-  const url = typeof body.html_url === "string" ? body.html_url : "";
-  const parsed = parseVersion(tag);
-  if (!parsed || !url.startsWith("https://github.com/")) {
-    throw new Error(`GitHub sent a release with the tag "${tag.slice(0, 40)}"`);
+  return releaseOf(
+    typeof body.tag_name === "string" ? body.tag_name : "",
+    typeof body.html_url === "string" ? body.html_url : "",
+  );
+}
+
+/**
+ * The newest release from the redirect of the public "latest release" page. It does not
+ * count against the API limit. With no release, GitHub redirects to the release list.
+ */
+async function fetchFromReleasePage(fetcher: Fetcher): Promise<Release | null> {
+  const res = await fetcher(`https://github.com/${UPSTREAM_REPO}/releases/latest`, {
+    method: "HEAD",
+    headers: { "user-agent": `plainbooks/${APP_VERSION}` },
+    redirect: "manual",
+    signal: AbortSignal.timeout(RELEASE_TIMEOUT_MS),
+  });
+  const location = res.headers.get("location");
+  if (res.status < 300 || res.status >= 400 || !location) {
+    throw new Error(`The release page answered ${res.status}`);
   }
-  return { version: parsed.join("."), url };
+  const url = new URL(location, "https://github.com").href;
+  const tag = /\/releases\/tag\/([^/?#]+)$/.exec(new URL(url).pathname)?.[1];
+  if (!tag) return null;
+  return releaseOf(decodeURIComponent(tag), url);
+}
+
+/**
+ * The newest published release. GitHub leaves out drafts and pre-releases. Null when the
+ * repository has no release yet. Throws when GitHub does not answer or the answer is wrong.
+ *
+ * Without a token, the GitHub API allows 60 requests an hour per IP address, and Workers
+ * share IP addresses, so the API often refuses with 403 or 429. The release page is then
+ * the second source.
+ */
+export async function fetchLatestRelease(fetcher: Fetcher): Promise<Release | null> {
+  try {
+    return await fetchFromApi(fetcher);
+  } catch (apiError) {
+    try {
+      return await fetchFromReleasePage(fetcher);
+    } catch (pageError) {
+      const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
+      throw new Error(`${reason(apiError)}. ${reason(pageError)}.`);
+    }
+  }
 }
 
 /**

@@ -113,6 +113,25 @@ describe("fetchLatestRelease", () => {
     await expect(fetchLatestRelease(fetch)).rejects.toThrow("nightly");
   });
 
+  it("reads the release page when the API refuses, for example at the rate limit", async () => {
+    const pageUrl = `https://github.com/${UPSTREAM_REPO}/releases/latest`;
+    const page = (location: string) => (url: string, init?: RequestInit) => {
+      if (url !== pageUrl) return Promise.resolve(new Response("rate limited", { status: 403 }));
+      expect(init?.redirect).toBe("manual");
+      return Promise.resolve(new Response(null, { status: 302, headers: { location } }));
+    };
+    expect(
+      await fetchLatestRelease(page(`https://github.com/${UPSTREAM_REPO}/releases/tag/v0.4.0`)),
+    ).toEqual({
+      version: "0.4.0",
+      url: `https://github.com/${UPSTREAM_REPO}/releases/tag/v0.4.0`,
+    });
+    // With no release, GitHub redirects to the release list.
+    expect(
+      await fetchLatestRelease(page(`https://github.com/${UPSTREAM_REPO}/releases`)),
+    ).toBeNull();
+  });
+
   it("uses the fake with no releases in development with FAKE_EXTERNALS=1", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
     const fetcher = releaseFetcher({ APP_ENV: "development", FAKE_EXTERNALS: "1" });
