@@ -1,10 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Form } from "react-aria-components";
-import { occurrenceDate } from "../../../shared/recurring";
+import { firstRepeatDate } from "../../../shared/recurring";
 import type { DocumentDetail } from "../../../shared/schemas/document";
 import { recurringCreateInput } from "../../../shared/schemas/recurring";
-import { addDays } from "../../../shared/time";
 import { Button } from "../../components/ui/button";
 import { Dialog, Modal } from "../../components/ui/dialog";
 import { TextField } from "../../components/ui/text-field";
@@ -14,17 +13,6 @@ import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { useMe } from "../../lib/session";
 import { useCreateSchedule } from "./queries";
 import { TimingFields, type TimingValues } from "./timing-fields";
-
-/** One month after the invoice's issue date, or tomorrow for a draft without a date. */
-function defaultStart(doc: DocumentDetail, today: string): string {
-  const issue = doc.issueDate;
-  if (!issue) return addDays(today, 1);
-  const next = occurrenceDate(
-    { frequency: "monthly", startDate: issue, anchorDay: Number(issue.slice(8)) },
-    1,
-  );
-  return next > today ? next : addDays(today, 1);
-}
 
 export interface MakeRecurringDialogProps {
   isOpen: boolean;
@@ -44,7 +32,7 @@ export function MakeRecurringDialog({
     <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
       <Dialog
         title="Make recurring"
-        description="The schedule keeps its own copy of the lines. You can edit them later."
+        description="This invoice stays as it is. The schedule creates the next invoices on their dates, with its own copy of the lines."
       >
         {(close) => <MakeRecurringForm document={document} today={today} close={close} />}
       </Dialog>
@@ -67,20 +55,28 @@ function MakeRecurringForm({
   const [name, setName] = useState("");
   const [timing, setTiming] = useState<TimingValues>({
     frequency: "monthly",
-    startDate: defaultStart(doc, today),
+    startDate: null,
     endDate: null,
     sendMode: "inherit",
   });
+  // The next invoice is one period after this invoice, until the user picks a date.
+  const [startEdited, setStartEdited] = useState(false);
+  const values: TimingValues = {
+    ...timing,
+    startDate: startEdited
+      ? timing.startDate
+      : firstRepeatDate(timing.frequency, doc.issueDate ?? today, today),
+  };
   const [errors, setErrors] = useState<FieldErrors>({});
 
   const submit = async () => {
     const input = {
       sourceDocumentId: doc.id,
       name: name || null,
-      frequency: timing.frequency,
-      startDate: timing.startDate ?? "",
-      endDate: timing.endDate,
-      sendMode: timing.sendMode,
+      frequency: values.frequency,
+      startDate: values.startDate ?? "",
+      endDate: values.endDate,
+      sendMode: values.sendMode,
     };
     const result = validate(recurringCreateInput, input);
     if (result.errors) {
@@ -117,8 +113,12 @@ function MakeRecurringForm({
         {...fieldError(errors, "name")}
       />
       <TimingFields
-        values={timing}
-        onChange={setTiming}
+        values={values}
+        onChange={(next) => {
+          if (next.startDate !== values.startDate) setStartEdited(true);
+          setTiming(next);
+        }}
+        startLabel="Next invoice on"
         isOwner={isOwner}
         initialSendMode="inherit"
         errors={errors}

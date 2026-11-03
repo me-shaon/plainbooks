@@ -18,7 +18,7 @@ import type { TaxRate } from "../../../shared/schemas/tax-rate";
 import { Toaster, toastQueue } from "../../components/ui/toast";
 import { formatMoney } from "../../lib/format";
 import { documentActions } from "./document-detail-page";
-import { DocumentEditor, type DocumentEditorProps, firstRepeatDate } from "./document-editor";
+import { DocumentEditor, type DocumentEditorProps } from "./document-editor";
 import { EditDocumentPage } from "./editor-page";
 import { emptyValues, newLine } from "./editor-state";
 import { SendDialog } from "./send-dialog";
@@ -490,17 +490,5 @@ describe("Revise", () => {
     expect(
       (screen.getByRole("textbox", { name: /^Description.*line 1/ }) as HTMLInputElement).value,
     ).toBe("Design, revised scope");
-  });
-});
-
-describe("firstRepeatDate", () => {
-  it("is one period after the issue date", () => {
-    expect(firstRepeatDate("weekly", "2026-10-24", "2026-10-24")).toBe("2026-10-31");
-    expect(firstRepeatDate("monthly", "2026-01-31", "2026-01-31")).toBe("2026-02-28");
-    expect(firstRepeatDate("yearly", "2026-10-24", "2026-10-24")).toBe("2027-10-24");
-  });
-
-  it("moves a past date to tomorrow", () => {
-    expect(firstRepeatDate("weekly", "2026-01-01", "2026-10-24")).toBe("2026-10-25");
   });
 });

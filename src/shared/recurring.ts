@@ -176,3 +176,19 @@ const PERIOD_FORMATS: Record<RecurringFrequency, RegExp> = {
   quarterly: /^\d{4}-Q\d$/,
   yearly: /^\d{4}$/,
 };
+
+/**
+ * The first repeat: one period after the issue date. A date that is not after today moves
+ * to tomorrow, because the schedule does not create invoices for past periods.
+ */
+export function firstRepeatDate(
+  frequency: RecurringFrequency,
+  issueDate: string,
+  today: string,
+): string {
+  const next = occurrenceDate(
+    { frequency, startDate: issueDate, anchorDay: anchorDayOf(issueDate) },
+    1,
+  );
+  return next > today ? next : addDays(today, 1);
+}

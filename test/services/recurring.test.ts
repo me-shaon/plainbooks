@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   duePeriods,
+  firstRepeatDate,
   isoWeek,
   nextIssueDateFrom,
   occurrenceDate,
@@ -553,5 +554,17 @@ describe("recurring routes", () => {
     const body = (await resume.json()) as { status: string; nextIssueDate: string };
     expect(body.status).toBe("active");
     expect(body.nextIssueDate > "2026-10-01").toBe(true);
+  });
+});
+
+describe("firstRepeatDate", () => {
+  it("is one period after the issue date", () => {
+    expect(firstRepeatDate("weekly", "2026-10-24", "2026-10-24")).toBe("2026-10-31");
+    expect(firstRepeatDate("monthly", "2026-01-31", "2026-01-31")).toBe("2026-02-28");
+    expect(firstRepeatDate("yearly", "2026-10-24", "2026-10-24")).toBe("2027-10-24");
+  });
+
+  it("moves a past date to tomorrow", () => {
+    expect(firstRepeatDate("weekly", "2026-01-01", "2026-10-24")).toBe("2026-10-25");
   });
 });

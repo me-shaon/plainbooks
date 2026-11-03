@@ -7,7 +7,7 @@ import {
   type ReminderModeSetting,
 } from "../../../shared/domain";
 import { CURRENCY_CODES, normalizePercent } from "../../../shared/money";
-import { anchorDayOf, occurrenceDate } from "../../../shared/recurring";
+import { firstRepeatDate } from "../../../shared/recurring";
 import {
   type ClientDetail,
   type ClientSummary,
@@ -63,22 +63,6 @@ export interface PaymentReceived {
 /** A recurring schedule to make from the invoice after it is saved. */
 export interface RepeatSchedule extends TimingValues {
   startDate: string;
-}
-
-/**
- * The first repeat: one period after the issue date. A date that is not after today moves
- * to tomorrow, because the schedule does not create invoices for past periods.
- */
-export function firstRepeatDate(
-  frequency: RecurringFrequency,
-  issueDate: string,
-  today: string,
-): string {
-  const next = occurrenceDate(
-    { frequency, startDate: issueDate, anchorDay: anchorDayOf(issueDate) },
-    1,
-  );
-  return next > today ? next : addDays(today, 1);
 }
 
 export interface WorkspaceDefaults {
