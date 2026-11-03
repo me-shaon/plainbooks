@@ -253,9 +253,9 @@ describe("DocumentEditor", () => {
   it("tells a Member that only an Owner can turn on auto-send", async () => {
     const user = userEvent.setup();
     renderEditor({ isOwner: false });
-    expect(screen.getByText("Only an Owner can turn on auto-send")).toBeTruthy();
+    expect(screen.getByText(/Only an Owner can turn on auto-send/)).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: /Reminders/ }));
+    await user.click(screen.getByRole("button", { name: /Payment reminders/ }));
     const option = await screen.findByRole("option", { name: "Auto-send reminders" });
     expect(option.getAttribute("aria-disabled")).toBe("true");
   });

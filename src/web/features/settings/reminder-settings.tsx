@@ -99,7 +99,7 @@ function ReminderSettingsForm({
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
-            label="Reminders"
+            label="Payment reminders"
             isDisabled={readOnly}
             value={reminderMode}
             onChange={(key) => key && setReminderMode(key as ReminderMode)}

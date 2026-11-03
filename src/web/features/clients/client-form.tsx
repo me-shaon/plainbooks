@@ -253,7 +253,7 @@ export function ClientForm({
             ))}
           </Select>
           <Select
-            label="Reminders"
+            label="Payment reminders"
             value={values.reminderMode}
             isDisabled={lockedReminder}
             disabledKeys={isOwner ? undefined : ["auto_send"]}

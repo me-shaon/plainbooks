@@ -231,11 +231,12 @@ export function DocumentEditor({
   const docFields = customFieldDefs.filter((d) => d.scope === "document" && d.archivedAt === null);
 
   const lockedReminder = !isOwner && initialValues.reminderMode === "auto_send";
-  const reminderNote = isOwner
-    ? undefined
-    : lockedReminder
-      ? OWNER_ONLY_MESSAGE
-      : "Only an Owner can turn on auto-send";
+  const reminderNote = [
+    "Emails that ask the client to pay, on the schedule in Settings. They do not repeat the invoice.",
+    isOwner ? null : lockedReminder ? OWNER_ONLY_MESSAGE : "Only an Owner can turn on auto-send.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const saveLabel =
     mode === "revise" ? "Save revision" : mode === "create" ? "Save draft" : "Save changes";
@@ -563,7 +564,7 @@ export function DocumentEditor({
               </Select>
               {isInvoice ? (
                 <Select
-                  label="Reminders"
+                  label="Payment reminders"
                   value={values.reminderMode}
                   isDisabled={lockedReminder}
                   disabledKeys={isOwner ? undefined : ["auto_send"]}

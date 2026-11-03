@@ -68,7 +68,7 @@ describe("ClientForm", () => {
       },
     });
     expect(screen.getAllByText("Only an Owner can change this")).toHaveLength(2);
-    const reminders = screen.getByText("Reminders").closest(".group");
+    const reminders = screen.getByText("Payment reminders").closest(".group");
     if (!(reminders instanceof HTMLElement)) throw new Error("Reminders field not found");
     const button = within(reminders).getByRole("button");
     expect(button).toHaveProperty("disabled", true);

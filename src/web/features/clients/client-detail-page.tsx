@@ -330,7 +330,9 @@ function DefaultsSection({ detail }: { detail: ClientDetail }) {
             : `${client.paymentTermsDays} days`}
         </DetailItem>
         <DetailItem label="Template">{template?.name ?? "Workspace default"}</DetailItem>
-        <DetailItem label="Reminders">{REMINDER_MODE_LABELS[client.reminderMode]}</DetailItem>
+        <DetailItem label="Payment reminders">
+          {REMINDER_MODE_LABELS[client.reminderMode]}
+        </DetailItem>
         <DetailItem label="Recurring invoices">
           {SEND_MODE_LABELS[client.recurringSendMode]}
         </DetailItem>
