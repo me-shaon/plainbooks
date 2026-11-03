@@ -18,7 +18,7 @@ import type { TaxRate } from "../../../shared/schemas/tax-rate";
 import { Toaster, toastQueue } from "../../components/ui/toast";
 import { formatMoney } from "../../lib/format";
 import { documentActions } from "./document-detail-page";
-import { DocumentEditor, type DocumentEditorProps } from "./document-editor";
+import { DocumentEditor, type DocumentEditorProps, firstRepeatDate } from "./document-editor";
 import { EditDocumentPage } from "./editor-page";
 import { emptyValues, newLine } from "./editor-state";
 import { SendDialog } from "./send-dialog";
@@ -264,7 +264,7 @@ describe("DocumentEditor", () => {
     const user = userEvent.setup();
     const { onSave } = renderEditor();
     await user.click(screen.getByRole("button", { name: "Save and finalize" }));
-    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize", undefined);
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize", undefined, undefined);
   });
 
   it("blocks Save draft when a payment is entered", async () => {
@@ -284,11 +284,38 @@ describe("DocumentEditor", () => {
     await user.type(field(/^Amount paid/), "50");
     expect(screen.getByText(`Balance due ${formatMoney(6500, "USD")}.`)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Save and finalize" }));
-    expect(onSave).toHaveBeenCalledWith(expect.anything(), "finalize", {
-      amount: 5000,
-      paidOn: "2026-10-24",
-      note: null,
+    expect(onSave).toHaveBeenCalledWith(
+      expect.anything(),
+      "finalize",
+      {
+        amount: 5000,
+        paidOn: "2026-10-24",
+        note: null,
+      },
+      undefined,
+    );
+  });
+
+  it("passes a repeat schedule that starts one period after the issue date", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor();
+    await user.click(screen.getByRole("button", { name: /Repeat/ }));
+    await user.click(await screen.findByRole("option", { name: "Monthly" }));
+    expect(screen.getByText(/Saving makes a recurring schedule/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(onSave).toHaveBeenCalledWith(expect.anything(), "save", undefined, {
+      frequency: "monthly",
+      startDate: "2026-11-24",
+      endDate: null,
+      sendMode: "inherit",
     });
+  });
+
+  it("offers no repeat on a quote", () => {
+    const values = emptyValues("quote", "USD");
+    values.clientId = "c1";
+    renderEditor({ initialValues: values });
+    expect(screen.queryByRole("button", { name: /Repeat/ })).toBeNull();
   });
 
   it("blocks a payment above the total", async () => {
@@ -463,5 +490,17 @@ describe("Revise", () => {
     expect(
       (screen.getByRole("textbox", { name: /^Description.*line 1/ }) as HTMLInputElement).value,
     ).toBe("Design, revised scope");
+  });
+});
+
+describe("firstRepeatDate", () => {
+  it("is one period after the issue date", () => {
+    expect(firstRepeatDate("weekly", "2026-10-24", "2026-10-24")).toBe("2026-10-31");
+    expect(firstRepeatDate("monthly", "2026-01-31", "2026-01-31")).toBe("2026-02-28");
+    expect(firstRepeatDate("yearly", "2026-10-24", "2026-10-24")).toBe("2027-10-24");
+  });
+
+  it("moves a past date to tomorrow", () => {
+    expect(firstRepeatDate("weekly", "2026-01-01", "2026-10-24")).toBe("2026-10-25");
   });
 });

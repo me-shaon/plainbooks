@@ -28,30 +28,37 @@ export function TimingFields({
   isOwner,
   initialSendMode,
   errors,
+  showFrequency = true,
+  startLabel = "First issue date",
 }: {
   values: TimingValues;
   onChange: (values: TimingValues) => void;
   isOwner: boolean;
   initialSendMode: SendModeSetting;
   errors: FieldErrors;
+  /** False when the form shows the frequency in its own field. */
+  showFrequency?: boolean;
+  startLabel?: string;
 }) {
   const set = <K extends keyof TimingValues>(key: K, value: TimingValues[K]) =>
     onChange({ ...values, [key]: value });
   const locked = !isOwner && initialSendMode === "auto_send";
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Select
-        label="Frequency"
-        value={values.frequency}
-        onChange={(key) => key && set("frequency", key as RecurringFrequency)}
-        {...fieldError(errors, "frequency")}
-      >
-        {RECURRING_FREQUENCIES.map((f) => (
-          <ListBoxItem key={f} id={f}>
-            {FREQUENCY_LABELS[f]}
-          </ListBoxItem>
-        ))}
-      </Select>
+      {showFrequency ? (
+        <Select
+          label="Frequency"
+          value={values.frequency}
+          onChange={(key) => key && set("frequency", key as RecurringFrequency)}
+          {...fieldError(errors, "frequency")}
+        >
+          {RECURRING_FREQUENCIES.map((f) => (
+            <ListBoxItem key={f} id={f}>
+              {FREQUENCY_LABELS[f]}
+            </ListBoxItem>
+          ))}
+        </Select>
+      ) : null}
       <Select
         label="Send mode"
         value={values.sendMode}
@@ -70,7 +77,7 @@ export function TimingFields({
         ))}
       </Select>
       <IsoDatePicker
-        label="First issue date"
+        label={startLabel}
         isRequired
         value={values.startDate}
         onChange={(v) => set("startDate", v)}

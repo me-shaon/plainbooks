@@ -10,18 +10,20 @@ import { todayIn } from "../../../shared/time";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toast } from "../../components/ui/toast";
-import { api, issuesByPath } from "../../lib/api";
+import { api, issuesByPath, toastError } from "../../lib/api";
 import type { FieldErrors } from "../../lib/form";
 import { queryKeys } from "../../lib/query-keys";
 import { useTaxRates, useTemplates } from "../../lib/reference-data";
 import { useMe } from "../../lib/session";
 import { useClients } from "../clients/queries";
+import { useCreateSchedule } from "../recurring/queries";
 import { useWorkspaceSettings } from "../settings/queries";
 import { useCustomFields } from "../templates/queries";
 import {
   DocumentEditor,
   type EditorMode,
   type PaymentReceived,
+  type RepeatSchedule,
   type SaveIntent,
 } from "./document-editor";
 import {
@@ -175,6 +177,7 @@ function EditorContainer({
   const create = useCreateDocument();
   const update = useUpdateDocument(document?.id ?? "");
   const revise = useReviseDocument(document?.id ?? "");
+  const createSchedule = useCreateSchedule();
   const [revising, setRevising] = useState<EditorValues | null>(null);
 
   const ws = settings.data;
@@ -202,6 +205,7 @@ function EditorContainer({
     values: EditorValues,
     intent: SaveIntent,
     payment?: PaymentReceived,
+    repeat?: RepeatSchedule,
   ): Promise<FieldErrors | undefined> => {
     if (intent === "revise") {
       setRevising(values);
@@ -211,6 +215,26 @@ function EditorContainer({
       const input = toDocumentInput(values);
       const detail =
         mode === "create" ? await create.mutateAsync(input) : await update.mutateAsync(input);
+      if (repeat) {
+        try {
+          await createSchedule.mutateAsync({
+            sourceDocumentId: detail.id,
+            name: null,
+            frequency: repeat.frequency,
+            startDate: repeat.startDate,
+            endDate: repeat.endDate,
+            sendMode: repeat.sendMode,
+          });
+          toast({
+            title: "Recurring schedule created",
+            description: "See it under Recurring.",
+            tone: "success",
+          });
+        } catch (err) {
+          // The invoice is saved. "Make recurring" on the invoice can try again.
+          toastError(err, "The invoice is saved, but the recurring schedule was not created");
+        }
+      }
       if (payment) {
         try {
           const paid = await markPaidDocument(queryClient, detail.id, payment);

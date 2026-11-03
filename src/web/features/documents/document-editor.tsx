@@ -1,7 +1,13 @@
 import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
-import { REMINDER_MODE_SETTINGS, type ReminderModeSetting } from "../../../shared/domain";
+import {
+  RECURRING_FREQUENCIES,
+  REMINDER_MODE_SETTINGS,
+  type RecurringFrequency,
+  type ReminderModeSetting,
+} from "../../../shared/domain";
 import { CURRENCY_CODES, normalizePercent } from "../../../shared/money";
+import { anchorDayOf, occurrenceDate } from "../../../shared/recurring";
 import {
   type ClientDetail,
   type ClientSummary,
@@ -9,6 +15,7 @@ import {
   REMINDER_MODE_LABELS,
 } from "../../../shared/schemas/client";
 import { documentCreateInput, documentUpdateInput } from "../../../shared/schemas/document";
+import { FREQUENCY_LABELS, recurringCreateInput } from "../../../shared/schemas/recurring";
 import type { TaxRate } from "../../../shared/schemas/tax-rate";
 import type { CustomFieldDef, TemplateSummary } from "../../../shared/schemas/template";
 import { addDays } from "../../../shared/time";
@@ -25,6 +32,7 @@ import { TextArea, TextField } from "../../components/ui/text-field";
 import { toastError } from "../../lib/api";
 import { type FieldErrors, fieldError, validate } from "../../lib/form";
 import { formatDate, formatMoney } from "../../lib/format";
+import { TimingFields, type TimingValues } from "../recurring/timing-fields";
 import {
   changeCurrency,
   type EditorValues,
@@ -39,6 +47,7 @@ import { fetchDocumentPreview } from "./queries";
 import { TotalsPanel } from "./totals-panel";
 
 const NONE = "__none";
+const NO_REPEAT = "never";
 
 export type EditorMode = "create" | "edit" | "revise";
 export type SaveIntent = "save" | "finalize" | "send" | "revise";
@@ -49,6 +58,27 @@ export interface PaymentReceived {
   amount: number;
   paidOn: string;
   note: string | null;
+}
+
+/** A recurring schedule to make from the invoice after it is saved. */
+export interface RepeatSchedule extends TimingValues {
+  startDate: string;
+}
+
+/**
+ * The first repeat: one period after the issue date. A date that is not after today moves
+ * to tomorrow, because the schedule does not create invoices for past periods.
+ */
+export function firstRepeatDate(
+  frequency: RecurringFrequency,
+  issueDate: string,
+  today: string,
+): string {
+  const next = occurrenceDate(
+    { frequency, startDate: issueDate, anchorDay: anchorDayOf(issueDate) },
+    1,
+  );
+  return next > today ? next : addDays(today, 1);
 }
 
 export interface WorkspaceDefaults {
@@ -79,12 +109,14 @@ export interface DocumentEditorProps {
   /**
    * Saves the values. The editor keeps its values whatever happens, so a server error never
    * loses edits. Return field errors from the server to show them. `payment` is set when
-   * the user entered a payment the client already made.
+   * the user entered a payment the client already made. `repeat` is set when the user
+   * chose to repeat the invoice.
    */
   onSave: (
     values: EditorValues,
     intent: SaveIntent,
     payment?: PaymentReceived,
+    repeat?: RepeatSchedule,
   ) => Promise<FieldErrors | undefined>;
   onCancel: () => void;
 }
@@ -123,6 +155,9 @@ export function DocumentEditor({
   const [paidAmount, setPaidAmount] = useState("");
   const [paidOn, setPaidOn] = useState<string | null>(today);
   const [paidNote, setPaidNote] = useState("");
+  const [repeat, setRepeat] = useState<TimingValues | null>(null);
+  const [repeatStartEdited, setRepeatStartEdited] = useState(false);
+  const [repeatErrors, setRepeatErrors] = useState<FieldErrors>({});
   const set = <K extends keyof EditorValues>(key: K, value: EditorValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
@@ -132,6 +167,17 @@ export function DocumentEditor({
   const defaultTaxRateId = client?.defaultTaxRateId ?? defaults.taxRateId;
   const canTakePayment = isInvoice && mode !== "revise";
   const paidMinor = canTakePayment ? minorOf(paidAmount, values.currency) : 0;
+  const canRepeat = isInvoice && mode !== "revise";
+  // The first repeat follows the issue date until the user picks a date.
+  const repeatValues: TimingValues | null =
+    canRepeat && repeat
+      ? {
+          ...repeat,
+          startDate: repeatStartEdited
+            ? repeat.startDate
+            : firstRepeatDate(repeat.frequency, issueDate, today),
+        }
+      : null;
 
   // Load the defaults of the client the document already has.
   const initialClientId = initialValues.clientId;
@@ -191,7 +237,18 @@ export function DocumentEditor({
       }
       if (!paidOn) nextErrors.paidOn = "Enter the payment date";
     }
-    if (Object.keys(nextErrors).length > 0) {
+    const repeatCheck = repeatValues
+      ? validate(recurringCreateInput, {
+          sourceDocumentId: documentId ?? "new",
+          name: null,
+          frequency: repeatValues.frequency,
+          startDate: repeatValues.startDate ?? "",
+          endDate: repeatValues.endDate,
+          sendMode: repeatValues.sendMode,
+        })
+      : null;
+    setRepeatErrors(repeatCheck?.errors ?? {});
+    if (Object.keys(nextErrors).length > 0 || repeatCheck?.errors) {
       setErrors(nextErrors);
       return;
     }
@@ -202,7 +259,11 @@ export function DocumentEditor({
         paidMinor > 0 && paidOn
           ? { amount: paidMinor, paidOn, note: paidNote.trim() || null }
           : undefined;
-      const serverErrors = await onSave(values, intent, payment);
+      const repeatSchedule =
+        repeatValues?.startDate != null
+          ? { ...repeatValues, startDate: repeatValues.startDate }
+          : undefined;
+      const serverErrors = await onSave(values, intent, payment, repeatSchedule);
       if (serverErrors) setErrors(serverErrors);
     } finally {
       setPending(null);
@@ -578,6 +639,55 @@ export function DocumentEditor({
                     </ListBoxItem>
                   ))}
                 </Select>
+              ) : null}
+              {canRepeat ? (
+                <>
+                  <Select
+                    label="Repeat"
+                    value={repeat ? repeat.frequency : NO_REPEAT}
+                    onChange={(key) => {
+                      if (key === null) return;
+                      if (key === NO_REPEAT) {
+                        setRepeat(null);
+                        setRepeatErrors({});
+                        return;
+                      }
+                      const frequency = key as RecurringFrequency;
+                      setRepeat((current) => ({
+                        frequency,
+                        startDate: current?.startDate ?? null,
+                        endDate: current?.endDate ?? null,
+                        sendMode: current?.sendMode ?? "inherit",
+                      }));
+                    }}
+                    description={
+                      repeat
+                        ? "Saving makes a recurring schedule. Each new invoice copies this one. Edit it later under Recurring."
+                        : undefined
+                    }
+                  >
+                    <ListBoxItem id={NO_REPEAT}>Does not repeat</ListBoxItem>
+                    {RECURRING_FREQUENCIES.map((f) => (
+                      <ListBoxItem key={f} id={f}>
+                        {FREQUENCY_LABELS[f]}
+                      </ListBoxItem>
+                    ))}
+                  </Select>
+                  {repeatValues ? (
+                    <TimingFields
+                      values={repeatValues}
+                      onChange={(next) => {
+                        if (next.startDate !== repeatValues.startDate) setRepeatStartEdited(true);
+                        setRepeat(next);
+                      }}
+                      isOwner={isOwner}
+                      initialSendMode="inherit"
+                      errors={repeatErrors}
+                      showFrequency={false}
+                      startLabel="Next invoice on"
+                    />
+                  ) : null}
+                </>
               ) : null}
             </div>
           </Section>
