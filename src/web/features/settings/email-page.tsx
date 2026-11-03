@@ -31,6 +31,14 @@ import {
 } from "./queries";
 import { SaveBar } from "./settings-layout";
 
+/**
+ * A saved secret never comes back to the browser. The empty field shows a mask, like a
+ * filled password field. Typing a new value replaces the saved one.
+ */
+const SAVED_SECRET_MASK = "\u2022".repeat(16);
+const SAVED_SECRET_CLASS = "placeholder:text-foreground";
+const SAVED_SECRET_NOTE = "Saved. Type a new value to replace it.";
+
 /** Readable text for the `parseCredentials` error codes. */
 const CREDENTIAL_ERROR_TEXT: Record<string, string> = {
   required: "Enter a value",
@@ -382,10 +390,11 @@ function ProviderForm({
                 onChange={(text) => setValues({ ...values, [field.name]: text })}
                 placeholder={
                   savedSecret
-                    ? "Saved. Enter a new value to replace it."
+                    ? SAVED_SECRET_MASK
                     : (hint?.placeholder ?? field.placeholder ?? field.defaultValue)
                 }
-                description={savedSecret ? joinText("Saved.", description) : description}
+                inputClassName={savedSecret ? SAVED_SECRET_CLASS : undefined}
+                description={savedSecret ? joinText(SAVED_SECRET_NOTE, description) : description}
                 {...error}
               />
             );
@@ -455,12 +464,15 @@ function ProviderForm({
               onChange={setWebhookSecret}
               placeholder={
                 sameProvider && saved?.webhookSecretConfigured
-                  ? "Saved. Enter a new value to replace it."
+                  ? SAVED_SECRET_MASK
                   : provider.webhookSecret.placeholder
+              }
+              inputClassName={
+                sameProvider && saved?.webhookSecretConfigured ? SAVED_SECRET_CLASS : undefined
               }
               description={
                 sameProvider && saved?.webhookSecretConfigured
-                  ? joinText("Saved.", provider.webhookSecret.hint)
+                  ? joinText(SAVED_SECRET_NOTE, provider.webhookSecret.hint)
                   : provider.webhookSecret.hint
               }
               {...fieldError(errors, "webhookSecret")}

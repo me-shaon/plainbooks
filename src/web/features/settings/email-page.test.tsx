@@ -163,8 +163,10 @@ describe("EmailSettingsView", () => {
     const key = form.getByLabelText(/API key/) as HTMLInputElement;
     expect(key.value).toBe("");
     expect(key.type).toBe("password");
-    expect(key.placeholder).toBe("Saved. Enter a new value to replace it.");
-    expect(form.getByText("Saved. Copy it from toSend.")).toBeTruthy();
+    expect(key.placeholder).toBe("\u2022".repeat(16));
+    expect(
+      form.getByText("Saved. Type a new value to replace it. Copy it from toSend."),
+    ).toBeTruthy();
   });
 
   it("shows the verify failure in a banner and keeps the form", async () => {
