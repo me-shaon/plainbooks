@@ -34,17 +34,17 @@ export const STATUS_LABELS: Record<Status, string> = {
  * `styles.css`. A test checks both the match and the 4.5:1 contrast.
  */
 export const STATUS_TOKENS: Record<Status, { bg: string; fg: string }> = {
-  draft: { bg: "#f1efea", fg: "#57534c" },
-  finalized: { bg: "#efeaf7", fg: "#4f3b78" },
-  sent: { bg: "#e8eef6", fg: "#2c4a6e" },
-  paid: { bg: "#e3f1ee", fg: "#1f5a4e" },
-  partially_paid: { bg: "#f8eedb", fg: "#6b4a12" },
-  overdue: { bg: "#fbe5de", fg: "#8a3b26" },
-  void: { bg: "#eeefee", fg: "#4f5751" },
-  accepted: { bg: "#e4f1e6", fg: "#25562f" },
-  declined: { bg: "#f7e4e8", fg: "#7a2e3d" },
-  expired: { bg: "#f0f2f0", fg: "#5f6661" },
-  converted: { bg: "#e6eff3", fg: "#24506a" },
+  draft: { bg: "#f3ead6", fg: "#5c4a24" },
+  finalized: { bg: "#d3c1f8", fg: "#43268a" },
+  sent: { bg: "#d2e5fc", fg: "#17458c" },
+  paid: { bg: "#a9e4c8", fg: "#0a5033" },
+  partially_paid: { bg: "#fde29c", fg: "#6a4400" },
+  overdue: { bg: "#fcc4b2", fg: "#8a270c" },
+  void: { bg: "#d3d6d4", fg: "#3f4541" },
+  accepted: { bg: "#dcf0a8", fg: "#3c5508" },
+  declined: { bg: "#fcd7e8", fg: "#8c1f55" },
+  expired: { bg: "#dcc4b2", fg: "#583724" },
+  converted: { bg: "#b4e6f0", fg: "#0b4c5d" },
 };
 
 /** WCAG 2 contrast ratio of two hex colors. */
